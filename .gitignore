@@ -1,0 +1,9 @@
+node_modules
+dist
+public/fonts
+sandbox
+.DS_Store
+.env
+.env.*.local
+.env.local
+/recordings

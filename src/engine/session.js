@@ -1,0 +1,467 @@
+import { describeOp } from "./caption";
+import { createStreamParser } from "./parser";
+import { Player } from "./player";
+import { Transcript } from "./transcript";
+import { buildChatReply, buildEditsReply } from "../agent/replies";
+import { controlRun, followRun, loadRecording, startRun } from "../agent/live";
+
+// Replays keep the run's rhythm but don't sit through long waits (thinking, or someone deciding).
+const REPLAY_MAX_GAP = 1500;
+import { BUILD_SCRIPT, PLAN_SCRIPT } from "../agent/script";
+
+// Wires an agent to both surfaces: its words go to the transcript, its board ops
+// go to the board, and each op is tied to the sentence it belongs to so the two
+// stay linked (live highlight while it works, hover/click afterwards).
+//
+// mode "agent":  a real Claude Agent SDK run in a local repo (server/runs.js).
+// mode "replay": a saved run played back from its recording (or opened at its end).
+// mode "demo":   the scripted run, typed out by the Player, with scripted replies.
+//
+// stage "planning" -> the agent plans and then waits for approval; edits and chat revise the plan.
+// stage "building" -> after approval: implement, verify, ship.
+export class Session {
+  constructor({ board, onChange }) {
+    this.board = board;
+    this.onChange = onChange;
+    this.mode = "demo";
+    this.stage = null; // null | "planning" | "building"
+    this.gen = 0;
+    this.live = new Map(); // highlight key -> Set of logical ids
+    this.hover = [];
+    this.raf = 0;
+    this.caption = "";
+    this.hideTimer = null;
+    this.resetAgent();
+
+    this.transcript = new Transcript({
+      onOpen: (s) => this.live.set(s.id, s.ids),
+      onClose: (s) => this.linger(s.id),
+      onChange: () => this.notify(),
+    });
+
+    // Demo: inline <board/> tags in typed-out text.
+    this.parser = createStreamParser({
+      onText: (t) => this.transcript.text(t),
+      onOp: (attrs) => this.applyOp(attrs),
+    });
+
+    this.player = new Player({
+      onStart: () => {
+        this.parser.reset();
+        this.transcript.startMessage("agent");
+      },
+      onChunk: (c) => this.parser.push(c),
+      onEnd: () => {
+        this.parser.end();
+        this.transcript.endMessage();
+      },
+      onState: () => this.stateChanged(),
+    });
+  }
+
+  resetAgent() {
+    this.runId = null;
+    this.follow?.abort();
+    this.follow = null;
+    this.agentBusy = false;
+    this.workingSince = 0; // turn start, until the agent first says or does something
+    this.gate = null; // pending plan approval request id
+    this.permission = null; // pending permission request
+    this.result = null; // last turn's { ok, cost, turns }
+    this.recording = null; // the saved run being replayed: { id, brief, repo, project, … }
+    this.brief = this.brief ?? "";
+    this.repo = this.repo ?? "";
+  }
+
+  // ---- shared: applying ops and highlighting ----
+  applyOp(attrs, { fromAgent = false } = {}) {
+    this.caption = describeOp(attrs, this.board.model); // before apply: removals lose the name
+    if (attrs.op === "phase") {
+      this.transcript.phase(attrs.name);
+      if (attrs.name !== "planning") this.stage = "building";
+    }
+    let ids = [];
+    try {
+      ids = this.board.apply(attrs);
+    } catch (err) {
+      console.warn("board op failed", attrs, err);
+    }
+    this.transcript.op(ids, { attachToLast: fromAgent });
+    if (!this.instant) {
+      this.board.pointAt(ids, 260 / this.player.speed);
+      if (fromAgent) this.flash(ids);
+    }
+    this.sync();
+  }
+
+  // Keep a highlight up briefly (agent ops land between sentences, so nothing is "being written").
+  flash(ids) {
+    if (!ids.length) return;
+    const key = `flash-${Math.random()}`;
+    this.live.set(key, new Set(ids));
+    this.linger(key);
+  }
+
+  linger(key) {
+    const g = this.gen;
+    setTimeout(() => {
+      if (g !== this.gen) return;
+      this.live.delete(key);
+      this.sync();
+    }, 1200);
+  }
+
+  stateChanged() {
+    // Park the agent's cursor shortly after it stops working.
+    clearTimeout(this.hideTimer);
+    if (!this.state.busy) {
+      this.caption = "";
+      this.hideTimer = setTimeout(() => this.board.hideCursor(), 1800);
+    }
+    // In a replay the ⏸ still shows where the agent waited, though there's nothing to answer.
+    this.board.setReviewTag(this.mode === "replay" ? !!this.gate : this.awaitingApproval);
+    this.notify();
+  }
+
+  // ---- starting over ----
+  async reset() {
+    const g = ++this.gen;
+    if (this.runId) controlRun(this.runId, { type: "stop" }).catch(() => {});
+    clearTimeout(this.replay?.timer);
+    this.replay = null;
+    this.resetAgent();
+    this.player.stop();
+    this.live.clear();
+    this.hover = [];
+    this.stage = null;
+    this.transcript.clear();
+    this.board.reset();
+    await this.board.init();
+    if (g !== this.gen) return false;
+    this.board.fit(true);
+    return true;
+  }
+
+  // The scripted demo, from a clean board. Pass fresh=true when the board is already clean.
+  async startDemo({ fresh = false } = {}) {
+    if (!fresh && !(await this.reset())) return;
+    this.mode = "demo";
+    this.stage = "planning";
+    this.player.enqueue({ script: PLAN_SCRIPT });
+  }
+
+  // ---- a real agent run ----
+  async startAgent({ repo, brief }) {
+    if ((this.board.model.project || this.transcript.messages.length) && !(await this.reset())) return;
+    const g = this.gen;
+    this.mode = "agent";
+    this.stage = "planning";
+    this.brief = brief;
+    this.repo = repo;
+    this.transcript.addUserMessage({ kind: "chat", text: brief });
+    this.beginTurn();
+    try {
+      const { id } = await startRun({ repo, brief });
+      if (g !== this.gen) return controlRun(id, { type: "stop" }).catch(() => {});
+      this.runId = id;
+      this.follow = new AbortController();
+      followRun(id, { onEvent: (e) => g === this.gen && this.onAgentEvent(e), signal: this.follow.signal }).catch((err) => {
+        if (err.name !== "AbortError" && g === this.gen) this.agentError(err.message);
+      });
+    } catch (err) {
+      this.agentError(err.message);
+    }
+  }
+
+  // ---- a saved run ----
+  // Plays a recording through the same event handler a live run uses. instant: jump
+  // straight to the final board (reopen it) instead of watching it unfold.
+  async startReplay(id, { instant = false } = {}) {
+    if (!(await this.reset())) return;
+    const g = this.gen;
+    let events;
+    try {
+      events = await loadRecording(id);
+    } catch (err) {
+      return this.agentError(err.message);
+    }
+    if (g !== this.gen) return;
+    const meta = {};
+    for (const e of events) if (e.type === "meta" || e.type === "meta-update") Object.assign(meta, e);
+    this.mode = "replay";
+    this.stage = "planning";
+    this.brief = meta.brief ?? "";
+    this.repo = meta.repo ?? "";
+    this.recording = { id, ...meta };
+    this.transcript.addUserMessage({ kind: "chat", text: this.brief });
+    this.replay = { events: events.filter((e) => !["meta", "meta-update", "decision"].includes(e.type)), i: 0, paused: false, done: false, timer: null };
+    if (instant) {
+      this.instant = true;
+      while (this.replay.i < this.replay.events.length) this.onAgentEvent(this.replay.events[this.replay.i++]);
+      this.instant = false;
+      this.finishReplay();
+      this.board.fit(true);
+    } else {
+      this.beginTurn();
+      this.replayStep();
+    }
+  }
+
+  replayStep() {
+    const r = this.replay;
+    if (!r || r.paused || r.done) return;
+    const e = r.events[r.i++];
+    if (!e) return this.finishReplay();
+    this.onAgentEvent(e);
+    const next = r.events[r.i];
+    if (!next) return this.finishReplay();
+    const gap = Math.min(REPLAY_MAX_GAP, Math.max(0, (next.t ?? 0) - (e.t ?? 0)));
+    r.timer = setTimeout(() => this.replayStep(), gap / this.player.speed);
+  }
+
+  finishReplay() {
+    if (!this.replay) return;
+    this.replay.done = true;
+    this.agentBusy = false;
+    this.gate = null;
+    this.permission = null;
+    this.transcript.endMessage();
+    this.stateChanged();
+  }
+
+  toggleReplay() {
+    const r = this.replay;
+    if (!r) return;
+    if (r.done) return this.startReplay(this.recording.id);
+    r.paused = !r.paused;
+    clearTimeout(r.timer);
+    if (!r.paused) this.replayStep();
+    this.stateChanged();
+  }
+
+  beginTurn() {
+    this.agentBusy = true;
+    this.workingSince = Date.now();
+    this.result = null;
+    this.stateChanged();
+  }
+
+  // The agent's message bubble, opened on demand: a turn's words, ops and activity go into one.
+  ensureMessage() {
+    if (!this.transcript.cur) this.transcript.startMessage("agent");
+    this.workingSince = 0;
+  }
+
+  onAgentEvent(e) {
+    switch (e.type) {
+      case "stage":
+        this.stage = e.stage;
+        break;
+      case "break":
+        if (this.transcript.cur) this.transcript.text("\n\n");
+        break;
+      case "text":
+        this.ensureMessage();
+        this.transcript.text(e.text);
+        break;
+      case "op":
+        this.ensureMessage();
+        this.applyOp(e.op, { fromAgent: true });
+        break;
+      case "activity":
+        this.ensureMessage();
+        this.caption = `${{ read: "Reading", search: "Searching", edit: "Editing", write: "Writing", command: "Running" }[e.kind] ?? "Using"} ${e.label}`;
+        this.transcript.activity(e);
+        if (e.node && !this.instant) {
+          this.board.pointAt([`node:${e.node}`]);
+          this.flash([`node:${e.node}`]);
+        }
+        break;
+      case "user": {
+        // The user's side of the run. Live, the panel already shows it; a replay rebuilds it.
+        if (this.mode !== "replay") break;
+        this.transcript.endMessage(); // what the agent says next goes below this, as it did live
+        const decisions = (e.edits ?? []).map((d, i) => ({ ...d, key: `r${this.replay?.i}-${i}` }));
+        if (e.kind === "approve") {
+          this.stage = "building";
+          this.board.acceptDecisions();
+          this.transcript.addUserMessage({ kind: "approve", decisions });
+        } else if (e.kind === "chat") this.transcript.addUserMessage({ kind: "chat", text: e.text });
+        else if (e.kind === "permission") this.transcript.addUserMessage({ kind: "permission", decision: e.decision, detail: e.detail });
+        else this.transcript.addUserMessage({ kind: "edits", decisions });
+        this.beginTurn();
+        break;
+      }
+      case "activity-result":
+        this.transcript.activityResult(e);
+        break;
+      case "gate":
+        this.gate = e.requestId;
+        this.agentBusy = false;
+        this.transcript.endMessage();
+        break;
+      case "permission":
+        this.permission = e;
+        this.agentBusy = false;
+        break;
+      case "answered":
+        if (this.gate === e.requestId) this.gate = null;
+        if (this.permission?.requestId === e.requestId) this.permission = null;
+        break;
+      case "turn":
+        this.beginTurn();
+        break;
+      case "done":
+        this.agentBusy = false;
+        this.result = e;
+        this.transcript.endMessage();
+        if (!e.ok) this.transcript.addNotice(`The agent stopped early (${e.message ?? "error"}).`);
+        break;
+      case "error":
+        this.agentError(e.message);
+        break;
+      case "stopped":
+        if (e.reason === "idle") {
+          this.transcript.endMessage();
+          this.transcript.addNotice(
+            `The agent ${e.waitingOnUser ? "waited" : "sat idle"} ${e.minutes} minutes${e.waitingOnUser ? " for your answer" : ""} and stopped. Start over (↺) to run the task again; the repo keeps anything it already changed.`,
+          );
+        }
+        break;
+      case "closed":
+        this.agentBusy = false;
+        this.gate = null;
+        this.permission = null;
+        break;
+    }
+    this.stateChanged();
+  }
+
+  agentError(message) {
+    this.agentBusy = false;
+    this.transcript.endMessage();
+    this.transcript.addNotice(message);
+    this.stateChanged();
+  }
+
+  send(body) {
+    if (!this.runId) return;
+    controlRun(this.runId, { ...body, board_state: this.board.snapshot() }).catch((err) => this.agentError(err.message));
+  }
+
+  answerPermission(decision) {
+    if (!this.permission) return;
+    const { requestId, detail } = this.permission;
+    this.permission = null;
+    // Keep the answer in the conversation, where it happened.
+    this.transcript.endMessage();
+    this.transcript.addUserMessage({ kind: "permission", decision, detail });
+    this.beginTurn();
+    this.send({ type: "permission", requestId, decision });
+  }
+
+  stop() {
+    if (this.mode !== "agent" || !this.runId) return;
+    this.send({ type: "stop" });
+    this.agentBusy = false;
+    this.transcript.endMessage();
+    this.transcript.addNotice("Stopped. The repo keeps whatever the agent already changed.");
+    this.stateChanged();
+  }
+
+  // ---- the plan gate ----
+  // The plan is done and nothing is running: the user's move.
+  get awaitingApproval() {
+    if (this.mode === "replay") return false;
+    if (this.mode === "agent") return !!this.gate && !this.permission;
+    return this.stage === "planning" && !this.player.busy && this.board.model.phase === "planning";
+  }
+
+  // Approve the plan, optionally with board edits the agent should fold in first.
+  approve(decisions = []) {
+    if (!this.awaitingApproval) return;
+    this.stage = "building";
+    this.board.setReviewTag(false);
+    this.board.acceptDecisions();
+    this.transcript.addUserMessage({ kind: "approve", decisions });
+    if (this.mode === "agent") {
+      this.gate = null;
+      this.beginTurn();
+      this.send({ type: "approve", edits: decisions.map(({ key, ...d }) => d) });
+    } else {
+      if (decisions.length) this.player.enqueue({ build: () => buildEditsReply(decisions, this.board.model) });
+      this.player.enqueue({ script: BUILD_SCRIPT });
+    }
+  }
+
+  sendEdits(decisions) {
+    this.transcript.addUserMessage({ kind: "edits", decisions });
+    if (this.mode === "agent") {
+      const edits = decisions.map(({ key, ...d }) => d);
+      const gated = !!this.gate;
+      this.gate = null;
+      this.beginTurn();
+      this.send({ type: gated ? "revise" : "edits", edits });
+    } else {
+      // Build when it starts playing, so the reply sees the phase the agent is in by then.
+      this.player.enqueue({ build: () => buildEditsReply(decisions, this.board.model) });
+    }
+  }
+
+  sendChat(text) {
+    this.transcript.addUserMessage({ kind: "chat", text });
+    if (this.mode === "agent") {
+      this.gate = null;
+      this.beginTurn();
+      this.send({ type: "chat", text });
+    } else {
+      this.player.enqueue({ build: () => buildChatReply(text) });
+    }
+  }
+
+  // ---- highlights ----
+  setHover(ids) {
+    this.hover = ids;
+    this.sync();
+  }
+
+  sync() {
+    const all = new Set(this.hover);
+    for (const ids of this.live.values()) ids.forEach((i) => all.add(i));
+    this.board.setHighlights(all);
+    this.notify(); // the phase header marks them too, and it's React
+  }
+
+  notify() {
+    if (this.raf) return;
+    this.raf = requestAnimationFrame(() => {
+      this.raf = 0;
+      this.onChange();
+    });
+  }
+
+  get state() {
+    const p = this.player;
+    const busy = p.busy || this.agentBusy;
+    const thinking = this.agentBusy && this.workingSince > 0;
+    const r = this.replay;
+    const replaying = !!r && !r.done;
+    return {
+      busy,
+      paused: p.paused || (replaying && r.paused),
+      playing: (busy && !p.paused) || (replaying && !r.paused),
+      thinking: thinking && !this.replay, // a replay doesn't wait, so no live timer
+      thinkingFor: thinking ? Math.floor((Date.now() - this.workingSince) / 1000) : 0,
+      replaying,
+    };
+  }
+
+  dispose() {
+    this.gen++;
+    if (this.runId) controlRun(this.runId, { type: "stop" }).catch(() => {});
+    this.follow?.abort();
+    this.player.stop();
+    clearTimeout(this.hideTimer);
+    cancelAnimationFrame(this.raf);
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "whiteboard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Live agent whiteboard: a Claude Agent SDK session works in a real repo and draws its plan and progress on an Excalidraw board; your board edits steer it.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "copy-fonts": "rm -rf public/fonts && mkdir -p public && cp -R node_modules/@excalidraw/excalidraw/dist/prod/fonts public/fonts",
+    "postinstall": "npm run copy-fonts",
+    "sandbox": "node scripts/make-sandbox.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.310",
+    "@anthropic-ai/sdk": "^1.3.0",
+    "@excalidraw/excalidraw": "0.18.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "roughjs": "4.6.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.7.0",
+    "vite": "6.4.5"
+  }
+}
