@@ -704,6 +704,10 @@ button.icon.speed {
   border-color: var(--accent);
   color: var(--accent);
 }
+/* Selecting the board's own drawing (a component, a diamond, an option) skips Excalidraw's style panel. */
+.canvas.own-sel .selected-shape-actions {
+  display: none;
+}
 /* Submit, on the board itself, with what's queued per area. */
 .canvas button.board-submit {
   position: absolute;

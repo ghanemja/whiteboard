@@ -232,6 +232,7 @@ Element id conventions: nodes `node-<id>` (+ `:label`, `:libs`, `:badge`…), ed
 12. Below 860 px the layout is one column: it must be `minmax(0, 1fr)`, or a long command in an activity row (`nowrap`) widens the page to thousands of px and every canvas renders off screen.
 13. `pkill -f vite` (or `pgrep -f` with any pattern your command itself contains) matches the shell running it and kills it; find the dev server with `ps -eo pid,comm,args | awk '$2=="node" && /vite/'` and kill that pid.
 14. The demo's diffs are relative to the run's start, like git's: a file changed twice (D2's `chunking.py`) is still a new file in the final diff. The +/− counts are computed from each patch's lines, but the `@@` hunk headers are written by hand: keep them consistent when editing `DEMO_CHANGES`.
+15. Board z-order: a component redrawn after its decision (status, diffstat) used to cover the diamond, so clicking D3 selected the Vector index. `Board.commit()` now keeps diamond groups (`g:dec-*`) above everything and option pills (`alt-*`) above those. Selecting only board-drawn elements hides Excalidraw's style panel (`.canvas.own-sel`), which otherwise covered the left of the board.
 
 ---
 
@@ -249,6 +250,7 @@ Element id conventions: nodes `node-<id>` (+ `:label`, `:libs`, `:badge`…), ed
   - `shot file.png`; `record dir 1500` captured the real-time frames in `screenshots/live-run/`.
   - In a Linux cloud box there's no `/Applications/Google Chrome.app`; use any Chromium (the cloud image has one at `/opt/pw-browsers/chromium-*/chrome-linux64/chrome`; add `--no-sandbox`) with the same flags.
   - `drag x1 y1 x2 y2` is a real mouse drag (how the drag-to-choose check ran).
+  - The README GIF (`screenshots/demo.gif`) was made from `Page.startScreencast` frames (with a fake cursor div, since headless frames have none) of a scripted demo run, time-warped per segment and encoded with ffmpeg (`palettegen stats_mode=diff`, `paletteuse diff_mode=rectangle`, 1000 px, 10 fps): 40 s, 1.8 MB.
   - Timeline: click a mark by mapping its element to client coords: `(e.x + e.width / 2 + st.scrollX) * st.zoom.value + st.offsetLeft` (same for y), with `st = window.__wb.board.timelineApi.getAppState()`. A live run can be simulated without a key by `await s.reset(); s.mode = "agent"` and feeding a recording's events to `s.onAgentEvent` on a timer. Narrow window: `Emulation.setDeviceMetricsOverride` over the same CDP socket.
 - **Live agent check** (needs `ANTHROPIC_API_KEY`): run a sandbox task, approve, allow only test/read/edit commands inside the sandbox, confirm diamonds tick from the output and the `.decisions.md` reads right. Each run costs about $0.20–0.40 at effort low.
 

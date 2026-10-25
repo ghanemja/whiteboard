@@ -240,7 +240,12 @@ export class Board {
   scene() {
     return [...this.api.getSceneElementsIncludingDeleted()];
   }
+  // Decision diamonds stay above the components they sit on (a component redrawn later would
+  // cover its diamond and take its clicks), and a decision's option pills above those.
   commit(elements) {
+    const layer = (e) => (e.id.startsWith("alt-") || e.containerId?.startsWith("alt-") ? 2 : e.groupIds?.[0]?.startsWith("g:dec-") ? 1 : 0);
+    const ls = elements.map(layer);
+    if (ls.some((l, i) => i && l < ls[i - 1])) elements = elements.map((e, i) => [ls[i], i, e]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , e]) => e);
     this.api.updateScene({ elements, captureUpdate: CaptureUpdateAction.NEVER });
   }
   convert(skeletons) {

@@ -2,6 +2,8 @@
 
 A real coding agent works in a repo while an Excalidraw board shows what it's doing: its plan, the parts of the system it's touching, and how far along it is. You steer it by editing the board.
 
+![The demo: the agent plans on the board, you pick another option for a decision (D3 → Qdrant), approve, it builds and ships; then the review card and the Timeline](screenshots/demo.gif)
+
 The board is pictures, not prose. Components are hand-drawn pictograms (browser window, server rack, database cylinder, cloud, queue, clipboard, person) with a short name; status is color plus a corner badge (… building, ✓ verified, ✗ failed, ★ live). Above the board, the project's name and goal sit beside the four phases, drawn as milestones on a road (Plan → Build → Verify → Ship) with a dot per task: hover one to read it, click to open it in the Plan tab. Below that, the board has a tab per canvas: **Architecture** (what's being built; edit it to steer), **Why** (the reasoning behind it) and **Timeline** (how that reasoning moved over the run). Words stay in the side panel.
 
 ## Setup
@@ -115,3 +117,7 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, and git change tracking on a throwaway repo |
 
 Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node`, `edge`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The Claude Agent SDK it depends on has its own license (see that package).

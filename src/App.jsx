@@ -712,6 +712,7 @@ export default function App() {
   const [decisions, setDecisions] = useState([]);
   const [theme, setTheme] = useState("light");
   const [linked, setLinked] = useState(() => new Set());
+  const [ownSel, setOwnSel] = useState(false); // only the board's own drawing is selected: no style panel
   const [speed, setSpeed] = useState(1);
   const [draft, setDraft] = useState("");
   const [repo, setRepo] = useState("");
@@ -858,6 +859,8 @@ export default function App() {
       if (sel !== lastSel.current) {
         lastSel.current = sel;
         showLinked(s.board.logicalIdsFor(sel ? sel.split(",") : []));
+        // Restyling what the board draws does nothing (it's redrawn), so its style panel would only cover the board.
+        setOwnSel(!!sel && sel.split(",").every((id) => s.board.known.has(id)));
         // A selected decision fans out its alternatives: drag one onto it to pick it.
         if (s.mode !== "replay") s.board.onSelect(sel ? sel.split(",") : [], appState);
       }
@@ -1453,7 +1456,7 @@ export default function App() {
           </span>
         </div>
         <div className="canvases">
-          <div className={`canvas ${boardView === "board" ? "on" : ""}`} role="tabpanel" aria-label="Architecture">
+          <div className={`canvas ${boardView === "board" ? "on" : ""} ${ownSel ? "own-sel" : ""}`} role="tabpanel" aria-label="Architecture">
             <Excalidraw excalidrawAPI={setApi} initialData={INITIAL_DATA} onChange={onChange} UIOptions={UI_OPTIONS} />
             {decisions.length > 0 && !replayMode && (
               <button className="board-submit primary" onClick={sendEdits} title={st.busy ? "Sent when the agent finishes this step" : "Send your board changes to the agent"}>
