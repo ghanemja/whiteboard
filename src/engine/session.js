@@ -5,12 +5,14 @@ import { Transcript } from "./transcript";
 import { buildChatReply, buildEditsReply } from "../agent/replies";
 import { controlRun, followRun, loadRecording, startRun } from "../agent/live";
 import { BUILD_SCRIPT, DEMO_CHANGES, PLAN_SCRIPT } from "../agent/script";
-import { describeEdit, gist } from "./timeline";
+import { areaOf, describeEdit, gist } from "./timeline";
 import { receipt } from "./claims";
 
 // Replays keep the run's rhythm but don't sit through long waits (thinking, or someone deciding).
 const REPLAY_MAX_GAP = 1500;
 const TIMELINE_EVERY = 200; // ms between Timeline redraws while events stream in
+// Board edits as sent to the agent: without their dedupe key, with what they change.
+const wire = (decisions) => decisions.map(({ key, ...d }) => ({ ...d, area: areaOf(d) }));
 
 // Wires an agent to both surfaces: its words go to the transcript, its board ops
 // go to the board, and each op is tied to the sentence it belongs to so the two
@@ -90,6 +92,7 @@ export class Session {
     this.demoBusy = false;
     this.sentMsgs = []; // your messages waiting for the server to echo them as `user` events
     this.steerText = null; // what you asked this turn, for changes in recordings that don't say why
+    this.failedSinceSteer = new Set(); // decisions whose check failed after that
     this.lastT = 0; // the latest live event's t
     this.changes = null; // the repo's actual changes this run, from git: path -> { path, add, del, patch }
     this.commits = 0; // commits made during the run
@@ -439,9 +442,11 @@ export class Session {
       case "op": {
         this.ensureMessage();
         // Recordings from before the server named causes: a choice that changes after you
-        // asked for something this turn changed because of it (as the Timeline reads it).
+        // asked for something this turn changed because of it, unless its check failed since
+        // (as the Timeline reads it).
         let op = e.op;
-        const prev = op?.op === "decision" && !op.cause && this.steerText && this.board.model.decisions[op.id];
+        if (op?.op === "decision" && op.proof === "fail") this.failedSinceSteer.add(op.id);
+        const prev = op?.op === "decision" && !op.cause && this.steerText && !this.failedSinceSteer.has(op.id) && this.board.model.decisions[op.id];
         if (prev && op.chose && op.chose !== prev.chose) op = { ...op, cause: "you", cause_text: this.steerText };
         this.applyOp(op, { fromAgent: true });
         break;
@@ -456,8 +461,10 @@ export class Session {
         }
         break;
       case "user": {
-        if (["chat", "revise", "edits"].includes(e.kind) || (e.kind === "approve" && e.edits?.length))
+        if (["chat", "revise", "edits"].includes(e.kind) || (e.kind === "approve" && e.edits?.length)) {
           this.steerText = gist(e.text || e.edits.map(describeEdit).join("; "));
+          this.failedSinceSteer = new Set();
+        }
         // The user's side of the run. Live, the panel already shows it; a replay rebuilds it.
         if (this.mode !== "replay") break;
         this.transcript.endMessage(); // what the agent says next goes below this, as it did live
@@ -569,12 +576,12 @@ export class Session {
     this.board.setReviewTag(false);
     this.board.acceptDecisions();
     const m = this.transcript.addUserMessage({ kind: "approve", decisions });
-    this.demoEvent({ type: "user", kind: "approve", edits: decisions.map(({ key, ...d }) => d), msg: m.id });
+    this.demoEvent({ type: "user", kind: "approve", edits: wire(decisions), msg: m.id });
     if (this.mode === "agent") {
       this.sentMsgs.push(m.id);
       this.gate = null;
       this.beginTurn();
-      this.send({ type: "approve", edits: decisions.map(({ key, ...d }) => d) });
+      this.send({ type: "approve", edits: wire(decisions) });
     } else {
       if (decisions.length) this.player.enqueue({ build: () => buildEditsReply(decisions, this.board.model) });
       this.player.enqueue({ script: BUILD_SCRIPT });
@@ -583,10 +590,10 @@ export class Session {
 
   sendEdits(decisions) {
     const m = this.transcript.addUserMessage({ kind: "edits", decisions });
-    this.demoEvent({ type: "user", kind: this.awaitingApproval ? "revise" : "edits", edits: decisions.map(({ key, ...d }) => d), msg: m.id });
+    this.demoEvent({ type: "user", kind: this.awaitingApproval ? "revise" : "edits", edits: wire(decisions), msg: m.id });
     if (this.mode === "agent") {
       this.sentMsgs.push(m.id);
-      const edits = decisions.map(({ key, ...d }) => d);
+      const edits = wire(decisions);
       const gated = !!this.gate;
       this.gate = null;
       this.beginTurn();

@@ -4,26 +4,43 @@ A real coding agent works in a repo while an Excalidraw board shows what it's do
 
 The board is pictures, not prose. Components are hand-drawn pictograms (browser window, server rack, database cylinder, cloud, queue, clipboard, person) with a short name; status is color plus a corner badge (… building, ✓ verified, ✗ failed, ★ live). Above the board, the project's name and goal sit beside the four phases, drawn as milestones on a road (Plan → Build → Verify → Ship) with a dot per task: hover one to read it, click to open it in the Plan tab. Below that, the board has a tab per canvas: **Architecture** (what's being built; edit it to steer), **Why** (the reasoning behind it) and **Timeline** (how that reasoning moved over the run). Words stay in the side panel.
 
-## Run
+## Setup
+
+Needs Node 20+ and git.
 
 ```bash
-npm install
-npm run sandbox
-npm run dev
+git clone https://github.com/ghanemja/whiteboard.git
+cd whiteboard
+npm install                  # also copies Excalidraw's fonts into public/fonts
+npm run sandbox              # a safe repo to try: sandbox/linkshort (run again to reset)
+cp .env.example .env.local   # set ANTHROPIC_API_KEY to run a real agent (optional)
+npm run dev                  # http://localhost:5199
 ```
 
-Opens on http://localhost:5199. `npm run sandbox` creates `sandbox/linkshort`, a tiny URL shortener with real tests, as a safe repo to try the agent on (run it again to reset it). `npm install` also copies Excalidraw's fonts into `public/fonts`.
-
-With `ANTHROPIC_API_KEY` set in the shell (or in `.env.local`, see `.env.example`), pick a repo, describe a task, and a [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session starts in that folder. Without a key the app plays a scripted demo.
-
-Three real runs are kept in `fixtures/recordings/`: copy them into `recordings/` to open them under "Saved boards". `npm test` checks the Timeline against them.
+- **No key:** a scripted demo plays.
+- **With a key:** pick a repo, describe a task; a [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session starts in that folder.
+- **Saved runs:** `cp fixtures/recordings/* recordings/` adds three real runs under "Saved boards".
+- **Tests:** `npm test`.
+- **Settings** (`.env.local`): `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo).
 
 ## What happens in a run
 
 1. **Plan.** The agent starts in plan mode: it can read the repo but not change it. It draws the components the task involves (existing ones blue, new ones dashed grey) and their connections, then asks to exit plan mode. That request waits for you: the board shows ⏸ on the Plan milestone.
-2. **Review.** Edit the board (double-click a name to rename it, delete a component, draw an arrow, drop a text note) or type a request. **Revise plan** sends your changes back so the agent re-plans; **Approve with changes** folds them in and goes on to build; **Approve plan & build** goes straight on.
+2. **Review.** Edit the board (see [Steering from the board](#steering-from-the-board)) or type a request. **Revise plan** (or **Submit** on the board) sends your changes back so the agent re-plans; **Approve with changes** folds them in and goes on to build; **Approve plan & build** goes straight on.
 3. **Build and verify.** The agent edits files (allowed automatically inside the repo) and the component that owns each file turns orange. It asks before every shell command: **Allow**, **Allow all** for the rest of the run, or **Deny**. Components turn green when verified, purple ★ when done.
 4. **Afterwards** the session stays open: board edits and messages become new turns. Stop the agent with ■, start over with ↺. Closing the tab stops it, and an idle agent stops after 15 minutes.
+
+## Steering from the board
+
+Edit the board; each change is sorted by what you touched:
+
+| | Area | Edit |
+| --- | --- | --- |
+| ▢ | Architecture | rename (double-click a name), delete, draw a box, draw an arrow between two |
+| ◇ | Decision | select a diamond → its alternatives fan out → drag one onto it (or type your own in the blank one); delete a diamond to reject it |
+| ✐ | Scope | drop a text note ("English PDFs only") |
+
+Queued changes show in the panel by area, and **Submit** (panel, or floating on the board with ▢ ◇ ✐ counts) sends them. While the agent works they go after its current step. The agent gets each edit with its area; the decision log lists them the same way. In the Plan tab, clicking an alternative under **Over** picks it too. A picked option sits beside its diamond in blue until the agent applies it; delete it to undo.
 
 ## The reasoning behind the plan
 
@@ -34,7 +51,7 @@ The board shows what is being built; the **Plan** tab shows why.
 - **Connections:** how two parts talk (HTTP, queue, SQL, call…) and the exact API on that edge. On the board, the protocol is a short tag on the arrow.
 - **Decisions:** the few technical choices that shaped the plan. Each says what was chosen, the real alternatives it beat, why (the deciding reason and the cost accepted), evidence from the repo, which components it affects and which earlier decisions it builds on. On the board each is a numbered diamond (D1, D2…) on the component it affects most, with dotted ties to the others: dashed while proposed, solid once you approve, blue when changed, grey when rejected.
 
-To push back, **Challenge this** on a decision starts a message ("About D1 …") for you to finish, and deleting a diamond rejects that decision. When the agent changes a decision, because you challenged it or because verification proved it wrong, the card keeps the old choice struck through under **Before** and says what caused the change under **Because**. Selecting a component on the board scrolls the Plan tab to it.
+To push back, **Challenge this** on a decision starts a message ("About D1 …") for you to finish; on the board, pick another of its options or delete the diamond to reject it. When the agent changes a decision, because you challenged it or because verification proved it wrong, the card keeps the old choice struck through under **Before** and says what caused the change under **Because**. Selecting a component on the board scrolls the Plan tab to it.
 
 Every decision also names its **check**: how we'll know it was right, usually a test by name. Its result is drawn on the diamond: ✓ proven, ✗ failed. The agent reports proofs after running the tests, and the server compares them with the test runner's own output (node --test, Jest/Vitest, pytest -v, go test -v). Where the output disagrees, the output wins and the agent is told. Later test runs keep re-checking, so a regression crosses a diamond again. A decision whose choice changes goes back to unchecked.
 
@@ -74,7 +91,7 @@ In a replay the Timeline shows the whole run, with what hasn't happened yet fade
 
 The panel lists what the agent actually did (files read and edited, commands and whether they passed) and links each row to the component it touched. Hover a sentence or row to highlight it on the board; select a component to find what changed it.
 
-Settings: `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo path). The agent loads the repo's project settings and `CLAUDE.md`, not your global Claude Code settings or hooks. It's told never to push, publish or deploy; "Ship" means tests pass and docs match.
+The agent loads the repo's project settings and `CLAUDE.md`, not your global Claude Code settings or hooks. It's told never to push, publish or deploy; "Ship" means tests pass and docs match.
 
 ## How it fits together
 

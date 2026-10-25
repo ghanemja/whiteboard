@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { buildTimeline, drawTimeline, fmt, saysFailed, timeToX, xToTime, TL } from "../src/engine/timeline.js";
+import { areaOf, buildTimeline, describeEdit, drawTimeline, fmt, saysFailed, timeToX, xToTime, TL } from "../src/engine/timeline.js";
 
 const DIR = new URL("../fixtures/recordings/", import.meta.url);
 const load = (id) =>
@@ -133,6 +133,35 @@ test("a failed check that changes a decision is its cause (the demo's D2)", () =
   assert.deepEqual(kinds(d2), ["proposed", "accepted", "proof:fail", "changed", "proof:pass"]);
   assert.equal(d2.marks[3].cause.who, "test");
   assert.equal(d2.marks[3].cause.mark, 2);
+});
+
+test("approving with a pick: the pick is yours, a later failed check's change is the test's", () => {
+  const op = (t, o) => ({ t, type: "op", op: { op: "decision", ...o } });
+  const pick = { kind: "choose", decision: "d3", label: "D3", title: "Where embeddings live", from: "pgvector", to: "Qdrant" };
+  const tl = buildTimeline([
+    { t: 0, type: "start" },
+    { t: 100, type: "op", op: { op: "phase", name: "planning" } },
+    op(200, { id: "d2", title: "How PDFs are split", chose: "500-token chunks" }),
+    op(300, { id: "d3", title: "Where embeddings live", chose: "pgvector" }),
+    { t: 900, type: "gate" },
+    // Approve with changes: the demo's whole build is this one turn, so the steer never resets.
+    { t: 1500, type: "user", kind: "approve", edits: [pick] },
+    op(1700, { id: "d3", chose: "Qdrant" }),
+    { t: 1800, type: "op", op: { op: "phase", name: "implementation" } },
+    op(5000, { id: "d2", proof: "fail", proof_by: "Eval: 41 of 50" }),
+    op(7000, { id: "d2", chose: "Layout-aware chunks" }),
+  ]);
+  const [d2, d3] = tl.lanes;
+  assert.equal(d3.marks.find((m) => m.kind === "changed").cause.who, "you");
+  assert.equal(d2.marks.find((m) => m.kind === "changed").cause.who, "test");
+  assert.equal(describeEdit(pick), "D3 → Qdrant");
+});
+
+test("board edits sort into architecture, decision and scope", () => {
+  const area = (kind) => areaOf({ kind });
+  assert.deepEqual(["rename", "remove", "add", "link", "unlink"].map(area), Array(5).fill("architecture"));
+  assert.deepEqual(["reject", "choose"].map(area), ["decision", "decision"]);
+  assert.equal(area("note"), "scope");
 });
 
 test("a deleted diamond rejects its decision and ends the lane", () => {

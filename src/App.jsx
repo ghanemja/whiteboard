@@ -3,7 +3,7 @@ import { Excalidraw, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw"
 import { Board, PHASES } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
-import { fmt } from "./engine/timeline";
+import { AREAS, areaOf, fmt } from "./engine/timeline";
 import { buildReview } from "./engine/review";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 
@@ -21,7 +21,7 @@ const UI_OPTIONS = { canvasActions: { loadScene: false, saveToActiveFile: false 
 const WHY_UI_OPTIONS = { canvasActions: { loadScene: false, saveToActiveFile: false, export: false, clearCanvas: false, changeViewBackgroundColor: false, toggleTheme: false } };
 const SPEEDS = [1, 2, 4];
 
-const GLYPH = { rename: "✎", remove: "✕", add: "+", link: "→", unlink: "✂", note: "✐", reject: "◇" };
+const GLYPH = { rename: "✎", remove: "✕", add: "+", link: "→", unlink: "✂", note: "✐", reject: "◇", choose: "⇄" };
 
 function describe(d) {
   switch (d.kind) {
@@ -32,6 +32,7 @@ function describe(d) {
     case "unlink": return <>Disconnect <b>{d.fromName}</b> → <b>{d.toName}</b></>;
     case "note": return <>Note “{d.text}”</>;
     case "reject": return <>Reject <b>{d.label}</b> ({d.title})</>;
+    case "choose": return <><b>{d.label}</b> → <b>{d.to}</b></>;
     default: return null;
   }
 }
@@ -61,18 +62,34 @@ const Icon = ({ name }) => (
   </svg>
 );
 
+// Board edits grouped by what they change: ▢ architecture, ◇ decision, ✐ scope.
 function EditList({ decisions }) {
   return (
     <ul className="edits">
-      {decisions.map((d) => (
-        <li key={d.key}>
-          <span className={`g g-${d.kind}`}>{GLYPH[d.kind]}</span>
-          <span>{describe(d)}</span>
-        </li>
-      ))}
+      {Object.entries(AREAS).map(([a, { icon, label }]) => {
+        const ds = decisions.filter((d) => areaOf(d) === a);
+        return (
+          ds.length > 0 && (
+            <li key={a} className={`edit-area ea-${a}`}>
+              <span className="ea-h">
+                {icon} {label}
+              </span>
+              <ul>
+                {ds.map((d) => (
+                  <li key={d.key ?? editKey(d)}>
+                    <span className={`g g-${d.kind}`}>{GLYPH[d.kind]}</span>
+                    <span>{describe(d)}</span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          )
+        );
+      })}
     </ul>
   );
 }
+const editKey = (d) => `${d.kind}:${d.node ?? d.decision ?? d.elId ?? ""}:${d.to ?? d.name ?? d.text ?? ""}`;
 
 const phaseState = (key, current) => {
   const cur = current === "complete" ? PHASES.length : PHASES.findIndex((p) => p.key === current);
@@ -397,7 +414,7 @@ const KIND_WORD = { client: "client", service: "service", data: "data store", ex
 
 // The development plan as a document: goal, architecture, connections, the reasoning
 // chain of decisions, and the steps. Every item is linked to its picture on the board.
-function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canChallenge, changes = [], commits = 0, passing = [], onAnswer, onConfirm, onCorrect, onReply, onShow }) {
+function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPick, canChallenge, changes = [], commits = 0, passing = [], onAnswer, onConfirm, onCorrect, onReply, onShow }) {
   const nodes = Object.values(model.nodes);
   const changed = nodes.filter((n) => n.diff);
   const byPath = new Map(changes.map((f) => [f.path, f]));
@@ -548,7 +565,23 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
                 {d.over.length > 0 && (
                   <>
                     <dt>Over</dt>
-                    <dd>{d.over.join(" · ")}</dd>
+                    <dd className="over">
+                      {canChallenge && d.state !== "rejected"
+                        ? d.over.map((o, i) => (
+                            <button
+                              key={o}
+                              className="alt-pick"
+                              title="Pick this instead (then Submit)"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                onPick(d, i);
+                              }}
+                            >
+                              ⇄ {o}
+                            </button>
+                          ))
+                        : d.over.join(" · ")}
+                    </dd>
                   </>
                 )}
                 {d.why && (
@@ -760,6 +793,7 @@ export default function App() {
       diffTimer.current = setTimeout(runDiff, 400);
       return;
     }
+    s.board.settlePick(); // an alternative dropped on its diamond
     const all = s.board.diff();
     const keys = new Set(all.map((d) => d.key));
     for (const k of sentKeys.current) if (!keys.has(k)) sentKeys.current.delete(k);
@@ -824,6 +858,8 @@ export default function App() {
       if (sel !== lastSel.current) {
         lastSel.current = sel;
         showLinked(s.board.logicalIdsFor(sel ? sel.split(",") : []));
+        // A selected decision fans out its alternatives: drag one onto it to pick it.
+        if (s.mode !== "replay") s.board.onSelect(sel ? sel.split(",") : [], appState);
       }
 
       // Throttled: the agent changes the scene constantly, so a pure debounce would never fire.
@@ -1167,6 +1203,10 @@ export default function App() {
               onHover={(ids) => s.setHover(ids)}
               onFocus={(ids) => s.board.scrollTo(ids)}
               onChallenge={challenge}
+              onPick={(d, i) => {
+                showView("board");
+                s.board.pickAlternative(d.id, i);
+              }}
               canChallenge={!replayMode}
               changes={s.board.changes}
               commits={s.commits}
@@ -1323,10 +1363,7 @@ export default function App() {
               {decisions.length > 0 ? (
                 <EditList decisions={decisions} />
               ) : (
-                <p>
-                  Change anything on the board first: double-click a name to rename it, delete a component, or draw an arrow. You can
-                  also ask for changes below. Nothing gets built until you approve.
-                </p>
+                <p>Edit the board (rename, connect, delete, or select a ◇ to pick another option) or type below. Nothing is built until you approve.</p>
               )}
               <div className="gate-actions">
                 {decisions.length > 0 && (
@@ -1345,13 +1382,13 @@ export default function App() {
                 Your changes <span className="count">{decisions.length}</span>
               </div>
               <EditList decisions={decisions} />
-              <button className="primary" onClick={sendEdits}>
-                Send to agent{st.busy ? " when it finishes" : ""}
+              <button className="primary" onClick={sendEdits} title={st.busy ? "Sent when the agent finishes this step" : "Send to the agent"}>
+                Submit{st.busy ? " ⏳" : ""}
               </button>
             </div>
           ) : awaitingTask ? null : (
             <p className="hint">
-              <b>Steer from the board.</b> Double-click a name to rename it, draw an arrow between two components, or delete one.
+              <b>Steer from the board:</b> rename, connect, delete, or select a ◇ to pick another option. Then Submit.
               {agentMode && s?.runId && s?.result && (
                 <span className="after-run">
                   <button className="linkish" onClick={() => replay(s.runId)}>
@@ -1412,12 +1449,21 @@ export default function App() {
               ? "Evidence → decision → what it shapes → proof. Click a row to read it."
               : boardView === "timeline"
                 ? `How the decisions moved. ${replayMode ? "Click a moment to jump there." : "Click a mark to read it."}`
-                : "Edit it to steer: rename, connect, delete, or draw a box."}
+                : "Edit to steer: rename, connect, delete, draw. Select a ◇ to pick another option."}
           </span>
         </div>
         <div className="canvases">
           <div className={`canvas ${boardView === "board" ? "on" : ""}`} role="tabpanel" aria-label="Architecture">
             <Excalidraw excalidrawAPI={setApi} initialData={INITIAL_DATA} onChange={onChange} UIOptions={UI_OPTIONS} />
+            {decisions.length > 0 && !replayMode && (
+              <button className="board-submit primary" onClick={sendEdits} title={st.busy ? "Sent when the agent finishes this step" : "Send your board changes to the agent"}>
+                {Object.entries(AREAS).map(([a, { icon, label }]) => {
+                  const n = decisions.filter((d) => areaOf(d) === a).length;
+                  return n > 0 && <span key={a} className="bs-area" title={label}>{icon}{n}</span>;
+                })}
+                Submit{st.busy ? " ⏳" : ""}
+              </button>
+            )}
             {model && !nodeCount && <p className="canvas-empty">The architecture appears here as the agent plans: each component, what it connects to, and its decisions.</p>}
           </div>
           <div

@@ -35,6 +35,7 @@ Every run is recorded so it can be replayed, reopened, and read as a decision lo
 - Everything below is **built and verified** (demo, live agent runs on the sandbox repo, reopened recordings, narrow window, dark theme). Build is clean (`npx vite build`); `npm test` passes.
 - The code is on GitHub (section 9). The **Timeline tab** (section 8) was built in a cloud session without an API key: verified on the demo, the three fixture runs (Open and Replay), a recording fed through the live-agent event path, dark theme and a narrow window, but **not yet on a real live agent run**. Do that first with a key (section 7, "Live agent check"), and look at the Timeline while it runs.
 - After the Timeline, five features for reading the agent's prose without taking its word for it (4.10): **claim receipts**, **git changes per component**, **questions and assumptions** as board items, **skim**, and an **end-of-run review card**. Same caveat: verified on the demo, the fixtures and a recording fed through the agent path (with a synthetic `changes` event), and the git tracking on the sandbox and a throwaway repo, but **not on a live agent run yet**. On the first live run, check that the agent uses the `question`/`assumption` ops and that `changes` events arrive after its edits.
+- Steering by area (4.3): pick a decision's alternative on the board (drag-to-choose, or click it in the Plan card), edits sorted ▢ architecture / ◇ decision / ✐ scope, one Submit (also floating on the board). Verified on the demo (at the gate and after shipping, typed own option, Plan-tab pick); not on a live run yet: check the agent applies `choose` edits.
 - Next: the backlog in 8.7.
 
 ---
@@ -139,7 +140,10 @@ Pictograms per kind (client = browser window, service = server rack, data = cyli
 
 ### 4.3 Steering from the board
 
-`Board.diff()` compares the scene with the model: rename (label text changed), remove (hit-box deleted), unlink (arrow deleted), link (user arrow between two components), add (user box with a label), note (free text), **reject** (decision diamond deleted). The panel lists pending edits; Send / Revise plan / Approve with changes. The agent applies them (`adopt*` ops keep the user's element ids).
+`Board.diff()` compares the scene with the model: rename (label text changed), remove (hit-box deleted), unlink (arrow deleted), link (user arrow between two components), add (user box with a label), note (free text), **reject** (decision diamond deleted), **choose** (an alternative dropped on its diamond). The agent applies them (`adopt*` ops keep the user's element ids).
+
+- **Choosing:** selecting a diamond (`Board.onSelect`, called from App's selection handler) draws its `over` options plus a blank "+ your own" as ghost pills (`alt-<did>-<i>`, remembered so diff ignores them) to its right, clear of Excalidraw's style panel. App's `runDiff` calls `settlePick()` first: a ghost touching its diamond (with text) becomes the pick, settles beside it in the "changed" blue, and the others go; `choice()` reports it while it stays near the diamond. Selecting the diamond again re-opens the options; deleting the pill undoes. The Plan card's **Over** options call `pickAlternative` (same path). `setDecision` clears the ghosts once the choice changes. Excalidraw selects a label's text when you edit it, so typing over "+ your own" replaces it.
+- **Areas:** `areaOf(edit)` in `timeline.js`: ▢ architecture (rename/remove/add/link/unlink), ◇ decision (reject/choose), ✐ scope (note). `EditList` groups by area; the floating **Submit** on the Architecture canvas shows per-area counts and does what the panel's Submit (or Revise plan, at the gate) does. Session `wire()` adds `area` to each edit; the server logs edits with the area glyph; instructions tell the agent what each kind and area means.
 
 ### 4.4 Reasoning chain: decisions, Plan tab, Challenge
 
@@ -222,7 +226,7 @@ Element id conventions: nodes `node-<id>` (+ `:label`, `:libs`, `:badge`…), ed
 6. `regenerateIds: false` in `convertToExcalidrawElements`, and keep element `seed`s on redraw (`replace()`), or shapes re-wobble.
 7. Fractional indices: let Excalidraw handle them (`syncInvalidIndices` happens in updateScene).
 8. Run-state UI that depends on hover must re-render: `Session.sync()` calls `notify()` (rAF-batched) because the header is React.
-9. Old recordings lack `cause`/`fromTests`; the client infers "test" causes from a previous failed proof. "You" causes in old runs could be inferred from a preceding user chat (not done yet; the Timeline plan does it).
+9. Old recordings (and the demo) lack `cause`; the client infers it: whichever came last, your message this turn or a failed check of that decision (`causeOf` in timeline.js, `failedSinceSteer` in session.js). "Approve with changes" stays the steer for the whole build, so without the ordering a later test-caused change was pinned on you.
 10. Agents sometimes name components after files (`store.js`); instructions could push for role names.
 11. Two stray 3–6 s recordings (`31ae60d3`, `f18e705b`) came from clicks in the browser pane between turns; safe to delete.
 12. Below 860 px the layout is one column: it must be `minmax(0, 1fr)`, or a long command in an activity row (`nowrap`) widens the page to thousands of px and every canvas renders off screen.
@@ -244,6 +248,7 @@ Element id conventions: nodes `node-<id>` (+ `:label`, `:libs`, `:badge`…), ed
   - switch tabs by clicking `.canvas-tabs button` by text; real clicks with `click x y` (CSS px),
   - `shot file.png`; `record dir 1500` captured the real-time frames in `screenshots/live-run/`.
   - In a Linux cloud box there's no `/Applications/Google Chrome.app`; use any Chromium (the cloud image has one at `/opt/pw-browsers/chromium-*/chrome-linux64/chrome`; add `--no-sandbox`) with the same flags.
+  - `drag x1 y1 x2 y2` is a real mouse drag (how the drag-to-choose check ran).
   - Timeline: click a mark by mapping its element to client coords: `(e.x + e.width / 2 + st.scrollX) * st.zoom.value + st.offsetLeft` (same for y), with `st = window.__wb.board.timelineApi.getAppState()`. A live run can be simulated without a key by `await s.reset(); s.mode = "agent"` and feeding a recording's events to `s.onAgentEvent` on a timer. Narrow window: `Emulation.setDeviceMetricsOverride` over the same CDP socket.
 - **Live agent check** (needs `ANTHROPIC_API_KEY`): run a sandbox task, approve, allow only test/read/edit commands inside the sandbox, confirm diamonds tick from the output and the `.decisions.md` reads right. Each run costs about $0.20–0.40 at effort low.
 

@@ -46,9 +46,19 @@ export function describeEdit(d) {
     case "unlink": return `Disconnect ${d.fromName} → ${d.toName}`;
     case "note": return `Note “${d.text}”`;
     case "reject": return `Reject ${d.label} (${d.title})`;
+    case "choose": return `${d.label} → ${d.to}`;
     default: return d.kind ?? "";
   }
 }
+
+// What a board edit changes, read from what was edited: boxes and arrows are the
+// architecture, diamonds are decisions, notes are scope.
+export const AREAS = {
+  architecture: { icon: "▢", label: "Architecture" },
+  decision: { icon: "◇", label: "Decision" },
+  scope: { icon: "✐", label: "Scope" },
+};
+export const areaOf = (d) => (d.kind === "reject" || d.kind === "choose" ? "decision" : d.kind === "note" ? "scope" : "architecture");
 
 // A command that runs tests (the server's family of runners). Matched on the command,
 // not on "test" alone, so `cat test/*.js` isn't a test run.
@@ -105,18 +115,18 @@ export function buildTimeline(events = [], model = null) {
     if (cur && cur.to == null) cur.to = t;
   };
 
-  // What made a choice change: the server says (cause), or, for older recordings,
-  // something you said this turn, else a check of it that had failed.
+  // What made a choice change: the server says (cause), or, for older recordings and the demo,
+  // whichever came last: something you said this turn, or a failed check of it.
   const causeOf = (op, lane) => {
     const lastYou = () => [...tl.you].reverse().find((y) => ["chat", "revise", "edits"].includes(y.kind));
-    if (op.cause === "you" || (!op.cause && steer)) {
+    const k = lane.marks.findLastIndex((m) => m.kind === "proof" && m.proof === "fail");
+    const failed = lane.proof === "fail" ? lane.marks[k] ?? { t: 0 } : null;
+    const who = op.cause ?? (failed && !(steer && steer.t > failed.t) ? "test" : steer ? "you" : null);
+    if (who === "you") {
       const y = steer ?? lastYou();
       return { who: "you", text: op.cause_text ?? gist(y?.text), you: y ? tl.you.indexOf(y) : null };
     }
-    if (op.cause === "test" || (!op.cause && lane.proof === "fail")) {
-      const k = lane.marks.findLastIndex((m) => m.kind === "proof" && m.proof === "fail");
-      return { who: "test", text: op.cause_text ?? lane.marks[k]?.by ?? "", mark: k === -1 ? null : k, test: lane.marks[k]?.test ?? null };
-    }
+    if (who === "test") return { who: "test", text: op.cause_text ?? lane.marks[k]?.by ?? "", mark: k === -1 ? null : k, test: lane.marks[k]?.test ?? null };
     return null;
   };
 

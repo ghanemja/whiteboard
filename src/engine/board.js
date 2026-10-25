@@ -75,6 +75,8 @@ const QSTYLE = {
 const QSTATES = ["open", "answered", "confirmed", "corrected"];
 const WHY = "why:"; // element id prefix of the Why view
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+// Two elements' boxes touch (within m px).
+const overlaps = (a, b, m = 0) => a.x < b.x + b.width + m && b.x < a.x + a.width + m && a.y < b.y + b.height + m && b.y < a.y + a.height + m;
 
 // A line/polyline skeleton from absolute points. Closing it (last point = first)
 // makes Excalidraw fill it, which is how the cloud and rocket get their shapes.
@@ -229,6 +231,7 @@ export class Board {
     this.view = "board"; // which canvas is showing: "board" (architecture), "why" or "timeline"
     this.tl = null; // the Timeline as last drawn (buildTimeline), for clicks and highlights
     this.changes = []; // the repo's actual changed files (git), attributed to components by their paths
+    this.alt = null; // a decision's alternatives shown as ghosts: { did, ids, options, labels }
     this.whyRows = 0; // decisions drawn on the Why canvas, to refit it when one is added
     this.hideCursor();
   }
@@ -651,6 +654,7 @@ export class Board {
       proof_by: proof_by ?? (changed && !result ? null : prev?.proof_by ?? null),
       cause: cause ? { who: cause, text: cause_text ?? "" } : prev?.cause ?? null,
     };
+    if (changed && this.alt?.did === id) this.hideAlternatives(); // the pick landed
     this.redrawDecisions();
     return [`decision:${id}`];
   }
@@ -700,6 +704,110 @@ export class Board {
       if (e.id === `${q.elId}:g`) [e.x, e.y] = [x - e.width / 2, y - e.height / 2];
     }
     this.replace((e) => e.id === q.elId || e.id.startsWith(`${q.elId}:`) || e.containerId === q.elId, out);
+  }
+
+  // ---- choosing a decision on the board ----
+  // Selecting a diamond fans its alternatives out to its right as ghost pills, plus a blank one
+  // to write your own. Drop one on the diamond and it's the pick: it settles beside it, solid,
+  // the rest go, and diff() reports a "choose" edit. Delete it (or select the diamond) to undo.
+  showAlternatives(did) {
+    if (this.alt?.did === did && this.alt.picked == null) return;
+    this.hideAlternatives();
+    const d = this.model.decisions[did];
+    const dia = this.api.getSceneElements().find((e) => e.id === `dec-${did}`);
+    if (!d || !dia || d.state === "rejected") return;
+    const options = [...d.over.slice(0, 3), ""];
+    const labels = options.map((o) => (o ? clip(o, 24) : "+ your own"));
+    const W = 176, H = 30, GAP = 6;
+    const x = dia.x + dia.width + 14, y0 = dia.y + dia.height / 2 - (options.length * (H + GAP) - GAP) / 2;
+    const out = this.remember(
+      this.convert(
+        options.map((o, i) => ({
+          type: "rectangle", id: `alt-${did}-${i}`, x, y: y0 + i * (H + GAP), width: W, height: H,
+          strokeColor: DECISION.proposed.stroke, backgroundColor: "#ffffff", fillStyle: "solid", strokeStyle: "dashed", strokeWidth: 1.5, roughness: 1, roundness: { type: 3 },
+          label: { text: labels[i], fontSize: 13, strokeColor: o ? INK : MUTED },
+        })),
+      ),
+    );
+    for (const e of out) e.seed = seedOf(e.id);
+    this.alt = { did, ids: options.map((_, i) => `alt-${did}-${i}`), options, labels, picked: null };
+    this.commit([...this.scene(), ...out]);
+  }
+
+  hideAlternatives() {
+    if (!this.alt) return;
+    const els = this.scene();
+    this.kill(els, new Set(this.alt.ids));
+    this.alt = null;
+    this.commit(els);
+  }
+
+  // What ghost i says: the option, or what you typed over it (blank if you left "+ your own" as is).
+  altText(i, els = this.scene()) {
+    const a = this.alt;
+    const label = els.find((t) => t.containerId === a.ids[i] && !t.isDeleted);
+    const typed = firstLine(label?.originalText ?? label?.text);
+    return typed && typed !== a.labels[i] ? typed : a.options[i];
+  }
+
+  // Make ghost i the pick: beside the diamond, solid in the "changed" color; the others go.
+  settle(i) {
+    const a = this.alt, els = this.scene();
+    const dia = els.find((e) => e.id === `dec-${a.did}` && !e.isDeleted);
+    const g = els.find((e) => e.id === a.ids[i] && !e.isDeleted);
+    if (!dia || !g) return;
+    const dx = dia.x + dia.width + 8 - g.x, dy = dia.y + dia.height / 2 - g.height / 2 - g.y;
+    const c = DECISION.changed;
+    for (const [k, e] of els.entries()) {
+      if (e.id === g.id) els[k] = bump(e, { x: e.x + dx, y: e.y + dy, strokeStyle: "solid", strokeColor: c.stroke, backgroundColor: c.fill });
+      else if (e.containerId === g.id) els[k] = bump(e, { x: e.x + dx, y: e.y + dy, strokeColor: c.stroke });
+    }
+    this.kill(els, new Set(a.ids.filter((id) => id !== g.id)));
+    a.picked = i;
+    this.commit(els);
+  }
+
+  // After a drag: a ghost (with something to say) dropped on its diamond becomes the pick.
+  settlePick() {
+    const a = this.alt;
+    if (!a || a.picked != null) return;
+    const els = this.scene();
+    const dia = els.find((e) => e.id === `dec-${a.did}` && !e.isDeleted);
+    const i = a.ids.findIndex((id, k) => {
+      const g = els.find((e) => e.id === id && !e.isDeleted);
+      return g && dia && overlaps(g, dia, 6) && this.altText(k, els);
+    });
+    if (i !== -1) this.settle(i);
+  }
+
+  // Pick alternative i from outside the board (the Plan tab).
+  pickAlternative(did, i) {
+    this.hideAlternatives();
+    this.showAlternatives(did);
+    if (this.alt?.did === did) this.settle(i);
+  }
+
+  // The pick, as a "choose" edit, while it's still by its diamond.
+  choice(els = this.scene()) {
+    const a = this.alt, d = a && this.model.decisions[a.did];
+    if (!d || a.picked == null) return null;
+    const dia = els.find((e) => e.id === `dec-${d.id}` && !e.isDeleted);
+    const g = els.find((e) => e.id === a.ids[a.picked] && !e.isDeleted);
+    const to = g && dia && overlaps(g, dia, 40) && this.altText(a.picked, els);
+    return to && to !== d.chose ? { key: `choose:${d.id}:${to}`, kind: "choose", decision: d.id, label: `D${d.n}`, title: d.title, from: d.chose, to } : null;
+  }
+
+  // The selection changed: a diamond shows its alternatives; they go away once you click elsewhere,
+  // unless you're moving or typing in one, or there's a pick waiting to be sent.
+  onSelect(ids, st = {}) {
+    if (st.editingTextElement || st.selectedElementsAreBeingDragged) return;
+    const did = this.logicalIdsFor(ids).find((l) => l.startsWith("decision:"))?.slice("decision:".length);
+    if (did) return this.showAlternatives(did);
+    if (!this.alt) return;
+    const els = this.scene();
+    const ghost = (id) => this.alt.ids.includes(id) || els.some((e) => e.id === id && this.alt.ids.includes(e.containerId));
+    if (ids.some(ghost) || this.choice(els)) return;
+    this.hideAlternatives();
   }
 
   // Approving the plan makes its proposed decisions accepted.
@@ -1162,6 +1270,9 @@ export class Board {
       if (d.state === "rejected" || live(`dec-${d.id}`) || !byId.has(`dec-${d.id}`)) continue;
       out.push({ key: `reject:${d.id}`, kind: "reject", decision: d.id, label: `D${d.n}`, title: d.title, chose: d.chose });
     }
+    // Dragging one of its alternatives onto a diamond picks it.
+    const pick = this.choice(els);
+    if (pick) out.push(pick);
 
     for (const [k, e] of Object.entries(this.model.edges)) {
       if (live(e.elId)) continue;

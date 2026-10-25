@@ -148,9 +148,13 @@ function describeEdit(d) {
     case "unlink": return `Disconnected **${d.fromName}** → **${d.toName}**`;
     case "note": return `Note: “${d.text}”`;
     case "reject": return `Rejected **${d.label}** (${d.title}${d.chose ? `: ${d.chose}` : ""})`;
+    case "choose": return `Chose **${d.to}** for **${d.label}** (${d.title}; was ${d.from})`;
     default: return JSON.stringify(d);
   }
 }
+// The decision log groups your edits by what they change (the browser classifies them).
+const AREA_ICON = { architecture: "▢", decision: "◇", scope: "✐" };
+const logEdit = (d) => `${AREA_ICON[d.area] ? `${AREA_ICON[d.area]} ` : ""}${describeEdit(d)}`;
 
 const cell = (s) => String(s ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
 
@@ -783,7 +787,7 @@ class Run {
   record(body) {
     const t = this.now;
     const edits = body.edits ?? [];
-    const lines = edits.map(describeEdit);
+    const lines = edits.map(logEdit);
     switch (body.type) {
       case "approve":
         for (const d of this.decisions.values()) if (d.state === "proposed") d.state = "accepted";

@@ -78,6 +78,15 @@ export function buildEditsReply(decisions, model) {
       case "reject":
         lines.push(`Dropping **${d.label}** (${d.title}) from the plan${op({ op: "decision", id: d.decision, state: "rejected" })}.`);
         break;
+      case "choose": {
+        // A tag attribute lists with commas, so commas inside an option become semicolons.
+        const over = [d.from, ...(model.decisions[d.decision]?.over ?? []).filter((o) => o !== d.to)].filter(Boolean).map((o) => o.replace(/,/g, ";")).join(", ");
+        lines.push(
+          `Switching **${d.label}** to ${d.to}${op({ op: "decision", id: d.decision, chose: d.to, over, why: `Your pick over ${d.from}.`, cause: "you", cause_text: `${d.label} → ${d.to}` })}${task(`${d.label}: ${short(d.to, 18)}`, planning ? "done" : "building")}.` +
+            (planning ? "" : ` Reworking what it shapes${op({ op: "task", id: t, status: "done" })}.`),
+        );
+        break;
+      }
     }
   }
   return lines.join("\n\n");
