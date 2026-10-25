@@ -16,7 +16,7 @@
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const clip = (s, n) => {
-  const t = String(s ?? "").replace(/`|\*\*/g, ""); // markdown reads as noise here
+  const t = String(s ?? "").replace(/`|\*\*/g, "").replace(/^\s*(?:[-*]|\d+\.)\s+/, ""); // markdown reads as noise here
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 

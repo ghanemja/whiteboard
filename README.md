@@ -49,12 +49,24 @@ The **Timeline** tab answers "what changed, when, and because of what?" across t
 
 Waits longer than 15 seconds (reading the plan, a permission you hadn't answered yet) are drawn short, with a break on the axis that says how long they were, so a long pause doesn't flatten the rest. An orange line marks now. During a live run the Timeline grows as events arrive and keeps the whole run in view, unless you've panned or zoomed it (⛶ fits it again). Click a decision's mark to open its card in the Plan tab, one of your marks to see that message, or a test run to see its command. The tab shows the run's length and how many times a decision changed (◆).
 
+## Checking what it says
+
+An agent writes a lot, and not all of it holds up. The board helps you read a run without taking its word for it:
+
+- **Receipts.** A sentence that claims something checkable gets a mark after it: ✓ when the run's record backs it, ✗ when the record contradicts it (with the reason, e.g. "README.md wasn't changed in this run"), ? when the record doesn't say either way. Test results are checked against the runner's own counts from the last run before the sentence ("all 12 tests pass", "41 of 50"); files it says it changed, or left alone, against the repo's actual diff; commands it says it ran against the commands in the run. A ✗ only ever comes from the test runner or git. Plans ("I'll make sure the tests pass") and instructions to you ("run `npm start`") aren't claims. Hover a mark for the details; the Activity tab counts the contradictions (✗ n).
+- **What it changed.** The server reads the repo's real changes with git, whatever tool the agent used to make them: the working tree compared with how the run found it, untracked files included, so earlier uncommitted work isn't counted. It never touches your index or files. Each component on the board shows GitHub-style blocks and +/− under its picture, and the Plan tab's **Code changes** section has every file's diff, grouped by the component that owns it, with any file no component owns called out separately, and whether any of it was committed.
+- **Questions and assumptions.** The agent asks you what only you can decide with a "?" sticky note, and states what it's assuming with a "≈" one, instead of burying them in a paragraph. Answer in the Plan tab's **For you** section (pick an option or type an answer; at the plan gate that revises the plan), or confirm an assumption (✓ Right) or correct it (Not quite…). Questions and assumptions it only mentioned in prose are listed there too, under **Said in passing**, and marked in the conversation.
+- **Skim.** The Skim toggle in the Activity tab folds the narration away and keeps only the sentences that drew on the board, claim something checkable, ask you something, or state an assumption. Click a fold to read it.
+- **Review.** When a run ends, a **Before you trust this run** card replaces reading the summary: decisions whose check failed or never ran, things it said that the record contradicts or can't back, open questions and assumptions, questions asked in passing, the files it changed (and those nothing on the board owns), whether any of it is committed, the last test run, and commands you denied. Each row links to the card, sentence or diff it's about.
+
+The scripted demo shows all of these: it asks a question and states an assumption in its plan, runs tests and an eval, and its closing summary claims it documented the setup in a README it never touched, and asks you something in passing.
+
 ## Saved boards and decision logs
 
 Every run is saved in `recordings/` (git-ignored) while it happens:
 
 - `<id>.jsonl`: every event with its time: what the agent drew, said, read, edited and ran, and what you did (approvals, board edits, messages, allowed or denied commands). It's also where the agent's session id is kept.
-- `<id>.decisions.md`: a readable log of the development decisions. It opens with the current plan (goal, an architecture table with libraries and interfaces, connections, and each decision with what it beat, why, its evidence, what it replaced and why, its check and its proof), then a timeline: the plan the agent proposed, what you approved, challenged or changed, every decision the agent revised, each decision proven or failed (by the agent or by a test run), every command you allowed, and how the run ended, each with its time.
+- `<id>.decisions.md`: a readable log of the development decisions. It opens with the current plan (goal, an architecture table with libraries and interfaces, connections, its questions and assumptions, the files it changed and which component owns each, and each decision with what it beat, why, its evidence, what it replaced and why, its check and its proof), then a timeline: the plan the agent proposed, what you approved, challenged or changed, every decision the agent revised, each decision proven or failed (by the agent or by a test run), every command you allowed, and how the run ended, each with its time.
 
 The start screen lists saved boards. **Replay** plays a run back on the board at its own rhythm (long waits are shortened, and pause and speed work as usual). **Open** jumps straight to the finished board. **Decisions** opens the decision log. A finished live run also links to its replay and decision log.
 
@@ -70,16 +82,19 @@ Settings: `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `AGENT_EFFORT` (default
 | --- | --- |
 | `server/runs.js` | One Agent SDK `query()` per run: the in-process `update_board` MCP tool, plan gate and permission prompts via `canUseTool`, activity events, `/api/runs` endpoints |
 | `server/recordings.js` | Writes each run to `recordings/` (events + decision log), lists and serves them |
+| `server/changes.js` | What a run changed in the repo, from git: working-tree snapshots through a throwaway index, and their diff |
 | `server/instructions.js` | What the agent is told about the board (appended to the Claude Code system prompt) |
 | `src/agent/live.js` | Browser side of `/api/runs`: start, follow the event stream, send approvals and messages |
 | `src/engine/session.js` | Routes agent events to the board and the transcript; plan gate and permission state; keeps the run's timed events for the Timeline and seeks replays |
 | `src/engine/board.js` | Owns the three Excalidraw canvases: the Architecture pictograms and decision diamonds, the Why chains, the Timeline, highlighter marks, and `diff()` of your edits |
 | `src/engine/timeline.js` | The Timeline as pure functions: `buildTimeline(events)` (lanes, marks, causes, the time axis with compressed waits), `timeToX`, `drawTimeline` (Excalidraw skeletons) |
 | `src/engine/palette.js` | Phases and the colors the canvases share |
+| `src/engine/claims.js` | Receipts: finds checkable claims in the agent's sentences (and questions or assumptions said in passing) and checks them against the run's record |
+| `src/engine/review.js` | The end-of-run review card: what needs a look, and where |
 | `src/PhaseHeader.jsx` | The journey above the tabs: title, goal, milestones and task dots, drawn with roughjs (Excalidraw's renderer) |
 | `src/engine/transcript.js` | Sentences and activity rows, each linked to the board items it touched |
 | `src/engine/parser.js`, `player.js`, `src/agent/script.js`, `replies.js` | The scripted demo (inline `<board/>` tags typed out at reading pace) |
 | `scripts/make-sandbox.mjs` | Creates the sample repo |
-| `test/timeline.test.js` | `npm test`: `buildTimeline` over the sample runs in `fixtures/recordings/` |
+| `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, and git change tracking on a throwaway repo |
 
-Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node`, `edge`, `decision`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`.
+Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node`, `edge`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner.

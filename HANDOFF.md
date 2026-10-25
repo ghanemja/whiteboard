@@ -33,6 +33,7 @@ Every run is recorded so it can be replayed, reopened, and read as a decision lo
 
 - Everything below is **built and verified** (demo, live agent runs on the sandbox repo, reopened recordings, narrow window, dark theme). Build is clean (`npx vite build`); `npm test` passes.
 - The code is on GitHub (section 9). The **Timeline tab** (section 8) was built in a cloud session without an API key: verified on the demo, the three fixture runs (Open and Replay), a recording fed through the live-agent event path, dark theme and a narrow window, but **not yet on a real live agent run**. Do that first with a key (section 7, "Live agent check"), and look at the Timeline while it runs.
+- After the Timeline, five features for reading the agent's prose without taking its word for it (4.10): **claim receipts**, **git changes per component**, **questions and assumptions** as board items, **skim**, and an **end-of-run review card**. Same caveat: verified on the demo, the fixtures and a recording fed through the agent path (with a synthetic `changes` event), and the git tracking on the sandbox and a throwaway repo, but **not on a live agent run yet**. On the first live run, check that the agent uses the `question`/`assumption` ops and that `changes` events arrive after its edits.
 - Next: the backlog in 8.7.
 
 ---
@@ -82,6 +83,7 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 | --- | --- |
 | `vite.config.js` | Mounts `runsMiddleware` at `/api/runs` for dev and preview; `httpServer.once("close", stopAllRuns)`; `loadEnv` for `ANTHROPIC_`/`AGENT_`; port 5199; ignores `sandbox/` in the watcher; `window.EXCALIDRAW_ASSET_PATH = "/"` is set in `index.html`. |
 | `server/runs.js` | One Agent SDK `query()` per run. In-process MCP server `board` with tool `update_board({ ops })`. Plan gate (`ExitPlanMode`) and Bash permission prompts via `canUseTool`. Activity events from tool use/results. A server-side **mirror** of the board (nodes, edges, tasks, decisions) for the decision log and for proofs. Test-output parsing. Endpoints. |
+| `server/changes.js` | Git ground truth: `isRepo`, `head`, `snapshot(repo)` (working tree → tree object through a throwaway copy of the index, untracked included, `.gitignore` respected), `diff(repo, from, to)` (numstat + capped per-file patches), `commitsSince`. |
 | `server/recordings.js` | `Recorder`: appends every event (with `t`) to `recordings/<id>.jsonl`, keeps the decision timeline, rewrites `recordings/<id>.decisions.md` (Current plan + Timeline). `listRecordings`, `readRecording`, `readDecisions`; ids must match `/^[\w-]+$/`. |
 | `server/instructions.js` | `BOARD_INSTRUCTIONS` (appended to the Claude Code system prompt) and `PLAN_INSTRUCTIONS` (plan mode). Ops must match `Board.apply()`. |
 | `src/App.jsx` | All React UI: side panel (Activity, Plan tab `PlanView`, saved runs, cards, message box) and the board area (`PhaseHeader`, canvas tabs, three `<Excalidraw>` instances). Creates `Board` + `Session` once **all three** canvas APIs exist. |
@@ -90,7 +92,9 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 | `src/engine/palette.js` | `PHASES`, `MILESTONE`, `DECISION`, `PROOF`, `YOU`, `INK`, `MUTED`: no imports, so `timeline.js` loads under `node --test`. `board.js` re-exports `PHASES`/`MILESTONE`. |
 | `src/engine/timeline.js` | Pure: `buildTimeline(events, model)`, `timeToX`, `xToTime`, `drawTimeline(tl, { now })` (skeletons, ids `tl:<part>:…`), plus `gist`, `describeEdit`, `saysFailed`. |
 | `src/engine/session.js` | Modes `demo` / `agent` / `replay`. Routes events to board + transcript; plan gate and permission state; highlights; replay stepping and `seekReplay(t)`; the timed event stream for the Timeline. |
-| `src/engine/transcript.js` | Agent messages as sentences + activity rows, each linked to the logical ids it touched (`sentencesTouching(lids)`). |
+| `src/engine/transcript.js` | Agent messages as sentences + activity rows, each linked to the logical ids it touched (`sentencesTouching(lids)`). A closed sentence also gets `t`, `claims`, `asks`, `assumes` (claims.js). |
+| `src/engine/claims.js` | Pure: `findClaims(sentence)`, `checkClaim(claim, evidence)`, `receipt(claims, evidence)`, `asksYou`, `assumes`. |
+| `src/engine/review.js` | Pure: `buildReview({ model, claims, passing, changes, commits, lastTest, denied })` → rows with links. |
 | `src/engine/caption.js` | One-line status ("Deciding …", "Proving D2", "D2 failed its check"…). |
 | `src/engine/parser.js`, `player.js`, `src/agent/script.js`, `replies.js` | Scripted demo: prose with inline `<board op="…"/>` tags typed at reading pace. `PLAN_SCRIPT` / `BUILD_SCRIPT`. |
 | `src/agent/live.js` | Browser side of `/api/runs`: `getAgentStatus`, `startRun`, `controlRun` (keepalive), `followRun`, `listRecordings`, `loadRecording`, `decisionsUrl`. |
@@ -98,7 +102,7 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 | `scripts/make-sandbox.mjs` | Creates `sandbox/linkshort` (git-initialized). |
 | `scripts/cdp.mjs` | Headless-Chrome driver used for testing and screenshots (section 7). |
 | `fixtures/recordings/` | Sample runs (see above). |
-| `test/timeline.test.js` | `npm test` (`node --test test/*.test.js`): `buildTimeline` over the fixtures, plus the demo's test-caused change, rejects, and the legacy failure reading. |
+| `test/*.test.js` | `npm test` (`node --test test/*.test.js`): `timeline` (over the fixtures, plus the demo's test-caused change, rejects, the legacy failure reading), `claims`, `review`, `changes` (a throwaway git repo). |
 | `screenshots/` | `live-run/` (real-time frames + timelapse of a run), `why-view/`, `tabs/`, `timeline/` (current layout). |
 
 ### Event protocol (`/api/runs`)
@@ -107,11 +111,12 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 - `GET /api/runs/:id/events` → NDJSON stream, replays from the start. Each event has `t` (ms since run start). `activity-result` carries `tests: {pass, fail}` when the output printed per-test lines, and `ok` is false when TAP/spec totals (`# fail N`, `ℹ fail N`) or any per-test line failed (a piped `npm test | grep` exits 0).
 - `POST /api/runs/:id/control` with `type`: `approve` (optional `edits`), `revise`, `chat` (`text`), `edits`, `permission` (`requestId`, `decision`: allow | allow-all | deny), `stop`. Every control also carries `board_state` (the board snapshot).
 - `GET /api/runs/recordings`, `/recordings/:id` (jsonl), `/recordings/:id/decisions` (markdown, text/plain).
-- Event types: `stage`, `text`, `break`, `op`, `activity`, `activity-result`, `gate`, `permission`, `answered`, `user`, `turn`, `done`, `error`, `stopped`, `closed`; recording-only: `meta`, `meta-update`, `decision` (log entries).
+- Event types: `stage`, `text`, `break`, `op`, `activity`, `activity-result`, `changes`, `gate`, `permission`, `answered`, `user`, `turn`, `done`, `error`, `stopped`, `closed`; recording-only: `meta`, `meta-update`, `decision` (log entries).
+- `changes {commits, files: [{path, add, del, binary, patch?}]}`: every file that differs from the run's start; `patch` only when new or different since the previous `changes` event (the browser keeps the last one). Emitted ~600 ms after edits and Bash results settle, and always just before `done`.
 
 ### Board ops (agent tool and demo tags alike)
 
-`project {name, goal}`, `phase {name}` (planning | implementation | verification | deployment | complete), `task {id, phase, text, status}`, `node {id, name, kind, col, row, paths, libs, api, v}`, `edge {from, to, via, api, style}`, `decision {…}`, `status {id, v}`, `rename`, `note`, `remove`, `unlink`, `adopt {el, id, name, kind}`, `adopt-edge {el, from, to}`, `adopt-note {el}`.
+`project {name, goal}`, `phase {name}` (planning | implementation | verification | deployment | complete), `task {id, phase, text, status}`, `node {id, name, kind, col, row, paths, libs, api, v}`, `edge {from, to, via, api, style}`, `decision {…}`, `question {id, text, options[], about, state: open|answered, answer}`, `assumption {id, text, about, state: open|confirmed|corrected}`, `status {id, v}`, `rename`, `note`, `remove`, `unlink`, `adopt {el, id, name, kind}`, `adopt-edge {el, from, to}`, `adopt-note {el}`. Demo-only (Session, not Board): `diff {id}` (files from `DEMO_CHANGES`) and `run {cmd, pass, fail, ok}` (an activity row + result with `tests`).
 
 **Decision op fields:** `id, title, chose, over[], why, affects[], evidence[], builds_on[], state (proposed|accepted|changed|rejected), verify, proof (pass|fail), proof_by`. Server-added on emitted ops: `cause` ("you" | "test"), `cause_text`, `fromTests: true` (proof set by the server from test output).
 
@@ -181,12 +186,22 @@ Its own Excalidraw canvas (read-only, `viewModeEnabled`). One row per decision: 
 
 ---
 
+### 4.10 Reading the agent's prose: receipts, changes, questions, skim, review
+
+- **Receipts** (`claims.js`). `findClaims` looks for: test results (`all 12 tests pass`, `12/12 tests pass`, `all 42 pass`; plural only, so "the smoke test passed" isn't one), measured counts next to a measuring word (`41 times out of 50`, `47 of 50`), files with a change verb (a token with a slash, in backticks, or a well-known name like README; folders count when anything under them changed; "didn't touch X" is the negative form), and "I ran" followed by a backticked command. Intent ("I'll…", "to make sure", "if…") before the match, and questions, aren't claims. `checkClaim` uses the evidence `Session.receipts()` assembles: the timeline's test runs up to the sentence's `t`, `session.changes` (git), edit-tool paths (fallback for old runs; support only, never a ✗), commands. A sentence's receipt: ✗ beats ? beats ✓. Old recordings: file claims are "?" (no diff recorded) unless edit rows cover them.
+- **Changes** (`server/changes.js`, `Run.refreshChanges`). The run snapshots the tree at start (base, plus HEAD), again after edits/commands (debounced) and before `done`; diff base→now. Snapshots go through a copy of the real index (`GIT_INDEX_FILE`), so only changed files are re-hashed and the repo's index is never written; git gains loose objects (gc prunes them). `Board.setChanges` attributes files to components by `paths` (longest prefix, like the server's `ownerOf`), redraws only nodes whose share changed (`diffSig`), and keeps the rest in `model.unowned`. The node's hit-box grew to IH+74 to hold the blocks. The decision log's plan gains a Changes table; the "Finished" entry lists the files.
+- **Questions/assumptions**. Board draws them in the notes column (shared `noteSlot`), badge ?/≈ → ✓ when answered/confirmed, ↻ when corrected; the answer shows on the note ("… → 200 MB"). `Session.answerQuestion` sends `About Q1 (text): answer` (a plan revision at the gate); `confirmAssumption` is local and reaches the agent via `board_state`. The Timeline labels those messages "answered Q1" / "corrected A1"; `gist` strips `About [DQA]n (…):`. Prose fallback: sentences ending in "?" (≥ 4 words, not "Why…") and "I assumed / assuming that / defaulting to…" ones, unless their paragraph also drew a question/assumption op.
+- **Skim** (App `AgentMessage`): keeps `weighty` sentences (`ops > 0`, claims, asks, assumes, live, or linked); folds runs of the rest inside a paragraph, and merges whole folded paragraphs into one "⋯ n sentences" pill. Remembered in `localStorage` (`wb-skim`).
+- **Review** (`review.js`, App `ReviewCard`): shown at the end of Activity once the run is finished (agent: a result and not busy; demo: phase complete; replay: done); the panel switches to Activity when that happens. Links are logical ids: `decision:`, `question:`, `sentence:`, `code[:node|:unowned]`.
+
 ## 5. Data shapes
 
 ```js
 // Board.model
 { project, goal, phase, slots: {phase: n}, tasks: {id: {id, phase, text, status, slot}},
-  nodes: {id: {id, name, kind, status, elId, cell, libs[], api[], paths[]}},
+  nodes: {id: {id, name, kind, status, elId, cell, libs[], api[], paths[], diff: {add, del, files[]} | null}},
+  questions: {id: {id, kind: "question"|"assumption", n, text, options[], about, state, answer, elId, slot}},
+  unowned: [{path, add, del}],   // changed files no component's paths cover
   edges: {"from>to": {from, to, elId, via, api}}, notes: [{n, elId}],
   decisions: {id: {id, n, title, chose, was[], over[], why, affects[], evidence[], builds_on[],
                    state, verify, proof, proof_by, cause: {who, text} | null}} }
@@ -210,7 +225,8 @@ Element id conventions: nodes `node-<id>` (+ `:label`, `:libs`, `:badge`…), ed
 10. Agents sometimes name components after files (`store.js`); instructions could push for role names.
 11. Two stray 3–6 s recordings (`31ae60d3`, `f18e705b`) came from clicks in the browser pane between turns; safe to delete.
 12. Below 860 px the layout is one column: it must be `minmax(0, 1fr)`, or a long command in an activity row (`nowrap`) widens the page to thousands of px and every canvas renders off screen.
-13. `pkill -f vite` from a shell whose own command line contains "vite" kills that shell too; kill the dev server by pid.
+13. `pkill -f vite` (or `pgrep -f` with any pattern your command itself contains) matches the shell running it and kills it; find the dev server with `ps -eo pid,comm,args | awk '$2=="node" && /vite/'` and kill that pid.
+14. The demo's diffs are relative to the run's start, like git's: a file changed twice (D2's `chunking.py`) is still a new file in the final diff. The +/− counts are computed from each patch's lines, but the `@@` hunk headers are written by hand: keep them consistent when editing `DEMO_CHANGES`.
 
 ---
 

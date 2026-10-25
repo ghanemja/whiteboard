@@ -1057,6 +1057,8 @@ button.primary {
   color: var(--ink);
 }
 .rv-count {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 1px 8px;
   border-radius: 999px;
   background: color-mix(in srgb, #f08c00 16%, transparent);
