@@ -84,5 +84,11 @@ export function buildEditsReply(decisions, model) {
 }
 
 export function buildChatReply(text) {
+  // An answer to one of its questions, or a correction to one of its assumptions.
+  const qa = /^About ([QA])(\d+) \(.*?\):\s*(.*)$/s.exec(text);
+  if (qa?.[1] === "Q")
+    return `Thanks: I'll plan for that${op({ op: "question", id: `q${qa[2]}`, state: "answered", answer: short(qa[3], 30) })} and size the upload limit and the worker's memory to match.`;
+  if (qa?.[1] === "A")
+    return `Good catch. I'll correct that assumption${op({ op: "assumption", id: `a${qa[2]}`, state: "corrected" })} and account for it in the plan.`;
   return `Got it${op({ op: "note", text: short(text, 70) })}. I pinned that under Your notes so it stays in view while I work.`;
 }

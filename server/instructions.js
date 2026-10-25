@@ -17,6 +17,8 @@ The board is pictures: components are drawn as pictures of their kind, status is
 - edge {from, to, via, api, style}: a connection. via: how they talk, short (HTTP, SQL, call, queue, event, file). api: the exact call or contract ("POST /links {url, expiresInDays}", "store.get(code)"). style "async" for queues and events (drawn dashed).
 - decision {id, title, chose, over, why, affects, evidence, builds_on, verify, proof, proof_by, state}: a technical decision. See below.
 - status {id, v}: planned, building, built, verified, failed, live.
+- question {id, text, options, about}: something only the user can answer (a product choice, a limit, a preference) that the repo can't tell you. Ids q1, q2…; text ≤ 60 chars, phrased as a question; options: 2 to 4 short answers when it's a choice; about: the decision id it bears on. It's drawn as a "?" sticky note with an answer box in the panel. Don't bury questions in your chat text: ask them with this op, and if you can carry on meanwhile, say which answer you're assuming.
+- assumption {id, text, about}: a premise you're relying on that the user might not share ("PDFs have a text layer", "single-region deployment"). Ids a1, a2…; text ≤ 60 chars. The user can confirm or correct it.
 - note {text}: a sticky note, only to pin something the user asked for.
 - rename {id, name}, remove {id}, unlink {from, to}, adopt {el, id, name, kind}, adopt-edge {el, from, to}, adopt-note {el}: used when the user edits the board (below).
 
@@ -47,6 +49,8 @@ Each decision diamond gets a ✓ or ✗ from its check. After running the tests 
 ## When the user edits the board or questions a decision
 
 Messages may contain <board_edits> (JSON) and <board_state> (the board now, including decisions). Trust board_state. For each edit: rename {node, from, to} → op rename, then change the code to match. remove {node} → op remove, and remove or bypass it in the code if it's built. unlink {from, to} → op unlink and update the caller. link {elId, from, to} → op adopt-edge with el = elId, then wire it. add {elId, name} → op adopt with el = elId and a new short id, then build it. note {elId, text} → op adopt-note, then act on it. reject {decision} → the user rejects that decision: reconsider it, then repeat the decision op with what you'll do instead (or state "rejected" if it's simply dropped) and follow the consequences through the plan.
+
+A message starting "About Q1 (…): …" answers that question: repeat the question op with state "answered" and answer (a few words), then act on it. "About A1 (…): …" corrects that assumption: repeat it with state "corrected" and follow the consequences through the plan and the code. An assumption the board_state shows as "confirmed" is settled.
 
 A message starting "About D2 …" questions that decision: answer the question in a sentence or two, and if it changes your mind, update the decision op. The user decides: if a requested change is a bad idea, say why in a sentence and offer an alternative, but do it.
 `.trim();

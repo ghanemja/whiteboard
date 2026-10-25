@@ -3,6 +3,7 @@ import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { commitsSince, diff, head, isRepo, snapshot } from "./changes.js";
 import { BOARD_INSTRUCTIONS, PLAN_INSTRUCTIONS } from "./instructions.js";
 import { listRecordings, readDecisions, readRecording, Recorder } from "./recordings.js";
 
@@ -37,8 +38,8 @@ const settings = () => ({
 // One board op. Mirrors Board.apply() in src/engine/board.js.
 const strs = z.array(z.string());
 const Op = z.object({
-  op: z.enum(["project", "phase", "task", "node", "edge", "status", "decision", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note"]),
-  id: z.string().optional().describe("component id (node/status/rename/remove/adopt), task id (task) or decision id (decision)"),
+  op: z.enum(["project", "phase", "task", "node", "edge", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note"]),
+  id: z.string().optional().describe("component id (node/status/rename/remove/adopt), task id (task), decision id (decision), q1… (question) or a1… (assumption)"),
   name: z.string().optional().describe("project name, phase name, or component name (≤16 chars)"),
   goal: z.string().optional().describe("project: the goal in one sentence"),
   kind: z.enum(["client", "service", "data", "external", "queue", "test", "user"]).optional(),
@@ -53,7 +54,7 @@ const Op = z.object({
   style: z.enum(["sync", "async"]).optional(),
   v: z.enum(["planned", "building", "built", "verified", "failed", "live"]).optional().describe("component status"),
   phase: z.string().optional(),
-  text: z.string().optional().describe("task text (≤26 chars) or note text"),
+  text: z.string().optional().describe("task text (≤26 chars), note text, or the question / assumption (≤60 chars)"),
   status: z.enum(["todo", "building", "done", "failed"]).optional().describe("task status"),
   title: z.string().optional().describe("decision: what was decided, as a short question or topic"),
   chose: z.string().optional().describe("decision: the option chosen"),
@@ -62,7 +63,13 @@ const Op = z.object({
   affects: strs.optional().describe("decision: ids of the components it shapes"),
   evidence: strs.optional().describe("decision: facts from the repo behind it, with file paths"),
   builds_on: strs.optional().describe("decision: ids of earlier decisions this one follows from"),
-  state: z.enum(["proposed", "accepted", "changed", "rejected"]).optional().describe("decision state"),
+  state: z
+    .enum(["proposed", "accepted", "changed", "rejected", "open", "answered", "confirmed", "corrected"])
+    .optional()
+    .describe("decision: proposed | accepted | changed | rejected; question: open | answered; assumption: open | confirmed | corrected"),
+  options: strs.optional().describe("question: 2 to 4 short answers to pick from, when it's a choice"),
+  about: z.string().optional().describe("question / assumption: the decision id it bears on"),
+  answer: z.string().optional().describe("question: the user's answer, once they've given it"),
   verify: z.string().optional().describe("decision: the check that will show it was right: a test by name, or a command and what it must show"),
   proof: z.enum(["pass", "fail"]).optional().describe("decision: the result of that check, once you've run it"),
   proof_by: z.string().optional().describe("decision: what proved or disproved it: the test's exact name as the runner printed it, or the command and what it showed"),
@@ -98,7 +105,7 @@ function findTest(results, text, minLength = 4) {
 
 // The gist of what the user asked, for "changed because you said…".
 const gist = (s) => {
-  const t = String(s ?? "").replace(/^About D\d+ \(.*?\):\s*/s, "").replace(/\*\*/g, "").trim();
+  const t = String(s ?? "").replace(/^About [DQA]\d+ \(.*?\):\s*/s, "").replace(/\*\*/g, "").trim();
   return t.length > 140 ? `${t.slice(0, 139)}…` : t;
 };
 
@@ -148,6 +155,7 @@ function describeEdit(d) {
 const cell = (s) => String(s ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
 
 const COMPONENT_STATUS = new Set(["planned", "building", "built", "verified", "failed", "live"]);
+const DECISION_STATES = new Set(["proposed", "accepted", "changed", "rejected"]);
 
 class Run {
   constructor({ repo, brief }) {
@@ -166,11 +174,13 @@ class Run {
     this.edges = new Map(); // "from>to" -> { via, api }
     this.tasks = new Map(); // task id -> { phase, text, status }
     this.decisions = new Map(); // decision id -> { n, title, chose, over, why, affects, evidence, builds_on, state, verify, proof, proof_by, cause, cause_text }
+    this.questions = new Map(); // question/assumption id -> { kind, n, text, options, about, state, answer }
     this.goal = null;
     this.tests = new Map(); // test name -> passed?, from the latest test output that printed it
     this.steer = null; // what the user asked this turn, so decisions it changes can say so
     this.toolNames = new Map(); // tool_use id -> { name, input }
     this.turnText = ""; // what the agent has said since the last user turn
+    this.git = null; // { base, head, tree, sent, files }: the repo as the run found it, and what it's changed since (changes.js)
     const { model, effort } = settings();
     this.recorder = new Recorder({ id: this.id, brief, repo, model, effort, startedAt: new Date(this.started).toISOString(), project: null });
     this.recorder.decide({ t: 0, who: "you", title: "Started a task", quote: brief });
@@ -226,6 +236,20 @@ class Run {
         const [a, b] = k.split(">");
         out.push(`- ${name(a)} → ${name(b)}${e.via ? ` · ${e.via}` : ""}${e.api ? ` · \`${e.api}\`` : ""}`);
       }
+      out.push("");
+    }
+    const qs = [...this.questions.values()];
+    if (qs.length) {
+      out.push("### Questions and assumptions", "");
+      for (const q of qs) {
+        const label = `${q.kind === "question" ? "Q" : "A"}${q.n}`;
+        out.push(`- **${label}** (${q.state}): ${q.text}${q.answer ? ` → **${q.answer}**` : ""}${q.about ? ` · about ${this.decisions.has(q.about) ? `D${this.decisions.get(q.about).n}` : q.about}` : ""}`);
+      }
+      out.push("");
+    }
+    if (this.git?.files.length) {
+      out.push("### Changes", "", "| File | + | − | Component |", "|---|---|---|---|");
+      for (const f of this.git.files) out.push(`| \`${cell(f.path)}\` | ${f.add} | ${f.del} | ${cell(name(this.ownerOf(f.path) ?? "")) || "not on the board"} |`);
       out.push("");
     }
     if (this.decisions.size) {
@@ -330,13 +354,33 @@ class Run {
             evidence: arr(op.evidence) ?? prev?.evidence ?? [],
             builds_on: arr(op.builds_on) ?? prev?.builds_on ?? [],
             // Repeating a decision to report its proof or refine its why doesn't change it; a new choice does.
-            state: op.state ?? (changed ? "changed" : prev?.state ?? (inPlanning ? "proposed" : "accepted")),
+            state: DECISION_STATES.has(op.state) ? op.state : changed ? "changed" : prev?.state ?? (inPlanning ? "proposed" : "accepted"),
             verify: op.verify ?? prev?.verify ?? "",
             proof,
             proof_by,
             cause: op.cause ?? prev?.cause ?? null,
             cause_text: op.cause ? op.cause_text ?? "" : prev?.cause_text ?? "",
           });
+          break;
+        }
+        case "question":
+        case "assumption": {
+          if (!op.id) break;
+          const prev = this.questions.get(op.id);
+          if (!prev && !op.text) break;
+          const n = prev?.n ?? [...this.questions.values()].filter((q) => q.kind === op.op).length + 1;
+          const q = {
+            kind: op.op, n,
+            text: op.text ?? prev.text,
+            options: arr(op.options) ?? prev?.options ?? [],
+            about: op.about ?? prev?.about ?? null,
+            state: ["open", "answered", "confirmed", "corrected"].includes(op.state) ? op.state : prev?.state ?? "open",
+            answer: op.answer ?? prev?.answer ?? null,
+          };
+          this.questions.set(op.id, q);
+          const label = `${op.op === "question" ? "Q" : "A"}${n}`;
+          if (!prev) this.recorder.decide({ t: this.now, who: "agent", title: op.op === "question" ? `Asked you ${label}: ${q.text}` : `Assumed ${label}: ${q.text}`, lines: q.options.length ? [`Options: ${q.options.join(" · ")}`] : [] });
+          else if (q.state !== prev.state) this.recorder.decide({ t: this.now, who: "agent", title: `${label} ${q.state}: ${q.text}`, lines: q.answer ? [`Answer: ${q.answer}`] : [] });
           break;
         }
         case "phase":
@@ -373,6 +417,41 @@ class Run {
     }
     this.recorder.setPlan(this.planMarkdown());
     return notes;
+  }
+
+  // ---- what the run actually changed (git) ----
+  // A `changes` event carries every file that differs from the start; a file's patch only when
+  // it's new or different since the last event (the browser keeps the rest).
+  scheduleChanges() {
+    if (!this.git) return;
+    clearTimeout(this.changesTimer);
+    this.changesTimer = setTimeout(() => this.refreshChanges(), 600);
+  }
+
+  refreshChanges() {
+    if (!this.git) return Promise.resolve();
+    clearTimeout(this.changesTimer);
+    this.changesRun = (this.changesRun ?? Promise.resolve()).then(async () => {
+      try {
+        const tree = await snapshot(this.repo);
+        if (tree === this.git.tree) return;
+        this.git.tree = tree;
+        const files = await diff(this.repo, this.git.base, tree);
+        const commits = await commitsSince(this.repo, this.git.head);
+        const sent = this.git.sent;
+        this.git.sent = new Map(files.map((f) => [f.path, f.patch ?? ""]));
+        this.git.files = files;
+        this.emit({
+          type: "changes",
+          commits,
+          files: files.map(({ patch, ...f }) => (sent.get(f.path) === (patch ?? "") ? f : { ...f, patch: patch ?? "" })),
+        });
+        this.recorder.setPlan(this.planMarkdown());
+      } catch (err) {
+        console.warn("[runs] couldn't read the repo's changes:", err.message);
+      }
+    });
+    return this.changesRun;
   }
 
   // Which component owns a repo file, by its declared paths (longest prefix wins).
@@ -446,6 +525,15 @@ class Run {
 
   async start() {
     const { model, effort } = settings();
+    // The repo as the run found it, so its changes can be told from what was there before.
+    try {
+      if (await isRepo(this.repo)) {
+        const base = await snapshot(this.repo);
+        this.git = { base, tree: base, head: await head(this.repo), sent: new Map(), files: [] };
+      }
+    } catch (err) {
+      console.warn("[runs] not tracking the repo's changes:", err.message);
+    }
     const board = createSdkMcpServer({
       name: "board",
       version: "1.0.0",
@@ -488,6 +576,7 @@ class Run {
     } catch (err) {
       if (!this.abort.signal.aborted) this.emit({ type: "error", message: err?.message || String(err) });
     } finally {
+      await this.turnEnd; // a "done" still on its way goes first
       this.emit({ type: "closed" });
       this.recorder.close();
     }
@@ -528,25 +617,31 @@ class Run {
 
     if (msg.type === "result") {
       const ok = !msg.is_error;
-      const statuses = [...this.nodes.values()].map((n) => `${n.name}: ${n.status}`);
-      this.recorder.decide({
-        t: this.now,
-        who: "agent",
-        title: ok ? "Finished" : `Stopped early (${msg.subtype})`,
-        lines: [
-          ...(statuses.length ? [`Board: ${statuses.join(", ")}`] : []),
-          `${msg.num_turns} turns${msg.total_cost_usd != null ? `, $${msg.total_cost_usd.toFixed(2)}` : ""}`,
-        ],
-        quote: this.takeTurnText(),
-      });
+      const quote = this.takeTurnText();
       this.idle = true; // between turns: a shutdown now interrupts nothing
       this.steer = null;
-      this.emit({
-        type: "done",
-        ok,
-        cost: msg.total_cost_usd,
-        turns: msg.num_turns,
-        message: msg.subtype === "success" ? null : msg.subtype,
+      // The turn's last word on the repo comes before "done", so the summary can be checked against it.
+      this.turnEnd = this.refreshChanges().then(() => {
+        const statuses = [...this.nodes.values()].map((n) => `${n.name}: ${n.status}`);
+        const files = this.git?.files ?? [];
+        this.recorder.decide({
+          t: this.now,
+          who: "agent",
+          title: ok ? "Finished" : `Stopped early (${msg.subtype})`,
+          lines: [
+            ...(statuses.length ? [`Board: ${statuses.join(", ")}`] : []),
+            ...(files.length ? [`Changed: ${files.map((f) => `\`${f.path}\` (+${f.add} −${f.del})`).join(", ")}`] : []),
+            `${msg.num_turns} turns${msg.total_cost_usd != null ? `, $${msg.total_cost_usd.toFixed(2)}` : ""}`,
+          ],
+          quote,
+        });
+        this.emit({
+          type: "done",
+          ok,
+          cost: msg.total_cost_usd,
+          turns: msg.num_turns,
+          message: msg.subtype === "success" ? null : msg.subtype,
+        });
       });
     }
   }
@@ -597,6 +692,8 @@ class Run {
 
   onToolResult(block) {
     const used = this.toolNames.get(block.tool_use_id);
+    // Edits and commands can change the repo: look again once they settle.
+    if (["Edit", "MultiEdit", "Write", "NotebookEdit", "Bash"].includes(used?.name)) this.scheduleChanges();
     if (!used || used.name !== "Bash") return;
     const raw = Array.isArray(block.content) ? block.content.map((c) => c.text ?? "").join("\n") : String(block.content ?? "");
     const text = raw.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").trim(); // terminal colors
@@ -720,6 +817,7 @@ class Run {
     if (this.stopped) return;
     this.stopped = true;
     clearTimeout(this.idleTimer);
+    clearTimeout(this.changesTimer);
     const title = {
       idle: `Stopped after ${why.minutes} idle minutes`,
       server: "Stopped when the dev server shut down",

@@ -824,6 +824,102 @@ button.primary {
   color: var(--accent);
   font-size: 11px;
 }
+.tab-count.bad {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
+}
+/* Skim: hide the narration. */
+.tabs .skim {
+  align-self: center;
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tabs .skim.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.skim-gap {
+  padding: 0 7px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  vertical-align: 1px;
+}
+.skim-gap:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Receipts: what the run's record says about a sentence's claims. */
+.rcpt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-left: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: help;
+}
+.rcpt.rc-ok {
+  color: var(--green);
+}
+.rcpt.rc-unknown {
+  color: var(--faint);
+}
+.rcpt.rc-bad {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+}
+.rcpt-why {
+  font-weight: 600;
+}
+/* Things the agent asked you or assumed, said in passing. */
+.s.asks {
+  text-decoration: underline dotted #c2255c;
+  text-underline-offset: 3px;
+}
+.s.asks::after {
+  content: "?";
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #c2255c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.s.assumes {
+  text-decoration: underline dotted #7048e8;
+  text-underline-offset: 3px;
+}
+.s.assumes::after {
+  content: "≈";
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #7048e8;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+}
 
 /* The development plan: goal, architecture, connections, decisions, steps. */
 .plan {
@@ -939,6 +1035,318 @@ button.primary {
   font-size: 11px;
   color: var(--faint);
   overflow-wrap: anywhere;
+}
+/* The end of a run: what needs a look. */
+.review {
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+.rv-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.rv-head .hand {
+  font-family: var(--hand);
+  font-size: 20px;
+  color: var(--ink);
+}
+.rv-count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #f08c00 16%, transparent);
+  color: #e8590c;
+  font-size: 12px;
+  font-weight: 700;
+}
+.review ul {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rv {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.rv-icon {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.rv-bad .rv-icon {
+  background: var(--red);
+}
+.rv-warn .rv-icon {
+  background: #f08c00;
+}
+.rv-info .rv-icon {
+  background: var(--faint);
+}
+.rv-ok .rv-icon {
+  background: var(--green);
+}
+.rv-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.rv-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.rv-link {
+  max-width: 100%;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.rv-link:disabled {
+  color: var(--soft);
+  cursor: default;
+}
+
+/* What it asked you, and what it's assuming. */
+.tab-count.ask {
+  background: color-mix(in srgb, #f08c00 16%, transparent);
+  color: #e8590c;
+}
+.qmark {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.qmark.asks {
+  background: #f08c00;
+}
+.qmark.assumes {
+  background: #7048e8;
+}
+.qcard .pc-head {
+  align-items: flex-start;
+}
+.q-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.qcard.q-question {
+  border-color: color-mix(in srgb, #f08c00 45%, var(--line));
+}
+.qcard.q-assumption.qs-open {
+  border-style: dashed;
+  border-color: color-mix(in srgb, #7048e8 45%, var(--line));
+}
+.qcard.qs-answered .qmark,
+.qcard.qs-confirmed .qmark {
+  background: var(--green);
+}
+.qcard.qs-corrected .qmark {
+  background: var(--blue);
+}
+.q-done {
+  margin: 6px 0 0 28px;
+  font-size: 13px;
+  color: var(--green);
+}
+.q-done.corrected {
+  color: var(--blue);
+}
+.q-done.open {
+  color: var(--faint);
+}
+.q-answer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0 28px;
+}
+.q-opt {
+  padding: 3px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.q-answer input {
+  flex: 1 1 120px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+.q-send {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.q-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.passing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pass-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+}
+.pass-text {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pass-text:hover {
+  text-decoration: underline;
+}
+
+/* What the run changed in a component's files (git), and the code itself. */
+.pc-diff {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--soft);
+  font-size: 12px;
+  cursor: pointer;
+}
+.pc-diff:hover {
+  text-decoration: underline;
+}
+.fd-add {
+  color: var(--green);
+  font-weight: 700;
+}
+.fd-del {
+  color: var(--red);
+  font-weight: 700;
+}
+.code-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  scroll-margin-top: 8px;
+}
+.code-group.unowned {
+  border-style: dashed;
+  border-color: var(--orange);
+}
+.cg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+  font-size: 13px;
+}
+.fd-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 2px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.fd-head:hover {
+  background: var(--panel-2);
+}
+.fd-caret {
+  width: 10px;
+  color: var(--faint);
+}
+.fd-path {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.patch {
+  max-height: 340px;
+  margin: 4px 0 6px;
+  padding: 8px 0;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.patch span {
+  display: block;
+  padding: 0 10px;
+  white-space: pre;
+}
+.patch .a {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+}
+.patch .d {
+  background: color-mix(in srgb, var(--red) 13%, transparent);
+}
+.patch .h {
+  color: var(--blue);
 }
 .plan-edges {
   list-style: none;

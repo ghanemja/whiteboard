@@ -66,6 +66,13 @@ const firstLine = (t) => (t ?? "").split("\n")[0].trim();
 const list = (v) => (Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : []).map((s) => String(s).trim()).filter(Boolean);
 
 const DW = 40; // decision diamond size
+
+// Questions for the user and assumptions the agent works from: sticky notes with a badge.
+const QSTYLE = {
+  question: { stroke: "#f08c00", fill: "#fff4e6", glyph: "?" },
+  assumption: { stroke: "#7048e8", fill: "#f3f0ff", glyph: "≈" },
+};
+const QSTATES = ["open", "answered", "confirmed", "corrected"];
 const WHY = "why:"; // element id prefix of the Why view
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
@@ -211,7 +218,7 @@ export class Board {
   }
 
   reset() {
-    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {} };
+    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {}, questions: {}, unowned: [] };
     this.known = new Set();
     this.hl = new Set();
     this.hlSig = "";
@@ -221,6 +228,7 @@ export class Board {
     this.reviewing = false;
     this.view = "board"; // which canvas is showing: "board" (architecture), "why" or "timeline"
     this.tl = null; // the Timeline as last drawn (buildTimeline), for clicks and highlights
+    this.changes = []; // the repo's actual changed files (git), attributed to components by their paths
     this.whyRows = 0; // decisions drawn on the Why canvas, to refit it when one is added
     this.hideCursor();
   }
@@ -378,6 +386,8 @@ export class Board {
     switch (a.op) {
       case "project": return this.setTitle(a.name, a.goal);
       case "decision": return this.setDecision(a);
+      case "question":
+      case "assumption": return this.setQuestion(a);
       case "phase": return this.setPhase(a.name);
       case "task": return this.setTask(a);
       case "node": return this.addNode(a);
@@ -464,6 +474,9 @@ export class Board {
         id, title, chose, over, why, affects, state, ...(verify ? { verify } : {}), ...(proof ? { proof } : {}),
       })),
       tasks: Object.values(m.tasks).map(({ id, phase, text, status }) => ({ id, phase, text, status })),
+      ...(Object.keys(m.questions).length
+        ? { questions: Object.values(m.questions).map(({ id, kind, text, state, answer }) => ({ id, kind, text, state, ...(answer ? { answer } : {}) })) }
+        : {}),
       free_cells,
       notes: m.notes.length,
     };
@@ -475,7 +488,7 @@ export class Board {
     const s = STATUS[node.status] ?? STATUS.planned;
     const pid = node.elId;
     const sk = [
-      { type: "rectangle", id: pid, x: ox - 10, y: oy - 10, width: IW + 20, height: IH + 62, strokeColor: "transparent", backgroundColor: "transparent", strokeWidth: 1, roughness: 0 },
+      { type: "rectangle", id: pid, x: ox - 10, y: oy - 10, width: IW + 20, height: IH + 74, strokeColor: "transparent", backgroundColor: "transparent", strokeWidth: 1, roughness: 0 },
       ...iconParts(node.kind, ox, oy, s, pid),
       { type: "text", id: `${pid}:label`, x: ox, y: oy + IH + 8, text: labelText ?? node.name, fontSize: 18, strokeColor: INK },
     ];
@@ -484,6 +497,19 @@ export class Board {
     if (libs.length) {
       const first = libs[0].length > 18 ? `${libs[0].slice(0, 17)}…` : libs[0];
       sk.push({ type: "text", id: `${pid}:libs`, x: ox, y: oy + IH + 31, text: libs.length > 1 ? `${first} +${libs.length - 1}` : first, fontSize: 13, strokeColor: MUTED });
+    }
+    // What the run changed in its files (git): GitHub's five blocks, green for added lines, red for removed.
+    const d = node.diff;
+    if (d && d.add + d.del > 0) {
+      const y = oy + IH + (libs.length ? 52 : 34);
+      const red = d.del ? Math.max(1, Math.round((5 * d.del) / (d.add + d.del))) : 0;
+      const green = d.add ? Math.max(1, 5 - red) : 0;
+      const x0 = ox + IW / 2 - 40;
+      for (let i = 0; i < 5; i++) {
+        const c = i < green ? "#2f9e44" : i < green + red ? "#e03131" : "#dee2e6";
+        sk.push({ type: "rectangle", id: `${pid}:d${i}`, x: x0 + i * 11, y, width: 9, height: 9, strokeColor: c, backgroundColor: c, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
+      }
+      sk.push({ type: "text", id: `${pid}:dt`, x: x0 + 60, y: y - 3, text: `+${d.add} −${d.del}`, fontSize: 12, strokeColor: MUTED });
     }
     const bx = ox + IW - 14, by = oy - 14;
     if (s.badge) {
@@ -512,6 +538,7 @@ export class Board {
       if (api != null) existing.api = list(api);
       if (paths != null) existing.paths = list(paths);
       if (libs != null) this.redrawNode(id);
+      if (paths != null) this.attributeChanges();
       return [`node:${id}`];
     }
     if (!name) return [];
@@ -524,6 +551,7 @@ export class Board {
     this.model.nodes[id] = node;
     const fresh = this.remember(this.drawNode(node, NX0 + cell[0] * COL, NY0 + cell[1] * ROW));
     this.commit([...this.scene(), ...fresh]);
+    if (this.changes.length) this.attributeChanges();
     // Decisions about it, made before it was drawn, can pin to it now (and the Why view moves down if it must).
     if (Object.keys(this.model.decisions).length) this.redrawDecisions();
     return [`node:${id}`];
@@ -545,6 +573,47 @@ export class Board {
     this.replace(mine, this.drawNode(node, ox, oy, pending));
     // Decisions pinned to this component follow it if it moved.
     if (Object.values(this.model.decisions).some((d) => d.affects.includes(nodeId))) this.redrawDecisions();
+  }
+
+  // ---- what the run changed in the repo ----
+  // files: [{ path, add, del, patch }] from git (server/changes.js), or the demo's script.
+  setChanges(files) {
+    this.changes = files ?? [];
+    this.attributeChanges();
+  }
+
+  // Which component owns a repo file, by its declared paths (longest prefix wins, as on the server).
+  ownerOf(file) {
+    let best = null, len = -1;
+    for (const n of Object.values(this.model.nodes))
+      for (const p of n.paths ?? []) {
+        const prefix = p.replace(/^\.\//, "").replace(/\/+$/, "");
+        if ((file === prefix || file.startsWith(`${prefix}/`)) && prefix.length > len) [best, len] = [n.id, prefix.length];
+      }
+    return best;
+  }
+
+  // Each component's share of the changes (redrawn when it moves), and the files no component owns.
+  attributeChanges() {
+    const per = {};
+    this.model.unowned = [];
+    for (const f of this.changes) {
+      const owner = this.ownerOf(f.path);
+      if (!owner) this.model.unowned.push(f);
+      else {
+        const d = (per[owner] ??= { add: 0, del: 0, files: [] });
+        d.add += f.add;
+        d.del += f.del;
+        d.files.push(f.path);
+      }
+    }
+    for (const n of Object.values(this.model.nodes)) {
+      const d = per[n.id] ?? null;
+      const sig = d ? `${d.add}/${d.del}/${d.files.join()}` : "";
+      if (sig === (n.diffSig ?? "")) continue;
+      Object.assign(n, { diff: d, diffSig: sig });
+      this.redrawNode(n.id);
+    }
   }
 
   // ---- decisions: the reasoning chain ----
@@ -584,6 +653,53 @@ export class Board {
     };
     this.redrawDecisions();
     return [`decision:${id}`];
+  }
+
+  // ---- questions for you, and the assumptions it's working from ----
+  // { id, kind: "question" | "assumption", n, text, options[], about, state, answer }
+  // state: open, then answered (a question) or confirmed / corrected (an assumption).
+  setQuestion({ op, id, text, options, about, state, answer }) {
+    if (!id) return [];
+    const m = this.model;
+    const prev = m.questions[id];
+    if (!prev && !text) return [];
+    const kind = prev?.kind ?? (op === "assumption" ? "assumption" : "question");
+    const q = (m.questions[id] = {
+      id,
+      kind,
+      n: prev?.n ?? Object.values(m.questions).filter((x) => x.kind === kind).length + 1,
+      text: text ?? prev.text,
+      options: options != null ? list(options) : prev?.options ?? [],
+      about: about ?? prev?.about ?? null,
+      state: QSTATES.includes(state) ? state : prev?.state ?? "open",
+      answer: answer ?? prev?.answer ?? null,
+      elId: prev?.elId ?? `q-${id}`,
+      slot: prev?.slot ?? this.noteSlot++,
+    });
+    this.drawQuestion(q);
+    return [`question:${id}`];
+  }
+
+  // A sticky in the notes column: the question (and its answer), a badge for what it is or that it's settled.
+  drawQuestion(q) {
+    const st = QSTYLE[q.kind];
+    const x = NOTE_X, y = NOTE_Y + q.slot * 70, g = [`g:${q.elId}`];
+    const settled = q.state === "answered" || q.state === "confirmed";
+    const badge = settled ? "#2f9e44" : q.state === "corrected" ? "#1971c2" : st.stroke;
+    const out = this.convert([
+      {
+        type: "rectangle", id: q.elId, x, y, width: 210, height: 56, strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid",
+        strokeWidth: 1, strokeStyle: q.state === "open" && q.kind === "assumption" ? "dashed" : "solid", roughness: 1, roundness: { type: 3 },
+        label: { text: clip(q.answer ? `${q.text} → ${q.answer}` : q.text, 76), fontSize: 14, strokeColor: q.state === "corrected" ? MUTED : INK },
+      },
+      { type: "ellipse", id: `${q.elId}:b`, x: x - 12, y: y - 12, width: 24, height: 24, strokeColor: badge, backgroundColor: badge, fillStyle: "solid", strokeWidth: 1, roughness: 0 },
+      { type: "text", id: `${q.elId}:g`, x, y, text: settled ? "✓" : q.state === "corrected" ? "↻" : st.glyph, fontSize: 15, strokeColor: "#ffffff" },
+    ]);
+    for (const e of out) {
+      e.groupIds = g;
+      if (e.id === `${q.elId}:g`) [e.x, e.y] = [x - e.width / 2, y - e.height / 2];
+    }
+    this.replace((e) => e.id === q.elId || e.id.startsWith(`${q.elId}:`) || e.containerId === q.elId, out);
   }
 
   // Approving the plan makes its proposed decisions accepted.
@@ -1079,6 +1195,7 @@ export class Board {
       case "edge": return this.model.edges[v]?.elId;
       case "note": return this.model.notes.find((n) => n.n === +v)?.elId;
       case "decision": return this.model.decisions[v] ? `dec-${v}` : null;
+      case "question": return this.model.questions[v]?.elId ?? null;
       default: return null;
     }
   }
@@ -1100,7 +1217,9 @@ export class Board {
         continue;
       }
       const node = this.nodeByEl(id);
+      const q = id.startsWith("q-") && Object.values(this.model.questions).find((x) => id === x.elId || id.startsWith(`${x.elId}:`));
       if (node) out.add(`node:${node.id}`);
+      else if (q) out.add(`question:${q.id}`);
       else if (id.startsWith("dec-")) {
         const d = Object.keys(this.model.decisions).find((k) => id === `dec-${k}` || id.startsWith(`dec-${k}-`));
         if (d) out.add(`decision:${d}`);

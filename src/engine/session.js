@@ -4,8 +4,9 @@ import { Player } from "./player";
 import { Transcript } from "./transcript";
 import { buildChatReply, buildEditsReply } from "../agent/replies";
 import { controlRun, followRun, loadRecording, startRun } from "../agent/live";
-import { BUILD_SCRIPT, PLAN_SCRIPT } from "../agent/script";
+import { BUILD_SCRIPT, DEMO_CHANGES, PLAN_SCRIPT } from "../agent/script";
 import { describeEdit, gist } from "./timeline";
+import { receipt } from "./claims";
 
 // Replays keep the run's rhythm but don't sit through long waits (thinking, or someone deciding).
 const REPLAY_MAX_GAP = 1500;
@@ -45,6 +46,7 @@ export class Session {
       onOpen: (s) => this.live.set(s.id, s.ids),
       onClose: (s) => this.linger(s.id),
       onChange: () => this.notify(),
+      clock: () => this.now(),
     });
 
     // Demo: inline <board/> tags in typed-out text.
@@ -88,6 +90,40 @@ export class Session {
     this.demoBusy = false;
     this.sentMsgs = []; // your messages waiting for the server to echo them as `user` events
     this.steerText = null; // what you asked this turn, for changes in recordings that don't say why
+    this.lastT = 0; // the latest live event's t
+    this.changes = null; // the repo's actual changes this run, from git: path -> { path, add, del, patch }
+    this.commits = 0; // commits made during the run
+    this.demoRuns = 0;
+  }
+
+  // The repo's changes: a live run's `changes` events (a patch is only resent when it changed).
+  setChanges(files, commits = this.commits) {
+    const prev = this.changes ?? new Map();
+    this.changes = new Map(files.map((f) => [f.path, { ...f, patch: f.patch ?? prev.get(f.path)?.patch ?? "" }]));
+    this.commits = commits;
+    this.board.setChanges([...this.changes.values()]);
+  }
+
+  // Where the run is now (ms since it started), whatever the mode.
+  now() {
+    if (this.replay) return this.replayT;
+    return this.mode === "demo" ? this.demoNow() : this.lastT;
+  }
+
+  // What the run's record says about each sentence's claims (claims.js): sentence id -> receipt.
+  // Test claims are checked against the runs before the sentence; file claims against git.
+  receipts() {
+    const acts = this.transcript.messages.flatMap((m) => m.items).filter((it) => it.type === "act");
+    const base = {
+      changes: this.changes ? [...this.changes.values()] : null,
+      edited: acts.filter((a) => a.kind === "edit" || a.kind === "write").flatMap((a) => a.labels),
+      commands: acts.filter((a) => a.kind === "command").flatMap((a) => a.labels),
+    };
+    const runs = (this.board.tl?.tests ?? []).filter((k) => k.ok != null);
+    const out = new Map();
+    for (const m of this.transcript.messages)
+      for (const it of m.items) if (it.type === "s" && it.claims?.length) out.set(it.id, receipt(it.claims, { ...base, tests: runs.filter((k) => k.t <= it.t) }));
+    return out;
   }
 
   // ---- the Timeline ----
@@ -109,18 +145,52 @@ export class Session {
     this.notify();
   }
 
-  // The demo's own events. Its clock runs at the playback speed, so 4× draws like 1×.
-  demoEvent(e) {
-    if (this.mode !== "demo" || !this.clock) return;
+  // The demo's own clock runs at the playback speed, so 4× draws like 1×.
+  demoNow() {
+    if (!this.clock) return 0;
     const now = performance.now();
     this.clock.t += (now - this.clock.at) * this.player.speed;
     this.clock.at = now;
-    this.events.push({ ...e, t: Math.round(this.clock.t) });
+    return Math.round(this.clock.t);
+  }
+
+  // The demo's own events.
+  demoEvent(e) {
+    if (this.mode !== "demo" || !this.clock) return;
+    this.events.push({ ...e, t: this.demoNow() });
     this.timelineChanged();
+  }
+
+  // The demo has no repo and runs no commands, so its script carries what a live run's record would:
+  //   <board op="diff" id="api"/>                   the files that step changed (DEMO_CHANGES)
+  //   <board op="run" cmd="pytest -q" pass="42" fail="0" ok="true"/>   a test run and its result
+  demoOp(a) {
+    if (a.op === "diff") {
+      const files = new Map(this.changes ?? []);
+      for (const f of DEMO_CHANGES[a.id] ?? []) files.set(f.path, f);
+      this.setChanges([...files.values()]);
+      this.sync();
+      return true;
+    }
+    if (a.op === "run") {
+      const toolUseId = `demo-run-${++this.demoRuns}`;
+      const pass = +a.pass, fail = +a.fail;
+      const ok = a.ok != null ? a.ok === "true" : fail === 0;
+      const result = { toolUseId, ok, summary: `${pass} passed${fail ? `, ${fail} failed` : ""}`, tests: { pass, fail } };
+      this.demoEvent({ type: "activity", kind: "command", label: a.cmd, toolUseId });
+      this.transcript.activity({ kind: "command", label: a.cmd, toolUseId });
+      this.demoEvent({ type: "activity-result", ...result });
+      this.transcript.activityResult(result);
+      this.caption = `Running ${a.cmd}`;
+      this.sync();
+      return true;
+    }
+    return false;
   }
 
   // ---- shared: applying ops and highlighting ----
   applyOp(attrs, { fromAgent = false } = {}) {
+    if (!fromAgent && this.demoOp(attrs)) return;
     if (!fromAgent) this.demoEvent({ type: "op", op: attrs });
     this.caption = describeOp(attrs, this.board.model); // before apply: removals lose the name
     if (attrs.op === "phase") {
@@ -298,7 +368,7 @@ export class Session {
       this.board.onPhase?.(null);
       await this.board.init();
       if (g !== this.gen || r !== this.replay) return;
-      Object.assign(this, { stage: "planning", gate: null, permission: null, agentBusy: false, result: null, caption: "", steerText: null, replayT: 0 });
+      Object.assign(this, { stage: "planning", gate: null, permission: null, agentBusy: false, result: null, caption: "", steerText: null, replayT: 0, changes: null, commits: 0 });
       this.transcript.addUserMessage({ kind: "chat", text: this.brief });
       r.i = 0;
     }
@@ -347,6 +417,7 @@ export class Session {
 
   onAgentEvent(e) {
     if (this.mode === "agent") {
+      this.lastT = e.t ?? this.lastT;
       // Your messages come back from the server as `user` events; tie each to its bubble.
       this.events.push(e.type === "user" ? { ...e, msg: this.sentMsgs.shift() ?? null } : e);
       this.timelineChanged();
@@ -403,6 +474,9 @@ export class Session {
       }
       case "activity-result":
         this.transcript.activityResult(e);
+        break;
+      case "changes":
+        this.setChanges(e.files ?? [], e.commits ?? 0);
         break;
       case "gate":
         this.gate = e.requestId;
@@ -534,6 +608,19 @@ export class Session {
     } else {
       this.player.enqueue({ build: () => buildChatReply(text) });
     }
+  }
+
+  // ---- its questions and assumptions ----
+  // An answer goes to the agent as a message ("About Q1 (…): …"); at the plan gate that revises the plan.
+  answerQuestion(q, text) {
+    this.board.apply({ op: "question", id: q.id, state: "answered", answer: text });
+    this.sendChat(`About Q${q.n} (${q.text}): ${text}`);
+  }
+
+  // A confirmed assumption needs no turn of its own: the agent sees it in the board state it gets next.
+  confirmAssumption(q) {
+    this.board.apply({ op: "assumption", id: q.id, state: "confirmed" });
+    this.sync();
   }
 
   // ---- highlights ----

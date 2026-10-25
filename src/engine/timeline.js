@@ -34,7 +34,7 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 // The gist of what the user asked, for "changed because you said…" (the server's rule).
 export const gist = (s) => {
-  const t = String(s ?? "").replace(/^About D\d+ \(.*?\):\s*/s, "").replace(/\*\*/g, "").trim();
+  const t = String(s ?? "").replace(/^About [DQA]\d+ \(.*?\):\s*/s, "").replace(/\*\*/g, "").trim();
   return t.length > 140 ? `${t.slice(0, 139)}…` : t;
 };
 export function describeEdit(d) {
@@ -169,7 +169,8 @@ export function buildTimeline(events = [], model = null) {
         const n = /^About D(\d+)\b/.exec(y.text)?.[1];
         const target = n && tl.lanes.find((l) => l.n === +n);
         if (target) y.target = target.id;
-        y.label = target ? `challenged D${n}` : "said";
+        const qa = /^About ([QA])(\d+)\b/.exec(y.text);
+        y.label = target ? `challenged D${n}` : qa ? `${qa[1] === "Q" ? "answered" : "corrected"} ${qa[1]}${qa[2]}` : "said";
         break;
       }
       case "revise":
@@ -242,7 +243,7 @@ export function buildTimeline(events = [], model = null) {
         if (i == null) break;
         const k = tl.tests[i];
         k.t = e.t; // the tick sits where the result came back
-        k.ok = e.ok !== false && !(e.tests?.fail > 0);
+        k.ok = e.ok !== false; // the server counts a failing test as a failed run
         if (e.tests) Object.assign(k, { pass: e.tests.pass, fail: e.tests.fail });
         else if (k.ok) reading = { i, text: "" };
         lastResult = { t: e.t, i };
