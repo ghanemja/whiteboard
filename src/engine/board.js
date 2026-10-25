@@ -23,12 +23,12 @@ export { MILESTONE, PHASES };
 
 // Component status is color + a corner badge; no words.
 export const STATUS = {
-  planned: { stroke: "#868e96", fill: "#f8f9fa", dash: "dashed", badge: null },
-  building: { stroke: "#e8590c", fill: "#fff3bf", dash: "solid", badge: "…" },
-  built: { stroke: "#1971c2", fill: "#d0ebff", dash: "solid", badge: null },
-  verified: { stroke: "#2f9e44", fill: "#d3f9d8", dash: "solid", badge: "✓" },
-  failed: { stroke: "#e03131", fill: "#ffe3e3", dash: "solid", badge: "✗" },
-  live: { stroke: "#6741d9", fill: "#e5dbff", dash: "solid", badge: "★" },
+  planned: { stroke: "#868e96", fill: "#f8f9fa", badge: null },
+  building: { stroke: "#e8590c", fill: "#fff3bf", badge: "…" },
+  built: { stroke: "#1971c2", fill: "#d0ebff", badge: null },
+  verified: { stroke: "#2f9e44", fill: "#d3f9d8", badge: "✓" },
+  failed: { stroke: "#e03131", fill: "#ffe3e3", badge: "✗" },
+  live: { stroke: "#6741d9", fill: "#e5dbff", badge: "★" },
 };
 
 export const KINDS = ["client", "service", "data", "external", "queue", "test", "user"];
@@ -95,7 +95,7 @@ function poly(id, pts, style) {
 function iconParts(kind, ox, oy, s, pid) {
   let n = 0;
   const id = () => `${pid}:${n++}`;
-  const shape = { strokeColor: s.stroke, backgroundColor: s.fill, fillStyle: "solid", strokeStyle: s.dash, strokeWidth: 2, roughness: 1 };
+  const shape = { strokeColor: s.stroke, backgroundColor: s.fill, fillStyle: "solid", strokeStyle: "solid", strokeWidth: 2, roughness: 1 };
   const ink = { strokeColor: s.stroke, backgroundColor: "transparent", strokeStyle: "solid", strokeWidth: 2, roughness: 1 };
   const dot = { strokeColor: s.stroke, backgroundColor: s.stroke, fillStyle: "solid", strokeStyle: "solid", strokeWidth: 1, roughness: 1 };
   const rect = (x, y, w, h, st = shape, round = true) => ({ type: "rectangle", id: id(), x: ox + x, y: oy + y, width: w, height: h, roundness: round ? { type: 3 } : null, ...st });
@@ -116,8 +116,8 @@ function iconParts(kind, ox, oy, s, pid) {
       return [
         ell(0, 56, 110, 24),
         rect(0, 12, 110, 56, { ...shape, strokeColor: "transparent" }, false),
-        ln([[0, 12], [0, 68]], { ...ink, strokeStyle: s.dash }),
-        ln([[110, 12], [110, 68]], { ...ink, strokeStyle: s.dash }),
+        ln([[0, 12], [0, 68]], ink),
+        ln([[110, 12], [110, 68]], ink),
         ln([[0, 36], [55, 48], [110, 36]], ink, curved),
         ell(0, 0, 110, 24),
       ];

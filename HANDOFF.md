@@ -136,7 +136,7 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 
 ### 4.2 Pictures-first board (Architecture tab)
 
-Pictograms per kind (client = browser window, service = server rack, data = cylinder, external = cloud, queue, test = clipboard, user = person), name under it, main library in small grey text, status = color + corner badge (… building, ✓ verified, ✗ failed, ★ live). 3×3 grid (`freeCell`, spills below), arrows bind to invisible hit-boxes (`convertToExcalidrawElements` only binds within one batch, so geometry proxies are passed and points computed by hand), dashed when async, short protocol tag (`via`) on the arrow if it fits.
+Pictograms per kind (client = browser window, service = server rack, data = cylinder, external = cloud, queue, test = clipboard, user = person), name under it, main library in small grey text, status = color + corner badge (… building, ✓ verified, ✗ failed, ★ live); outlines are always solid (planned is grey, not dashed). 3×3 grid (`freeCell`, spills below), arrows bind to invisible hit-boxes (`convertToExcalidrawElements` only binds within one batch, so geometry proxies are passed and points computed by hand), dashed when async, short protocol tag (`via`) on the arrow if it fits.
 
 ### 4.3 Steering from the board
 
