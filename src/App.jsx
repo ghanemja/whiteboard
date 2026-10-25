@@ -124,7 +124,7 @@ function Receipt({ r }) {
   return (
     <span className={`rcpt rc-${r.verdict}`} title={`${RC_SAID[r.verdict]}:\n${r.claims.map((c) => `${RC[c.verdict]} “${c.text}”: ${c.why}`).join("\n")}`}>
       {RC[r.verdict]}
-      {bad.length > 0 && <span className="rcpt-why">{bad.map((c) => c.why).join("; ")}</span>}
+      {bad.length > 0 && <span className="rcpt-why">{bad.map((c) => c.short ?? c.why).join(", ")}</span>}
     </span>
   );
 }
@@ -173,8 +173,8 @@ function AgentMessage({ m, phase, linked, onHover, onFocus, receipts, skim }) {
         if (b.type === "fold")
           return (
             <p key={`fold-${b.bis[0]}`} className="skimmed">
-              <button className="skim-gap" onClick={() => setOpened((o) => new Set([...o, ...b.bis]))} title="Show what skim folded away">
-                ⋯ {b.n} sentence{b.n === 1 ? "" : "s"}
+              <button className="skim-gap" onClick={() => setOpened((o) => new Set([...o, ...b.bis]))} title={`${b.n} sentence${b.n === 1 ? "" : "s"} skim folded away: show them`}>
+                ⋯ {b.n}
               </button>
             </p>
           );
@@ -299,8 +299,12 @@ function ReviewCard({ rows, onGo }) {
   return (
     <div className="review" role="region" aria-label="Review">
       <div className="rv-head">
-        <span className="hand">Before you trust this run</span>
-        {todo > 0 && <span className="rv-count">{todo} to check</span>}
+        <span className="hand">Review</span>
+        {todo > 0 && (
+          <span className="rv-count" title={`${todo} to check before you trust this run`}>
+            {todo}
+          </span>
+        )}
       </div>
       <ul>
         {rows.map((r) => (
@@ -336,11 +340,19 @@ function QuestionCard({ q, dLabel, canAnswer, onAnswer, onConfirm, onCorrect, li
         <span className={`qmark ${isQ ? "asks" : "assumes"}`}>{isQ ? "?" : "≈"}</span>
         <b>{isQ ? `Q${q.n}` : `A${q.n}`}</b>
         <span className="q-text">{q.text}</span>
-        {q.about && <span className="chip">about {dLabel(q.about)}</span>}
+        {q.about && (
+          <span className="chip" title={`About ${dLabel(q.about)}`}>
+            {dLabel(q.about)}
+          </span>
+        )}
       </div>
-      {q.state === "answered" && <p className="q-done">✓ Answered: <b>{q.answer}</b></p>}
-      {q.state === "confirmed" && <p className="q-done">✓ You confirmed this</p>}
-      {q.state === "corrected" && <p className="q-done corrected">↻ Corrected</p>}
+      {q.state === "answered" && (
+        <p className="q-done" title="Answered">
+          ✓ <b>{q.answer}</b>
+        </p>
+      )}
+      {q.state === "confirmed" && <p className="q-done" title="Confirmed">✓</p>}
+      {q.state === "corrected" && <p className="q-done corrected" title="Corrected">↻</p>}
       {q.state === "open" && canAnswer && isQ && (
         <form
           className="q-answer"
@@ -355,23 +367,27 @@ function QuestionCard({ q, dLabel, canAnswer, onAnswer, onConfirm, onCorrect, li
               {o}
             </button>
           ))}
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder={q.options.length ? "Or your own answer…" : "Your answer…"} />
-          <button type="submit" className="q-send" disabled={!text.trim()}>
-            Answer
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder={q.options.length ? "Other…" : "Answer…"} aria-label="Your answer" />
+          <button type="submit" className="q-send" disabled={!text.trim()} title="Send your answer">
+            ↵
           </button>
         </form>
       )}
       {q.state === "open" && canAnswer && !isQ && (
         <div className="q-answer" onClick={stop}>
-          <button className="q-opt" onClick={() => onConfirm(q)} title="It's right: the agent sees that with your next message or approval">
-            ✓ Right
+          <button className="q-opt" onClick={() => onConfirm(q)} title="Right (the agent sees it with your next message or approval)" aria-label="Right">
+            ✓
           </button>
-          <button className="linkish" onClick={() => onCorrect(q)}>
-            Not quite…
+          <button className="q-opt" onClick={() => onCorrect(q)} title="Correct it" aria-label="Correct it">
+            ✎
           </button>
         </div>
       )}
-      {q.state === "open" && !canAnswer && <p className="q-done open">Left open</p>}
+      {q.state === "open" && !canAnswer && (
+        <p className="q-done open" title="Left open">
+          …
+        </p>
+      )}
     </div>
   );
 }
@@ -414,15 +430,13 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
 
       {(questions.length > 0 || passing.length > 0) && (
         <section id="plan-questions">
-          <h3>
-            For you <span className="h3-note">what it asked, and what it's assuming</span>
-          </h3>
+          <h3 title="What it asked you, and what it's assuming">For you</h3>
           {questions.map((q) => (
             <QuestionCard key={q.id} q={q} dLabel={dLabel} canAnswer={canChallenge} onAnswer={onAnswer} onConfirm={onConfirm} onCorrect={onCorrect} link={link} />
           ))}
           {passing.length > 0 && (
             <div className="passing">
-              <div className="ps-phase">Said in passing</div>
+              <div className="ps-phase" title="Only said in its messages, not asked on the board">In passing</div>
               {passing.map((p) => (
                 <div key={p.id} className="pass-row">
                   <span className={`qmark ${p.kind}`}>{p.kind === "asks" ? "?" : "≈"}</span>
@@ -430,8 +444,8 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
                     {p.text}
                   </button>
                   {canChallenge && (
-                    <button className="linkish" onClick={() => onReply(p)}>
-                      {p.kind === "asks" ? "Reply" : "Not quite…"}
+                    <button className="q-opt" onClick={() => onReply(p)} title={p.kind === "asks" ? "Reply" : "Correct it"} aria-label={p.kind === "asks" ? "Reply" : "Correct it"}>
+                      {p.kind === "asks" ? "↩" : "✎"}
                     </button>
                   )}
                 </div>
@@ -473,9 +487,9 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
                     ev.stopPropagation();
                     toCode(n.id);
                   }}
-                  title="What this run changed in its files"
+                  title={`Changed in this run: ${n.diff.files.join(", ")}`}
                 >
-                  <span className="fd-add">+{n.diff.add}</span> <span className="fd-del">−{n.diff.del}</span> in {n.diff.files.length} file{n.diff.files.length === 1 ? "" : "s"}
+                  <span className="fd-add">+{n.diff.add}</span> <span className="fd-del">−{n.diff.del}</span>
                 </button>
               )}
             </div>
@@ -604,11 +618,11 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
 
       {changes.length > 0 && (
         <section id="plan-code">
-          <h3>
-            Code changes{" "}
+          <h3 title={`${changes.length} files changed in this run, ${commits ? `in ${commits} commits` : "not committed"}`}>
+            Code{" "}
             <span className="h3-note">
-              {changes.length} file{changes.length === 1 ? "" : "s"}, <span className="fd-add">+{changes.reduce((a, f) => a + f.add, 0)}</span>{" "}
-              <span className="fd-del">−{changes.reduce((a, f) => a + f.del, 0)}</span> · {commits ? `${commits} commit${commits === 1 ? "" : "s"}` : "not committed"}
+              <span className="fd-add">+{changes.reduce((a, f) => a + f.add, 0)}</span> <span className="fd-del">−{changes.reduce((a, f) => a + f.del, 0)}</span> ·{" "}
+              {commits ? `${commits} commit${commits === 1 ? "" : "s"}` : "uncommitted"}
             </span>
           </h3>
           {changed.map((n) => (
@@ -622,9 +636,8 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
           ))}
           {model.unowned?.length > 0 && (
             <div id="plan-code:unowned" className="code-group unowned">
-              <div className="cg-head">
-                <b>Not on the board</b>
-                <span className="h3-note">no component owns these files</span>
+              <div className="cg-head" title="No component on the board owns these files">
+                <b>Not on board</b>
               </div>
               {model.unowned.map((f) => <FileDiff key={f.path} f={byPath.get(f.path) ?? f} />)}
             </div>
@@ -1057,7 +1070,7 @@ export default function App() {
   else if (st.thinking) status = st.thinkingFor >= 2 ? `Working… ${st.thinkingFor}s` : "Working…";
   else if (st.busy) status = s.caption ? `${s.caption}…` : "Working…";
   else if (awaitingTask) status = "Pick a repo and describe a task";
-  else if (reviewing) status = `Plan ready${openQuestions ? `, with ${openQuestions} thing${openQuestions === 1 ? "" : "s"} to answer` : ""}. Review it on the board, then approve.`;
+  else if (reviewing) status = "Plan ready. Review it on the board, then approve.";
   else if (decisions.length) status = "Your board changes are ready to send";
   else if (s?.result) status = `Done${s.result.cost != null ? ` · $${s.result.cost.toFixed(2)}` : ""}${s.result.turns ? ` · ${s.result.turns} turns` : ""}`;
   else if (phase === "complete") status = "Shipped. Edit the board to steer the next round.";

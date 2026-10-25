@@ -28,6 +28,7 @@ Every run is recorded so it can be replayed, reopened, and read as a decision lo
 5. **Record every run**: replay, reopen ("respawn") the board, and a readable decision log.
 6. **The reasoning chain is first-class:** architecture, libraries, connections/APIs and technical decisions must be visible and challengeable.
 7. **Don't delete existing features** when adding new views; add alongside.
+8. **Minimize words, everywhere (the panel too): high interpretability.** Glyph + count + a one- or two-word label; the detail goes in a hover (title) or behind a click. E.g. a false claim shows "✗ README.md", not a sentence; a review row is "◇ unchecked D1 D2". Messages to the user: short, too.
 
 ### Status
 

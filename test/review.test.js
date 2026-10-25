@@ -14,7 +14,7 @@ test("a run with work left to check", () => {
       unowned: [{ path: "docker-compose.yml", add: 11, del: 0 }],
     },
     claims: [
-      { id: "s1", text: "I documented the setup in README.md.", verdict: "bad", claims: [{ verdict: "bad", why: "README.md wasn't changed in this run" }] },
+      { id: "s1", text: "I documented the setup in README.md.", verdict: "bad", claims: [{ text: "README.md", verdict: "bad", why: "README.md wasn't changed in this run", short: "README.md" }] },
       { id: "s2", text: "All 42 pass.", verdict: "ok", claims: [] },
     ],
     passing: [{ id: "s3", text: "Should I also add OCR?", kind: "asks" }],
@@ -23,12 +23,15 @@ test("a run with work left to check", () => {
     lastTest: { ok: true, pass: 47, fail: 3 },
     denied: ["rm -rf build"],
   });
-  assert.deepEqual(keys(rows), ["failed", "unchecked", "claim-s1", "questions", "asked", "code", "unowned", "tests", "denied"]);
-  assert.deepEqual(rows[0].links, [{ label: "D2", lid: "decision:d2" }]);
+  assert.deepEqual(keys(rows), ["failed", "unchecked", "contradicted", "questions", "asked", "code", "unowned", "tests", "denied"]);
+  assert.deepEqual(rows[0].links, [{ label: "D2", lid: "decision:d2", title: "d2" }]);
   assert.deepEqual(rows[1].links.map((l) => l.label), ["D3"]); // the rejected D4 isn't owed a check
-  assert.match(rows[2].text, /README\.md wasn't changed/);
+  // Few words: the false claim is its one wrong token; the sentence and the reason are its title.
+  assert.equal(rows[2].links[0].label, "README.md");
   assert.equal(rows[2].links[0].lid, "sentence:s1");
-  assert.equal(rows.find((r) => r.key === "code").text, "2 files changed (+29 −4), not committed");
+  assert.match(rows[2].links[0].title, /wasn't changed/);
+  assert.equal(rows.find((r) => r.key === "code").text, "2 files +29 −4 · uncommitted");
+  assert.equal(rows.find((r) => r.key === "tests").text, "tests 47/50");
 });
 
 test("a clean run says so", () => {
@@ -40,7 +43,7 @@ test("a clean run says so", () => {
     lastTest: { ok: true, pass: 12, fail: 0 },
   });
   assert.equal(rows[0].key, "clear");
-  assert.match(rows.find((r) => r.key === "code").text, /in 1 commit$/);
+  assert.match(rows.find((r) => r.key === "code").text, /· 1 commit$/);
 });
 
 test("an old recording without a diff says nothing about code", () => {

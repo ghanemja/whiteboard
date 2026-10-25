@@ -161,16 +161,20 @@ export function buildTimeline(events = [], model = null) {
     const i = tl.you.length;
     const edits = e.edits ?? [];
     const y = { t: e.t, kind: e.kind, label: "", text: e.text ?? "", edits: edits.length, msg: e.msg ?? null };
+    // label: in words, for hovers and tests; tag: the few characters the canvas shows beside the glyph.
     switch (e.kind) {
       case "approve":
         y.label = edits.length ? `approved +${edits.length}` : "approved";
+        if (edits.length) y.tag = `+${edits.length}`;
         break;
       case "chat": {
         const n = /^About D(\d+)\b/.exec(y.text)?.[1];
         const target = n && tl.lanes.find((l) => l.n === +n);
         if (target) y.target = target.id;
         const qa = /^About ([QA])(\d+)\b/.exec(y.text);
+        if (qa) y.reply = true;
         y.label = target ? `challenged D${n}` : qa ? `${qa[1] === "Q" ? "answered" : "corrected"} ${qa[1]}${qa[2]}` : "said";
+        y.tag = target ? `D${n}` : qa ? `${qa[1]}${qa[2]}` : null;
         break;
       }
       case "revise":
@@ -519,7 +523,7 @@ export function drawTimeline(tl, { now = tl.end } = {}) {
   }
 
   // ---- marks ----
-  // You: a pink dot per move, with a glyph and a word or two.
+  // You: a pink dot per move, its glyph saying what it was (▶ start, ? challenge, ↩ answer, ✓ approve, $ allow, ✗ deny, ■ stop).
   let rows = [-Infinity, -Infinity];
   tl.you.forEach((y, i) => {
     const x = youX[i], id = `tl:y:${i}`, f = fade(y.t);
@@ -532,14 +536,14 @@ export function drawTimeline(tl, { now = tl.end } = {}) {
       sk.push(...dot(id, x, TL.Y_YOU, 22, stroke, YOU.fill, null, null, f));
       sk.push(box(`${id}:g`, x - 4, TL.Y_YOU - 4, 8, 8, { strokeColor: YOU.stroke, backgroundColor: YOU.stroke, fillStyle: "solid", strokeWidth: 1, roughness: 0, ...f }));
     } else {
-      const glyph = { approve: "✓", chat: y.target ? "?" : "…", revise: String(y.edits), edits: String(y.edits) }[y.kind] ?? (deny ? "✗" : y.decision === "allow-all" ? "$$" : "$");
+      const glyph = { approve: "✓", chat: y.target ? "?" : y.reply ? "↩" : "…", revise: String(y.edits), edits: String(y.edits) }[y.kind] ?? (deny ? "✗" : y.decision === "allow-all" ? "$$" : "$");
       sk.push(...dot(id, x, TL.Y_YOU, 22, stroke, y.kind === "approve" ? YOU.stroke : YOU.fill, glyph, y.kind === "approve" ? "#ffffff" : stroke, f, glyph.length > 1 ? 0.5 : 0.62));
     }
-    // A word or two above it, on a second row if the first is taken there, else none.
-    const w = y.label.length * 7 + 6;
+    // Only what the glyph can't say (which decision, question or assumption), above it; a second row if the first is taken.
+    const w = (y.tag?.length ?? 0) * 8 + 6;
     const row = rows.findIndex((r) => x - w / 2 > r + 4);
-    if (row !== -1 && y.label) {
-      sk.push(text(`${id}:t`, x, 0, y.label, 13, YOU.stroke, { ...f, _c: [x, TL.Y_YOU - 22 - row * 15] }));
+    if (row !== -1 && y.tag) {
+      sk.push(text(`${id}:t`, x, 0, y.tag, 13, YOU.stroke, { ...f, _c: [x, TL.Y_YOU - 22 - row * 15] }));
       rows[row] = x + w / 2;
     }
   });
@@ -582,6 +586,6 @@ export function drawTimeline(tl, { now = tl.end } = {}) {
   item("v", (id, x, y) => dot(id, x, y, 16, PROOF.pass.color, PROOF.pass.color, "✓", "#ffffff"), "proven");
   item("f", (id, x, y) => dot(id, x, y, 16, PROOF.fail.color, PROOF.fail.color, "✗", "#ffffff"), "failed");
   item("y", (id, x, y) => dot(id, x, y, 16, YOU.stroke, YOU.fill), "you");
-  item("i", (id, x, y) => [line(id, [[x - 8, y], [x + 8, y]], { strokeColor: MUTED, strokeStyle: "dotted", strokeWidth: 2, roughness: 0 })], "idle, shortened");
+  item("i", (id, x, y) => [line(id, [[x - 8, y], [x + 8, y]], { strokeColor: MUTED, strokeStyle: "dotted", strokeWidth: 2, roughness: 0 })], "idle");
   return sk;
 }

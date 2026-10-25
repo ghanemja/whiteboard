@@ -73,14 +73,14 @@ test("git decides file claims; without it, silence proves nothing", () => {
   const claim = one("The changes are in `src/server.js` and `src/store.js`, and the README now documents aliases.");
   const diff = (...paths) => ({ changes: paths.map((path) => ({ path, add: 1, del: 0 })) });
   assert.equal(checkClaim(claim, diff("src/server.js", "src/store.js", "README.md")).verdict, "ok");
-  assert.deepEqual(checkClaim(claim, diff("src/server.js", "src/store.js")), { verdict: "bad", why: "README wasn't changed in this run" });
+  assert.deepEqual(checkClaim(claim, diff("src/server.js", "src/store.js")), { verdict: "bad", why: "README wasn't changed in this run", short: "README" });
   assert.equal(checkClaim(claim, { edited: ["src/server.js", "src/store.js", "README.md"] }).verdict, "ok");
   assert.equal(checkClaim(claim, { edited: ["src/server.js"] }).verdict, "unknown");
   assert.equal(checkClaim(one("I didn't touch `src/codes.js`."), diff("src/codes.js")).verdict, "bad");
   // A folder counts when anything in it changed.
   const folders = one("The new code is in `api/` and `worker/`, and I documented the setup in `README.md`.");
   assert.deepEqual(folders.files, ["api/", "worker/", "README.md"]);
-  assert.deepEqual(checkClaim(folders, diff("api/app.py", "worker/ingest.py")), { verdict: "bad", why: "README.md wasn't changed in this run" });
+  assert.deepEqual(checkClaim(folders, diff("api/app.py", "worker/ingest.py")), { verdict: "bad", why: "README.md wasn't changed in this run", short: "README.md" });
 });
 
 test("a sentence's receipt: contradicted beats unverified beats backed", () => {

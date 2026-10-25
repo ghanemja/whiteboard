@@ -3,7 +3,8 @@
 // confirm or contradict: the test runner's output, the repo's actual diff, the commands
 // it ran. Each sentence's claims get a verdict:
 //   ok      the record backs it
-//   bad     the record contradicts it (only ever from ground truth: the runner or git)
+//   bad     the record contradicts it (only ever from ground truth: the runner or git);
+//           `short` is the one token to show inline (a file, "11/12"), `why` the hover
 //   unknown nothing in the record says either way
 // Pure functions, like timeline.js, so `node --test` can run them.
 
@@ -121,14 +122,14 @@ export function checkClaim(claim, ev = {}) {
         if (!counted) return { verdict: "unknown", why: "the last run didn't print its counts" };
         return run.pass === claim.pass && run.pass + run.fail === claim.total
           ? { verdict: "ok", why: `the runner reported ${got}` }
-          : { verdict: "bad", why: `the runner reported ${got}, not ${said}` };
+          : { verdict: "bad", why: `the runner reported ${got}, not ${said}`, short: got };
       }
-      if (run.ok === false) return run.inferred ? { verdict: "unknown", why: "the last run's result wasn't recorded" } : { verdict: "bad", why: `the last test run failed${got ? ` (${got})` : ""}` };
+      if (run.ok === false) return run.inferred ? { verdict: "unknown", why: "the last run's result wasn't recorded" } : { verdict: "bad", why: `the last test run failed${got ? ` (${got})` : ""}`, short: got ?? "failed" };
       if (!counted || claim.pass == null) return { verdict: "ok", why: `the last test run passed${got ? ` (${got})` : ""}` };
       const all = claim.total ?? claim.pass;
       return run.pass === claim.pass && run.fail === 0 && run.pass + run.fail === all
         ? { verdict: "ok", why: `the runner reported ${got}` }
-        : { verdict: "bad", why: `the runner reported ${got}, not ${said}` };
+        : { verdict: "bad", why: `the runner reported ${got}, not ${said}`, short: got };
     }
     case "files":
     case "untouched": {
@@ -137,7 +138,7 @@ export function checkClaim(claim, ev = {}) {
         const hit = (f) => changed.some((c) => sameFile(f, c.path));
         const wrong = claim.files.filter((f) => (claim.kind === "files" ? !hit(f) : hit(f)));
         if (!wrong.length) return { verdict: "ok", why: claim.kind === "files" ? `the diff changes ${claim.files.length === 1 ? "it" : `all ${claim.files.length}`}` : "the diff doesn't touch it" };
-        return { verdict: "bad", why: `${wrong.join(", ")} ${claim.kind === "files" ? "wasn't changed in this run" : "was changed in this run"}` };
+        return { verdict: "bad", why: `${wrong.join(", ")} ${claim.kind === "files" ? "wasn't changed in this run" : "was changed in this run"}`, short: wrong.join(", ") };
       }
       // No diff recorded: an edit tool's word is support, but its silence proves nothing.
       if (claim.kind === "files" && ev.edited?.length && claim.files.every((f) => ev.edited.some((p) => sameFile(f, p))))
@@ -149,7 +150,7 @@ export function checkClaim(claim, ev = {}) {
       const want = claim.command.trim().toLowerCase();
       return ev.commands.some((c) => c.toLowerCase().includes(want))
         ? { verdict: "ok", why: "it's in the run's commands" }
-        : { verdict: "bad", why: "no such command ran in this session" };
+        : { verdict: "bad", why: "no such command ran in this session", short: claim.command };
     }
     default:
       return { verdict: "unknown", why: "" };

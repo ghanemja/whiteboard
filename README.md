@@ -51,15 +51,15 @@ Waits longer than 15 seconds (reading the plan, a permission you hadn't answered
 
 ## Checking what it says
 
-An agent writes a lot, and not all of it holds up. The board helps you read a run without taking its word for it:
+Don't take the agent's word for it. Glyphs and counts, details on hover:
 
-- **Receipts.** A sentence that claims something checkable gets a mark after it: ✓ when the run's record backs it, ✗ when the record contradicts it (with the reason, e.g. "README.md wasn't changed in this run"), ? when the record doesn't say either way. Test results are checked against the runner's own counts from the last run before the sentence ("all 12 tests pass", "41 of 50"); files it says it changed, or left alone, against the repo's actual diff; commands it says it ran against the commands in the run. A ✗ only ever comes from the test runner or git. Plans ("I'll make sure the tests pass") and instructions to you ("run `npm start`") aren't claims. Hover a mark for the details; the Activity tab counts the contradictions (✗ n).
-- **What it changed.** The server reads the repo's real changes with git, whatever tool the agent used to make them: the working tree compared with how the run found it, untracked files included, so earlier uncommitted work isn't counted. It never touches your index or files. Each component on the board shows GitHub-style blocks and +/− under its picture, and the Plan tab's **Code changes** section has every file's diff, grouped by the component that owns it, with any file no component owns called out separately, and whether any of it was committed.
-- **Questions and assumptions.** The agent asks you what only you can decide with a "?" sticky note, and states what it's assuming with a "≈" one, instead of burying them in a paragraph. Answer in the Plan tab's **For you** section (pick an option or type an answer; at the plan gate that revises the plan), or confirm an assumption (✓ Right) or correct it (Not quite…). Questions and assumptions it only mentioned in prose are listed there too, under **Said in passing**, and marked in the conversation.
-- **Skim.** The Skim toggle in the Activity tab folds the narration away and keeps only the sentences that drew on the board, claim something checkable, ask you something, or state an assumption. Click a fold to read it.
-- **Review.** When a run ends, a **Before you trust this run** card replaces reading the summary: decisions whose check failed or never ran, things it said that the record contradicts or can't back, open questions and assumptions, questions asked in passing, the files it changed (and those nothing on the board owns), whether any of it is committed, the last test run, and commands you denied. Each row links to the card, sentence or diff it's about.
+- **Receipts.** After a checkable claim: ✓ backed, ✗ contradicted (with the one wrong thing, e.g. "✗ README.md"), ? no evidence. Test claims vs the runner's counts, file claims vs git, "I ran X" vs the commands run. ✗ comes only from the runner or git. Activity tab: ✗ n.
+- **What it changed.** Git, not the agent's summary: the working tree vs how the run found it (untracked included, your index untouched). Components show +/− blocks; Plan → **Code** has every diff by component, plus files **not on board**.
+- **Questions and assumptions.** "?" and "≈" sticky notes. Plan → **For you**: pick an option or type (↵), confirm ✓ or correct ✎. Ones only said in prose: **In passing**.
+- **Skim.** Activity → Skim: keeps sentences that drew, claimed, asked or assumed; the rest fold to "⋯ n".
+- **Review.** When a run ends: failed/unchecked checks, false or unverified claims, open questions, changed and unowned files, commits, last test run, denied commands. Each chip links to its card, sentence or diff.
 
-The scripted demo shows all of these: it asks a question and states an assumption in its plan, runs tests and an eval, and its closing summary claims it documented the setup in a README it never touched, and asks you something in passing.
+The demo shows all five, including a false claim (a README it never touched) and a question buried in its summary.
 
 ## Saved boards and decision logs
 
