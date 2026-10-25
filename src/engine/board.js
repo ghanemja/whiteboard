@@ -5,7 +5,7 @@ import {
 } from "@excalidraw/excalidraw";
 import { DECISION, INK, MILESTONE, MUTED, PHASES, PROOF, YOU } from "./palette";
 import { buildTimeline, drawTimeline, TL, xToTime } from "./timeline";
-import { c4Tag } from "./c4";
+import { c4Tag, layerOf, parseSteps, sentenceCase, tagCase } from "./views";
 
 export { MILESTONE, PHASES };
 
@@ -48,6 +48,9 @@ const IW = 110, IH = 80; // pictogram size
 const C4B = { x: -40, y: -10, w: 190, h: 92 };
 // Where a component's hit-box sits relative to that origin, per drawing style.
 const HIT = { pictures: { x: -10, y: -10 }, c4: { x: C4B.x, y: C4B.y } };
+// The C4 style is the official one: crisp 1 px lines and a plain typeface (Nunito, Excalidraw's "Normal").
+const SANS = 6;
+const FADE = 15; // opacity of what a layer or flow filter leaves out
 const COL = 290, ROW = 180, NX0 = 55, NY0 = 90; // node grid (icon origin)
 const NOTE_X = 860, NOTE_Y = 90;
 const MARK = "hl-";
@@ -226,7 +229,8 @@ export class Board {
   }
 
   reset() {
-    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {}, questions: {}, unowned: [] };
+    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {}, questions: {}, flows: {}, unowned: [] };
+    this.focus = null; // what the board is narrowed to: { layer } or { flow }, the rest faded
     this.known = new Set();
     this.hl = new Set();
     this.hlSig = "";
@@ -248,11 +252,59 @@ export class Board {
   }
   // Decision diamonds stay above the components they sit on (a component redrawn later would
   // cover its diamond and take its clicks), and a decision's option pills above those.
+  // A layer or flow filter fades what it leaves out, whatever was just drawn.
   commit(elements) {
-    const layer = (e) => (e.id.startsWith("alt-") || e.containerId?.startsWith("alt-") ? 2 : e.groupIds?.[0]?.startsWith("g:dec-") ? 1 : 0);
+    const layer = (e) => (e.id.startsWith("alt-") || e.containerId?.startsWith("alt-") ? 2 : e.groupIds?.[0]?.startsWith("g:dec-") || e.id.startsWith("flow:") ? 1 : 0);
     const ls = elements.map(layer);
     if (ls.some((l, i) => i && l < ls[i - 1])) elements = elements.map((e, i) => [ls[i], i, e]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , e]) => e);
-    this.api.updateScene({ elements, captureUpdate: CaptureUpdateAction.NEVER });
+    this.api.updateScene({ elements: this.faded(elements), captureUpdate: CaptureUpdateAction.NEVER });
+  }
+
+  // Line and type for the drawing style: hand-drawn pictures, or the official C4 look.
+  look(width = 2) {
+    return this.style === "c4" ? { strokeWidth: 1, roughness: 0 } : { strokeWidth: width, roughness: 1 };
+  }
+  font() {
+    return this.style === "c4" ? { fontFamily: SANS } : {};
+  }
+
+  // What the focus keeps: { nodes, edges } (sets of ids and edge keys), or null for everything.
+  focusSet() {
+    const f = this.focus, m = this.model;
+    if (!f) return null;
+    let nodes;
+    if (f.layer) nodes = new Set(Object.values(m.nodes).filter((n) => [f.layer, null].includes(layerOf(n))).map((n) => n.id));
+    else if (m.flows[f.flow]) nodes = new Set(m.flows[f.flow].steps.flatMap((s) => [s.from, s.to]));
+    else return null;
+    const edges = new Set();
+    if (f.layer) for (const [k, e] of Object.entries(m.edges)) if (nodes.has(e.from) && nodes.has(e.to)) edges.add(k);
+    if (f.flow)
+      for (const st of m.flows[f.flow].steps)
+        for (const k of [`${st.from}>${st.to}`, `${st.to}>${st.from}`]) if (m.edges[k]) edges.add(k);
+    return { nodes, edges };
+  }
+
+  // Elements outside the focus at FADE opacity; each one's own opacity comes back once it's in again.
+  faded(els) {
+    const keep = this.focusSet();
+    if (!keep && !this.wasFocused) return els;
+    this.wasFocused = !!keep;
+    const edgeOf = new Map(Object.entries(this.model.edges).map(([k, e]) => [e.elId, k]));
+    const inFocus = (e) => {
+      const node = this.nodeByEl(e.id);
+      if (node) return keep.nodes.has(node.id);
+      const ek = edgeOf.get(e.id) ?? edgeOf.get(e.containerId);
+      if (ek) return keep.edges.has(ek);
+      const dec = e.groupIds?.[0]?.startsWith("g:dec-") || /^dec-.+-l\d+$/.test(e.id) ? this.model.decisions[e.groupIds?.[0]?.slice(6) ?? e.id.replace(/^dec-(.+)-l\d+$/, "$1")] : null;
+      if (dec) return dec.affects.some((a) => keep.nodes.has(a));
+      return true; // notes, questions, the key, flow steps, your own drawing
+    };
+    return els.map((e) => {
+      if (e.isDeleted) return e;
+      const own = e.customData?.o0 ?? e.opacity;
+      const want = keep && !inFocus(e) ? Math.min(own, FADE) : own;
+      return want === e.opacity ? e : bump(e, { opacity: want, customData: { ...e.customData, o0: own } });
+    });
   }
   convert(skeletons) {
     return convertToExcalidrawElements(skeletons, { regenerateIds: false });
@@ -306,7 +358,7 @@ export class Board {
   // otherwise it gets sized with a fallback font and renders clipped.
   async init() {
     try {
-      await document.fonts.load("24px Excalifont", "Plan Build Verify Ship ✓✗★…");
+      await Promise.all([document.fonts.load("24px Excalifont", "Plan Build Verify Ship ✓✗★…"), document.fonts.load("18px Nunito", "Container Database")]);
     } catch {
       /* fall back to whatever font is available */
     }
@@ -405,6 +457,7 @@ export class Board {
       case "phase": return this.setPhase(a.name);
       case "task": return this.setTask(a);
       case "node": return this.addNode(a);
+      case "flow": return this.setFlow(a);
       case "edge": return this.addEdge(a);
       case "status": return this.setStatus(a.id, a.v);
       case "rename": return this.rename(a.id, a.name);
@@ -507,9 +560,9 @@ export class Board {
     const libs = node.libs ?? [];
     const sk = c4
       ? [
-          { type: "rectangle", id: pid, x: ox + C4B.x, y: oy + C4B.y, width: C4B.w, height: C4B.h, strokeColor: s.stroke, backgroundColor: s.fill, fillStyle: "solid", strokeWidth: 2, roughness: 1, roundness: null },
-          { type: "text", id: `${pid}:label`, x: ox, y: oy + 6, text: labelText ?? node.name, fontSize: 18, strokeColor: INK },
-          { type: "text", id: `${pid}:libs`, x: ox, y: oy + 34, text: c4Tag(node), fontSize: 13, strokeColor: MUTED },
+          { type: "rectangle", id: pid, x: ox + C4B.x, y: oy + C4B.y, width: C4B.w, height: C4B.h, strokeColor: s.stroke, backgroundColor: s.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0, roundness: null },
+          { type: "text", id: `${pid}:label`, x: ox, y: oy + 8, text: labelText ?? node.name, fontSize: 17, strokeColor: INK, fontFamily: SANS },
+          { type: "text", id: `${pid}:libs`, x: ox, y: oy + 34, text: c4Tag(node), fontSize: 12, strokeColor: MUTED, fontFamily: SANS },
         ]
       : [
           { type: "rectangle", id: pid, x: ox - 10, y: oy - 10, width: IW + 20, height: IH + 74, strokeColor: "transparent", backgroundColor: "transparent", strokeWidth: 1, roughness: 0 },
@@ -532,7 +585,7 @@ export class Board {
         const c = i < green ? "#2f9e44" : i < green + red ? "#e03131" : "#dee2e6";
         sk.push({ type: "rectangle", id: `${pid}:d${i}`, x: x0 + i * 11, y, width: 9, height: 9, strokeColor: c, backgroundColor: c, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
       }
-      sk.push({ type: "text", id: `${pid}:dt`, x: x0 + 60, y: y - 3, text: `+${d.add} −${d.del}`, fontSize: 12, strokeColor: MUTED });
+      sk.push({ type: "text", id: `${pid}:dt`, x: x0 + 60, y: y - 3, text: `+${d.add} −${d.del}`, fontSize: 12, strokeColor: MUTED, ...(c4 ? { fontFamily: SANS } : {}) });
     }
     const [bx, by] = c4 ? [ox + C4B.x + C4B.w - 14, oy + C4B.y - 14] : [ox + IW - 14, oy - 14];
     if (s.badge) {
@@ -552,11 +605,12 @@ export class Board {
     return out;
   }
 
-  addNode({ id, name, kind = "service", col = 0, row = 0, status, v, libs, api, paths }) {
+  addNode({ id, name, kind = "service", col = 0, row = 0, status, v, libs, api, paths, layer }) {
     if (!id) return [];
     const existing = this.model.nodes[id];
     if (existing) {
-      // Repeating a node op fills in its details (libraries, APIs, files) as the agent learns them.
+      // Repeating a node op fills in its details (libraries, APIs, files, layer) as the agent learns them.
+      if (layer != null) existing.layer = layer;
       if (libs != null) existing.libs = list(libs);
       if (api != null) existing.api = list(api);
       if (paths != null) existing.paths = list(paths);
@@ -568,13 +622,14 @@ export class Board {
     const cell = this.freeCell(col, row);
     const st = STATUS[v] ? v : STATUS[status] ? status : "planned";
     const node = {
-      id, name, kind: KINDS.includes(kind) ? kind : "service", status: st, elId: `node-${id}`, cell,
-      libs: list(libs), api: list(api), paths: list(paths),
+      id, name: sentenceCase(name), kind: KINDS.includes(kind) ? kind : "service", status: st, elId: `node-${id}`, cell,
+      libs: list(libs), api: list(api), paths: list(paths), layer: layer ?? null,
     };
     this.model.nodes[id] = node;
     const fresh = this.remember(this.drawNode(node, NX0 + cell[0] * COL, NY0 + cell[1] * ROW));
     this.commit([...this.scene(), ...fresh]);
     if (this.changes.length) this.attributeChanges();
+    this.redrawKey();
     // Decisions about it, made before it was drawn, can pin to it now (and the Why view moves down if it must).
     if (Object.keys(this.model.decisions).length) this.redrawDecisions();
     return [`node:${id}`];
@@ -714,8 +769,8 @@ export class Board {
     const out = this.convert([
       {
         type: "rectangle", id: q.elId, x, y, width: 210, height: 56, strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid",
-        strokeWidth: 1, strokeStyle: q.state === "open" && q.kind === "assumption" ? "dashed" : "solid", roughness: 1, roundness: { type: 3 },
-        label: { text: clip(q.answer ? `${q.text} → ${q.answer}` : q.text, 76), fontSize: 14, strokeColor: q.state === "corrected" ? MUTED : INK },
+        strokeWidth: 1, strokeStyle: q.state === "open" && q.kind === "assumption" ? "dashed" : "solid", roughness: this.style === "c4" ? 0 : 1, roundness: this.style === "c4" ? null : { type: 3 },
+        label: { text: clip(q.answer ? `${q.text} → ${q.answer}` : q.text, 76), fontSize: 14, strokeColor: q.state === "corrected" ? MUTED : INK, ...this.font() },
       },
       { type: "ellipse", id: `${q.elId}:b`, x: x - 12, y: y - 12, width: 24, height: 24, strokeColor: badge, backgroundColor: badge, fillStyle: "solid", strokeWidth: 1, roughness: 0 },
       { type: "text", id: `${q.elId}:g`, x, y, text: settled ? "✓" : q.state === "corrected" ? "↻" : st.glyph, fontSize: 15, strokeColor: "#ffffff" },
@@ -745,8 +800,8 @@ export class Board {
       this.convert(
         options.map((o, i) => ({
           type: "rectangle", id: `alt-${did}-${i}`, x, y: y0 + i * (H + GAP), width: W, height: H,
-          strokeColor: DECISION.proposed.stroke, backgroundColor: "#ffffff", fillStyle: "solid", strokeStyle: "dashed", strokeWidth: 1.5, roughness: 1, roundness: { type: 3 },
-          label: { text: labels[i], fontSize: 13, strokeColor: o ? INK : MUTED },
+          strokeColor: DECISION.proposed.stroke, backgroundColor: "#ffffff", fillStyle: "solid", strokeStyle: "dashed", ...this.look(1.5), roundness: this.style === "c4" ? null : { type: 3 },
+          label: { text: labels[i], fontSize: 13, strokeColor: o ? INK : MUTED, ...this.font() },
         })),
       ),
     );
@@ -867,8 +922,8 @@ export class Board {
         y = NY0 - 72;
       }
       const g = [`g:dec-${d.id}`];
-      sk.push({ type: "diamond", id: `dec-${d.id}`, x, y, width: DW, height: DW, strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid", strokeStyle: st.dash, strokeWidth: 2, roughness: 1, groupIds: g });
-      sk.push({ type: "text", id: `dec-${d.id}-t`, x, y, text: `D${d.n}`, fontSize: 14, strokeColor: st.stroke, groupIds: g });
+      sk.push({ type: "diamond", id: `dec-${d.id}`, x, y, width: DW, height: DW, strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid", strokeStyle: st.dash, ...this.look(2), groupIds: g });
+      sk.push({ type: "text", id: `dec-${d.id}-t`, x, y, text: `D${d.n}`, fontSize: 14, strokeColor: st.stroke, groupIds: g, ...this.font() });
       centers[`dec-${d.id}-t`] = [x + DW / 2, y + DW / 2];
       // Its check's result: ✓ or ✗ on the diamond's shoulder.
       if (d.proof) {
@@ -882,7 +937,7 @@ export class Board {
         if (!t) return;
         const cx = x + DW / 2, cy = y + DW / 2;
         const [ex, ey] = edgePoint(t, cx - (t.x + t.width / 2), cy - (t.y + t.height / 2), 2);
-        sk.push(poly(`dec-${d.id}-l${i}`, [[cx, cy], [ex, ey]], { strokeColor: st.stroke, strokeStyle: "dotted", strokeWidth: 1.5, opacity: 55, roughness: 1, locked: true }));
+        sk.push(poly(`dec-${d.id}-l${i}`, [[cx, cy], [ex, ey]], { strokeColor: st.stroke, strokeStyle: "dotted", ...this.look(1.5), opacity: 55, locked: true }));
       });
     }
     const out = this.convert(sk);
@@ -1124,7 +1179,7 @@ export class Board {
   rename(id, name) {
     const node = this.model.nodes[id];
     if (!node || !name) return [];
-    node.name = name;
+    node.name = sentenceCase(name);
     this.redrawNode(id);
     return [`node:${id}`];
   }
@@ -1162,7 +1217,7 @@ export class Board {
     const p1 = edgePoint(a, dx, dy, 4), p2 = edgePoint(b, -dx, -dy, 4);
     const id = edge.elId;
     // Only a short protocol tag, and only where it fits between the boxes.
-    const tag = via && via.length <= 8 && via.length * 7.5 < Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) - 40 ? via : null;
+    const tag = via && via.length <= 8 && via.length * 7.5 < Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) - 40 ? tagCase(via) : null;
     // convertToExcalidrawElements only binds arrows to shapes in the same batch,
     // so pass geometry-only proxies of both ends and keep just the arrow.
     const proxy = (e) => ({ type: e.type, id: e.id, x: e.x, y: e.y, width: e.width, height: e.height });
@@ -1171,9 +1226,9 @@ export class Board {
       {
         type: "arrow", id, x: p1[0], y: p1[1],
         points: [[0, 0], [p2[0] - p1[0], p2[1] - p1[1]]],
-        strokeColor: "#495057", strokeWidth: 2, roughness: 1, strokeStyle: async ? "dashed" : "solid",
+        strokeColor: "#495057", ...this.look(2), strokeStyle: async ? "dashed" : "solid",
         start: { id: a.id }, end: { id: b.id },
-        ...(tag ? { label: { text: tag, fontSize: 13, strokeColor: MUTED } } : {}),
+        ...(tag ? { label: { text: tag, fontSize: 13, strokeColor: MUTED, ...this.font() } } : {}),
       },
     ]);
     const arrow = out.find((e) => e.id === id);
@@ -1205,6 +1260,119 @@ export class Board {
     for (const id of Object.keys(this.model.nodes)) this.redrawNode(id);
     this.redrawEdges();
     this.redrawDecisions();
+    for (const q of Object.values(this.model.questions)) this.drawQuestion(q);
+    this.redrawKey();
+    this.drawFlowSteps();
+  }
+
+  // ---- layers and flows: narrow the board to one ----
+  // A flow: the steps a request takes through the components, in order (from the agent's
+  // flow op: "web>api: POST /ask", …).
+  setFlow({ id, name, steps }) {
+    if (!id) return [];
+    const prev = this.model.flows[id];
+    const parsed = steps != null ? parseSteps(steps) : prev?.steps ?? [];
+    if (!prev && !parsed.length) return [];
+    this.model.flows[id] = { id, n: prev?.n ?? Object.keys(this.model.flows).length + 1, name: sentenceCase(name ?? prev?.name ?? id), steps: parsed };
+    if (this.focus?.flow === id) this.setFocus(this.focus);
+    return [`flow:${id}`];
+  }
+
+  // { layer: "ml" }, { flow: "ask" }, or null for the whole board.
+  setFocus(focus) {
+    this.focus = focus?.layer || focus?.flow ? focus : null;
+    this.hideAlternatives();
+    this.drawFlowSteps();
+  }
+
+  // A focused flow's steps as numbered dots along its links, in order; a step with no link drawn
+  // gets a thin dashed arrow of its own. Several steps on one link spread out along it.
+  drawFlowSteps() {
+    const els = this.scene();
+    this.kill(els, new Set(els.filter((e) => e.id.startsWith("flow:")).map((e) => e.id)));
+    const flow = this.model.flows[this.focus?.flow];
+    const sk = [];
+    const centers = {};
+    if (flow) {
+      const box = (id) => els.find((e) => e.id === this.model.nodes[id]?.elId && !e.isDeleted);
+      const along = {}; // edge element id (or pair) -> step indexes on it
+      const segs = flow.steps.map((st, i) => {
+        const e = this.model.edges[`${st.from}>${st.to}`] ?? this.model.edges[`${st.to}>${st.from}`];
+        const arrow = e && els.find((x) => x.id === e.elId && !x.isDeleted);
+        if (arrow) {
+          const [[x0, y0], [x1, y1]] = [arrow.points[0], arrow.points.at(-1)].map(([px, py]) => [arrow.x + px, arrow.y + py]);
+          (along[arrow.id] ??= []).push(i);
+          return { key: arrow.id, a: [x0, y0], b: [x1, y1], reverse: e.from !== st.from };
+        }
+        const A = box(st.from), B = box(st.to);
+        if (!A || !B) return null;
+        const dx = B.x + B.width / 2 - (A.x + A.width / 2), dy = B.y + B.height / 2 - (A.y + A.height / 2);
+        const a = edgePoint(A, dx, dy, 4), b = edgePoint(B, -dx, -dy, 4);
+        sk.push({ type: "arrow", id: `flow:${flow.id}:a${i}`, x: a[0], y: a[1], points: [[0, 0], [b[0] - a[0], b[1] - a[1]]], strokeColor: "#1971c2", strokeStyle: "dashed", ...this.look(1.5), endArrowhead: "arrow", locked: true });
+        (along[`pair${i}`] ??= []).push(i);
+        return { key: `pair${i}`, a, b };
+      });
+      segs.forEach((g, i) => {
+        if (!g) return;
+        const on = along[g.key], k = on.indexOf(i);
+        // Near the link's ends, clear of its tag in the middle: one step by where it starts, several spread end to end.
+        const t = on.length === 1 ? (g.reverse ? 0.82 : 0.18) : 0.18 + (0.64 * k) / (on.length - 1);
+
+        const [cx, cy] = [g.a[0] + (g.b[0] - g.a[0]) * t, g.a[1] + (g.b[1] - g.a[1]) * t];
+        const D = 24;
+        sk.push({ type: "ellipse", id: `flow:${flow.id}:${i}`, x: cx - D / 2, y: cy - D / 2, width: D, height: D, strokeColor: "#1971c2", backgroundColor: "#1971c2", fillStyle: "solid", strokeWidth: 1, roughness: 0, locked: true });
+        sk.push({ type: "text", id: `flow:${flow.id}:${i}t`, x: cx, y: cy, text: String(i + 1), fontSize: 14, strokeColor: "#ffffff", fontFamily: SANS, locked: true });
+        centers[`flow:${flow.id}:${i}t`] = [cx, cy];
+      });
+    }
+    const out = this.remember(this.convert(sk));
+    for (const e of out) {
+      e.seed = seedOf(e.id);
+      const c = centers[e.id];
+      if (c) [e.x, e.y] = [c[0] - e.width / 2, c[1] - e.height / 2];
+    }
+    this.commit([...els, ...out]);
+  }
+
+  // The official style's key, under the diagram: what the colors and lines mean.
+  redrawKey() {
+    const els = this.scene();
+    this.kill(els, new Set(els.filter((e) => e.id.startsWith("key:")).map((e) => e.id)));
+    const boxes = Object.values(this.model.nodes).map((n) => els.find((e) => e.id === n.elId && !e.isDeleted)).filter(Boolean);
+    if (this.style !== "c4" || !boxes.length) return this.commit(els);
+    const x0 = Math.min(...boxes.map((b) => b.x)), y = Math.max(...boxes.map((b) => b.y + b.height)) + 44;
+    const sk = [{ type: "text", id: "key:title", x: x0, y: y - 2, text: "Key", fontSize: 13, strokeColor: INK, fontFamily: SANS }];
+    const centers = {};
+    let x = x0 + 42;
+    const label = (id, text) => {
+      sk.push({ type: "text", id, x, y: y - 1, text, fontSize: 12, strokeColor: MUTED, fontFamily: SANS });
+      x += text.length * 6.6 + 18;
+    };
+    for (const [k, st] of Object.entries(STATUS)) {
+      sk.push({ type: "rectangle", id: `key:${k}`, x, y, width: 14, height: 14, strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
+      x += 20;
+      label(`key:${k}:t`, k[0].toUpperCase() + k.slice(1));
+    }
+    for (const [k, dash] of [["sync", "solid"], ["async", "dashed"]]) {
+      sk.push({ type: "line", id: `key:${k}`, x, y: y + 7, points: [[0, 0], [26, 0]], strokeColor: "#495057", strokeStyle: dash, strokeWidth: 1, roughness: 0 });
+      x += 32;
+      label(`key:${k}:t`, k === "sync" ? "Synchronous" : "Asynchronous");
+    }
+    sk.push({ type: "diamond", id: "key:dec", x, y: y - 2, width: 18, height: 18, strokeColor: DECISION.accepted.stroke, backgroundColor: DECISION.accepted.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
+    x += 24;
+    label("key:dec:t", "Decision");
+    const out = this.remember(this.convert(sk.map((e) => ({ ...e, locked: true }))));
+    for (const e of out) e.seed = seedOf(e.id);
+    this.commit([...els, ...out]);
+  }
+
+  // What to export: the board as it shows (faded where a filter leaves things out), without
+  // the highlighter or a decision's open option pills.
+  exportElements(title) {
+    const els = this.api.getSceneElements().filter((e) => !e.id.startsWith(MARK) && e.id !== "frame" && !(this.alt && (this.alt.ids.includes(e.id) || this.alt.ids.includes(e.containerId))));
+    if (!title || !els.length) return els;
+    const [x1, y1] = getCommonBounds(els);
+    return [...els, ...this.convert([{ type: "text", id: "export:title", x: x1, y: y1 - 46, text: title, fontSize: 22, strokeColor: INK, fontFamily: SANS }])];
   }
 
   // Sticky notes are the one place words belong on the board: they're the user's own.
@@ -1247,6 +1415,7 @@ export class Board {
     this.kill(els, ids);
     delete this.model.nodes[id];
     this.commit(els);
+    this.redrawKey();
     return [];
   }
 

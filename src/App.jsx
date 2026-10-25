@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Excalidraw, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
+import { Excalidraw, exportToBlob, exportToSvg, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
 import { Board, PHASES } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
 import { AREAS, areaOf, fmt } from "./engine/timeline";
-import { toMermaid } from "./engine/c4";
+import { LAYERS, layerOf, tagCase, toMermaid, toSequence } from "./engine/views";
 import { buildReview } from "./engine/review";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 
@@ -62,6 +62,35 @@ const Icon = ({ name }) => (
     {ICONS[name]}
   </svg>
 );
+
+// A flow's steps in order, over the board (the numbers match its dots). Hover one to find its link.
+function FlowSteps({ flow, model, onHover, onClose }) {
+  const name = (id) => model.nodes[id]?.name ?? id;
+  return (
+    <div className="flow-steps" role="region" aria-label={`Flow: ${flow.name}`}>
+      <div className="fs-h">
+        <span>{flow.name}</span>
+        <button className="linkish" onClick={onClose} aria-label="Show all" title="Show all">
+          ✕
+        </button>
+      </div>
+      <ol>
+        {flow.steps.map((st, i) => {
+          const key = model.edges[`${st.from}>${st.to}`] ? `${st.from}>${st.to}` : `${st.to}>${st.from}`;
+          return (
+            <li key={i} onMouseEnter={() => onHover([`edge:${key}`, `node:${st.from}`, `node:${st.to}`])} onMouseLeave={() => onHover([])}>
+              <span className="fs-n">{i + 1}</span>
+              <span>
+                {name(st.from)} → {name(st.to)}
+                {st.what && <span className="fs-what">{st.what}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
 
 // Board edits grouped by what they change: ▢ architecture, ◇ decision, ✐ scope.
 function EditList({ decisions }) {
@@ -411,11 +440,13 @@ function QuestionCard({ q, dLabel, canAnswer, onAnswer, onConfirm, onCorrect, li
 }
 
 const STATUS_DOT = { planned: "#adb5bd", building: "#e8590c", built: "#1971c2", verified: "#2f9e44", failed: "#e03131", live: "#6741d9" };
-const KIND_WORD = { client: "client", service: "service", data: "data store", external: "external API", queue: "queue", test: "tests", user: "user" };
+const KIND_WORD = { client: "Client", service: "Service", data: "Data store", external: "External API", queue: "Queue", test: "Tests", user: "User" };
+// Labels in sentence case: "proposed" → "Proposed".
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 // The development plan as a document: goal, architecture, connections, the reasoning
 // chain of decisions, and the steps. Every item is linked to its picture on the board.
-function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPick, canChallenge, changes = [], commits = 0, passing = [], onAnswer, onConfirm, onCorrect, onReply, onShow }) {
+function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPick, onShowFlow, canChallenge, changes = [], commits = 0, passing = [], onAnswer, onConfirm, onCorrect, onReply, onShow }) {
   const nodes = Object.values(model.nodes);
   const changed = nodes.filter((n) => n.diff);
   const byPath = new Map(changes.map((f) => [f.path, f]));
@@ -479,7 +510,7 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
           {nodes.map((n) => (
             <div key={n.id} {...link(`node:${n.id}`)} className={["plan-card", selected.has(`node:${n.id}`) && "linked"].filter(Boolean).join(" ")}>
               <div className="pc-head">
-                <span className="pc-dot" style={{ background: STATUS_DOT[n.status] }} title={n.status} />
+                <span className="pc-dot" style={{ background: STATUS_DOT[n.status] }} title={cap(n.status)} />
                 <b>{n.name}</b>
                 <span className="pc-kind">{KIND_WORD[n.kind] ?? n.kind}</span>
               </div>
@@ -522,11 +553,32 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
             {edges.map((e) => (
               <li key={`${e.from}>${e.to}`} {...link(`edge:${e.from}>${e.to}`)}>
                 <span>{name(e.from)} → {name(e.to)}</span>
-                {e.via && <span className="chip">{e.via}</span>}
+                {e.via && <span className="chip">{tagCase(e.via)}</span>}
                 {e.api && <code>{e.api}</code>}
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {Object.keys(model.flows ?? {}).length > 0 && (
+        <section>
+          <h3>Flows</h3>
+          {Object.values(model.flows).map((f) => (
+            <div key={f.id} className="plan-flow">
+              <button className="linkish pf-name" onClick={() => onShowFlow(f.id)} title="Show it on the board">
+                {f.name}
+              </button>
+              <ol>
+                {f.steps.map((st, i) => (
+                  <li key={i}>
+                    {name(st.from)} → {name(st.to)}
+                    {st.what && <code>{st.what}</code>}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
         </section>
       )}
 
@@ -540,10 +592,10 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
                 <b>{d.title}</b>
                 {(d.proof || d.verify) && (
                   <span className={`dproof pf-${d.proof ?? "pending"}`} title={d.proof ? "Its check" : "Not checked yet"}>
-                    {d.proof === "pass" ? "✓ proven" : d.proof === "fail" ? "✗ failed" : "unchecked"}
+                    {d.proof === "pass" ? "✓ Proven" : d.proof === "fail" ? "✗ Failed" : "Unchecked"}
                   </span>
                 )}
-                <span className={`dstate ds-${d.state}`}>{d.state}</span>
+                <span className={`dstate ds-${d.state}`}>{cap(d.state)}</span>
               </div>
               <dl>
                 <dt>Chose</dt>
@@ -756,18 +808,46 @@ export default function App() {
       /* private window: just this page */
     }
   };
-  // The board as a Mermaid diagram in C4 notation, for a README or a PR (GitHub renders it).
-  const [copied, setCopied] = useState(false);
-  const copyMermaid = async () => {
+  // Narrow the board to one layer or one flow ({ layer } | { flow } | null); the rest fades.
+  const [focus, setFocus] = useState(null);
+  const chooseFocus = (f) => {
+    setFocus(f);
+    sessionRef.current?.board.setFocus(f);
+  };
+  // Export what the board shows: Mermaid (the container view, or the flow as a sequence
+  // diagram) for a README or PR, or an SVG/PNG with a title.
+  const [exported, setExported] = useState(null);
+  const exportView = async (kind) => {
     const s = sessionRef.current;
     if (!s) return;
+    const b = s.board, m = b.model;
+    const flow = focus?.flow && m.flows[focus.flow];
+    const layer = focus?.layer && LAYERS.find((l) => l.key === focus.layer);
+    const view = flow ? `Flow: ${flow.name}` : layer ? `${layer.label} layer` : drawStyle === "c4" ? "Container view" : "Architecture";
+    const title = [m.project, view].filter(Boolean).join(" · ");
+    const file = title.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "board";
     try {
-      await navigator.clipboard.writeText(`\`\`\`mermaid\n${toMermaid(s.board.model)}\`\`\`\n`);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* no clipboard access */
+      if (kind === "mermaid") {
+        const only = layer && new Set(Object.values(m.nodes).filter((n) => [layer.key, null].includes(layerOf(n))).map((n) => n.id));
+        await navigator.clipboard.writeText(`\`\`\`mermaid\n${flow ? toSequence(m, flow) : toMermaid(m, { only })}\`\`\`\n`);
+      } else {
+        const opts = {
+          elements: b.exportElements(title),
+          appState: { ...b.api.getAppState(), exportBackground: true, viewBackgroundColor: "#ffffff", exportWithDarkMode: false, exportScale: 2 },
+          files: b.api.getFiles(),
+          exportPadding: 32,
+        };
+        const blob = kind === "svg" ? new Blob([(await exportToSvg(opts)).outerHTML], { type: "image/svg+xml" }) : await exportToBlob({ ...opts, mimeType: "image/png", getDimensions: (w, h) => ({ width: w * 2, height: h * 2, scale: 2 }) });
+        const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `${file}.${kind}` });
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }
+      setExported("ok");
+    } catch (e) {
+      console.warn("Export failed", e); // no clipboard access, or the browser refused the download
+      setExported("failed");
     }
+    setTimeout(() => setExported(null), 1800);
   };
   const tabRef = useRef(tab);
   tabRef.current = tab;
@@ -785,6 +865,7 @@ export default function App() {
     setDecisions([]);
     setLinked(new Set());
     setSpeed(1);
+    setFocus(null);
     const board = new Board(api, { whyApi, timelineApi, onPhase: setPhase, style: styleRef.current });
     const s = new Session({ board, onChange: () => setVersion((v) => v + 1) });
     sessionRef.current = s;
@@ -1243,6 +1324,10 @@ export default function App() {
                 showView("board");
                 s.board.pickAlternative(d.id, i);
               }}
+              onShowFlow={(id) => {
+                showView("board");
+                chooseFocus({ flow: id });
+              }}
               canChallenge={!replayMode}
               changes={s.board.changes}
               commits={s.commits}
@@ -1488,12 +1573,49 @@ export default function App() {
               <button aria-pressed={drawStyle === "c4"} onClick={() => chooseStyle("c4")} title="C4 model: containers and how they connect">
                 C4
               </button>
-              {nodeCount > 0 && (
-                <button className="copy-mermaid" onClick={copyMermaid} title="Copy as a Mermaid diagram in C4 notation (GitHub renders it)">
-                  {copied ? "✓" : "⧉"} Mermaid
-                </button>
-              )}
             </span>
+          )}
+          {boardView === "board" && nodeCount > 0 && (
+            <select
+              className="focus-pick"
+              value={focus?.layer ? `layer:${focus.layer}` : focus?.flow ? `flow:${focus.flow}` : ""}
+              onChange={(e) => {
+                const [k, v] = e.target.value.split(":");
+                chooseFocus(k ? { [k]: v } : null);
+              }}
+              aria-label="Show"
+              title="Show one layer, or one flow's steps in order"
+            >
+              <option value="">All</option>
+              <optgroup label="Layers">
+                {LAYERS.filter((l) => Object.values(model.nodes).some((n) => layerOf(n) === l.key)).map((l) => (
+                  <option key={l.key} value={`layer:${l.key}`}>
+                    {l.label}
+                  </option>
+                ))}
+              </optgroup>
+              {Object.keys(model.flows).length > 0 && (
+                <optgroup label="Flows">
+                  {Object.values(model.flows).map((f) => (
+                    <option key={f.id} value={`flow:${f.id}`}>
+                      {f.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          )}
+          {boardView === "board" && nodeCount > 0 && (
+            <details className="export-menu">
+              <summary title="Export what the board shows">{exported === "ok" ? "✓ Exported" : exported === "failed" ? "✗ Export failed" : "Export"}</summary>
+              <div className="export-items">
+                <button onClick={() => exportView("mermaid")} title={focus?.flow ? "Copy as a Mermaid sequence diagram" : "Copy as a Mermaid diagram in C4 notation (GitHub renders it)"}>
+                  Copy Mermaid
+                </button>
+                <button onClick={() => exportView("svg")}>Download SVG</button>
+                <button onClick={() => exportView("png")}>Download PNG</button>
+              </div>
+            </details>
           )}
           <span className="ct-hint">
             {boardView === "why"
@@ -1516,6 +1638,14 @@ export default function App() {
               </button>
             )}
             {model && !nodeCount && <p className="canvas-empty">The architecture appears here as the agent plans: each component, what it connects to, and its decisions.</p>}
+            {focus?.flow && model?.flows[focus.flow] && (
+              <FlowSteps
+                flow={model.flows[focus.flow]}
+                model={model}
+                onHover={(ids) => s.setHover(ids)}
+                onClose={() => chooseFocus(null)}
+              />
+            )}
           </div>
           <div
             className={`canvas ${boardView === "why" ? "on" : ""}`}

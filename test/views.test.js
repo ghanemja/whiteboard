@@ -1,7 +1,7 @@
-// The C4 drawing style's labels and the Mermaid export (run with `npm test`).
+// The board's views (src/engine/views.js): C4 labels, layers, flows, names, and the Mermaid exports (run with `npm test`).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { c4Tag, toMermaid } from "../src/engine/c4.js";
+import { c4Tag, layerOf, parseSteps, sentenceCase, tagCase, toMermaid, toSequence } from "../src/engine/views.js";
 
 const model = {
   project: 'Link "shortener"',
@@ -49,9 +49,57 @@ test("Mermaid: the system's boundary holds its containers; people and external s
 test("Mermaid: links carry protocol and API, async ones dashed, and nothing breaks the syntax", () => {
   const m = toMermaid(model);
   assert.match(m, /n_web -->\|"HTTP: POST \/links \{url\} → \{code\}"\| n_api/);
-  assert.match(m, /n_api -\.->\|"queue"\| n_q_1/);
+  assert.match(m, /n_api -\.->\|"Queue"\| n_q_1/); // a protocol tag in sentence case too
   assert.match(m, /SELECT url WHERE code #lt;#gt; ''/); // < and > as entities; quotes swapped
   assert.match(m, /subgraph system\["Link 'shortener'"\]/);
   assert.ok(!m.includes("gone")); // a link to a component that's gone is left out
   assert.match(m, /class n_llm external/);
+});
+
+test("names in sentence case, except file names, code and one-word names", () => {
+  assert.equal(sentenceCase("server tests"), "Server tests");
+  assert.equal(sentenceCase("web client"), "Web client");
+  assert.equal(sentenceCase("API server"), "API server");
+  for (const keep of ["store.js", "src/api routes", "createStore", "pgvector index", "linkshort", "npm scripts"]) assert.equal(sentenceCase(keep), keep);
+  assert.equal(tagCase("queue"), "Queue");
+  assert.equal(tagCase("HTTP"), "HTTP");
+  assert.equal(tagCase("gRPC"), "gRPC");
+});
+
+test("layers: the agent's, else the kind's; people belong to every view", () => {
+  assert.equal(layerOf(model.nodes.web), "frontend");
+  assert.equal(layerOf(model.nodes.api), "backend");
+  assert.equal(layerOf(model.nodes.db), "data");
+  assert.equal(layerOf(model.nodes["q-1"]), "data");
+  assert.equal(layerOf(model.nodes.llm), "external");
+  assert.equal(layerOf({ ...model.nodes.llm, layer: "ml" }), "ml");
+  assert.equal(layerOf({ kind: "service", layer: "nonsense" }), "backend");
+  assert.equal(layerOf(model.nodes.user), null);
+  // A layer's Mermaid export holds only its components and the links between them.
+  const m = toMermaid(model, { only: new Set(["api", "db"]) });
+  assert.match(m, /n_api -->/);
+  assert.ok(!m.includes("n_web") && !m.includes("n_llm"));
+});
+
+test("flow steps from the agent (strings or objects) and from demo tags", () => {
+  const want = [
+    { from: "web", to: "api", what: "POST /links" },
+    { from: "api", to: "q-1", what: "" },
+  ];
+  assert.deepEqual(parseSteps(["web>api: POST /links", "api->q-1"]), want);
+  assert.deepEqual(parseSteps("web>api: POST /links; api → q-1"), want);
+  assert.deepEqual(parseSteps([{ from: "web", to: "api", label: "POST /links" }, { from: "api", to: "q-1" }]), want);
+  assert.deepEqual(parseSteps("nonsense; api>api: itself"), []);
+});
+
+test("a flow as a numbered sequence diagram: replies dashed, async open-headed", () => {
+  const flow = { name: "Shorten a link", steps: parseSteps("user>web: paste a URL; web>api: POST /links; api>q-1: enqueue; api>web: {code}") };
+  const m = toSequence(model, flow);
+  const lines = m.trim().split("\n");
+  assert.deepEqual(lines.slice(0, 3), ["sequenceDiagram", "  title Shorten a link", "  autonumber"]);
+  assert.ok(lines.includes("  actor n_user as Reader"));
+  assert.ok(lines.includes("  participant n_api as API server"));
+  assert.ok(lines.includes("  n_web->>n_api: POST /links"));
+  assert.ok(lines.includes("  n_api-)n_q_1: enqueue"));
+  assert.ok(lines.includes("  n_api-->>n_web: {code}"));
 });

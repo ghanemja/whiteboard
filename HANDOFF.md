@@ -4,6 +4,8 @@ Written 2026-10-25 so the work can continue in a fresh (cloud) session without l
 
 Read this first, then `README.md` (user-facing docs), then the code.
 
+**This file is a living document.** It's how work passes between sessions and agents: whoever changes the product updates it in the same commit (status, how the part works, gotchas, what's next). Each run's decision log (`recordings/<id>.decisions.md`) is the same thing for the code the agent worked on: plan, diagrams, decisions, questions, changes, timeline. Keep both current.
+
 ---
 
 ## 1. What this is
@@ -28,7 +30,9 @@ Every run is recorded so it can be replayed, reopened, and read as a decision lo
 5. **Record every run**: replay, reopen ("respawn") the board, and a readable decision log.
 6. **The reasoning chain is first-class:** architecture, libraries, connections/APIs and technical decisions must be visible and challengeable.
 7. **Don't delete existing features** when adding new views; add alongside.
-8. **Minimize words, everywhere (the panel too): high interpretability.** Glyph + count + a one- or two-word label; the detail goes in a hover (title) or behind a click. E.g. a false claim shows "✗ README.md", not a sentence; a review row is "◇ unchecked D1 D2". Messages to the user: short, too.
+8. **Minimize words, everywhere (the panel too): high interpretability.** Glyph + count + a one- or two-word label; the detail goes in a hover (title) or behind a click. E.g. a false claim shows "✗ README.md", not a sentence; a review row is "◇ Unchecked D1 D2". Messages to the user: short, too.
+9. **Official and exportable.** The C4 style is the official look: square boxes, crisp 1 px lines (roughness 0), a plain typeface (Nunito, Excalidraw's "Normal"), a Key under the diagram. Sentence case everywhere: component and flow names (`sentenceCase()`, except file/code names and lowercase brands), protocol tags ("Queue"), review rows ("False claim"), pills ("Proposed"), legends. Every view exports: Mermaid (GitHub renders it), SVG and PNG with a title. Component outlines are always solid (planned = grey, never dashed).
+10. **Living handoff.** HANDOFF.md and the decision logs are the context the next session or agent starts from (see the note at the top): diagrams go in as Mermaid, decisions with their reasons, open questions stay listed.
 
 ### Status
 
@@ -36,7 +40,8 @@ Every run is recorded so it can be replayed, reopened, and read as a decision lo
 - The code is on GitHub (section 9). The **Timeline tab** (section 8) was built in a cloud session without an API key: verified on the demo, the three fixture runs (Open and Replay), a recording fed through the live-agent event path, dark theme and a narrow window, but **not yet on a real live agent run**. Do that first with a key (section 7, "Live agent check"), and look at the Timeline while it runs.
 - After the Timeline, five features for reading the agent's prose without taking its word for it (4.10): **claim receipts**, **git changes per component**, **questions and assumptions** as board items, **skim**, and an **end-of-run review card**. Same caveat: verified on the demo, the fixtures and a recording fed through the agent path (with a synthetic `changes` event), and the git tracking on the sandbox and a throwaway repo, but **not on a live agent run yet**. On the first live run, check that the agent uses the `question`/`assumption` ops and that `changes` events arrive after its edits.
 - Steering by area (4.3): pick a decision's alternative on the board (drag-to-choose, or click it in the Plan card), edits sorted ▢ architecture / ◇ decision / ✐ scope, one Submit (also floating on the board). Verified on the demo (at the gate and after shipping, typed own option, Plan-tab pick); not on a live run yet: check the agent applies `choose` edits.
-- Next: the backlog in 8.7.
+- **Views (4.2):** Pictures | C4 switch; **Show** picker: one layer (Frontend, Backend, Data, ML, External) or one flow (numbered steps on the arrows, a steps card, the rest faded); **Export**: Mermaid (container view, or the flow as a sequence diagram), SVG, PNG. New op `flow` and node field `layer`; the decision log now has a Diagrams section. Verified on the demo (both styles, both flows, the ML layer, a full build with a flow focused, SVG/PNG downloads, Mermaid rendered with Mermaid 11) and a saved real run; not on a live run yet: check the agent sends `flow` ops and `layer`s.
+- Next: the backlog in 8.7. Deferred from the views work: **zoom into a component** (C4 component level: a container's parts, from a new `part` op, on its own read-only canvas).
 
 ---
 
@@ -92,6 +97,7 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 | `src/PhaseHeader.jsx` | The journey above the tabs: project title + goal, milestones Plan/Build/Verify/Ship drawn with **roughjs** (`rough.generator()` → `toPaths` → SVG), task dots, ✓/⏸ badges, finish flag, tooltips, hover/click linking. |
 | `src/engine/board.js` | Owns the three canvases. Architecture: pictograms, edges, notes, decision diamonds with ✓/✗ proof badges, highlighter marks, agent cursor, `diff()` of user edits. Why: `drawWhy()` chains. Timeline: `redrawTimeline()`, `timelineHit()`, follow/fit. Exports `PHASES`, `STATUS`, `KINDS`, `TASK`, `MILESTONE`. |
 | `src/engine/palette.js` | `PHASES`, `MILESTONE`, `DECISION`, `PROOF`, `YOU`, `INK`, `MUTED`: no imports, so `timeline.js` loads under `node --test`. `board.js` re-exports `PHASES`/`MILESTONE`. |
+| `src/engine/views.js` | Pure, shared by the browser and the server: `C4_TYPE`, `c4Tag(node)`, `LAYERS`, `layerOf(node)`, `parseSteps(steps)`, `sentenceCase`, `tagCase`, `toMermaid(model, { only })` (container view as a C4-notation flowchart), `toSequence(model, flow)` (a flow as a numbered sequence diagram). |
 | `src/engine/timeline.js` | Pure: `buildTimeline(events, model)`, `timeToX`, `xToTime`, `drawTimeline(tl, { now })` (skeletons, ids `tl:<part>:…`), plus `gist`, `describeEdit`, `saysFailed`. |
 | `src/engine/session.js` | Modes `demo` / `agent` / `replay`. Routes events to board + transcript; plan gate and permission state; highlights; replay stepping and `seekReplay(t)`; the timed event stream for the Timeline. |
 | `src/engine/transcript.js` | Agent messages as sentences + activity rows, each linked to the logical ids it touched (`sentencesTouching(lids)`). A closed sentence also gets `t`, `claims`, `asks`, `assumes` (claims.js). |
@@ -104,8 +110,8 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 | `scripts/make-sandbox.mjs` | Creates `sandbox/linkshort` (git-initialized). |
 | `scripts/cdp.mjs` | Headless-Chrome driver used for testing and screenshots (section 7). |
 | `fixtures/recordings/` | Sample runs (see above). |
-| `test/*.test.js` | `npm test` (`node --test test/*.test.js`): `timeline` (over the fixtures, plus the demo's test-caused change, rejects, the legacy failure reading), `claims`, `review`, `changes` (a throwaway git repo). |
-| `screenshots/` | `live-run/` (real-time frames + timelapse of a run), `why-view/`, `tabs/`, `timeline/` (current layout). |
+| `test/*.test.js` | `npm test` (`node --test test/*.test.js`): `timeline` (over the fixtures, plus the demo's test-caused change, rejects, the legacy failure reading, cause ordering, edit areas), `claims`, `review`, `changes` (a throwaway git repo), `views` (C4 labels, layers, steps, names, both Mermaid exports), `handoff` (a `Run` mirror without an agent: ops in, decision log with diagrams out). |
+| `screenshots/` | `demo.gif` (README), `live-run/` (real-time frames + timelapse of a run), `why-view/`, `tabs/`, `timeline/`, `review/`, `steering/`, `views/` (C4 with a flow, an exported PNG, both Mermaid exports rendered). |
 
 ### Event protocol (`/api/runs`)
 
@@ -118,7 +124,7 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 
 ### Board ops (agent tool and demo tags alike)
 
-`project {name, goal}`, `phase {name}` (planning | implementation | verification | deployment | complete), `task {id, phase, text, status}`, `node {id, name, kind, col, row, paths, libs, api, v}`, `edge {from, to, via, api, style}`, `decision {…}`, `question {id, text, options[], about, state: open|answered, answer}`, `assumption {id, text, about, state: open|confirmed|corrected}`, `status {id, v}`, `rename`, `note`, `remove`, `unlink`, `adopt {el, id, name, kind}`, `adopt-edge {el, from, to}`, `adopt-note {el}`. Demo-only (Session, not Board): `diff {id}` (files from `DEMO_CHANGES`) and `run {cmd, pass, fail, ok}` (an activity row + result with `tests`).
+`project {name, goal}`, `phase {name}` (planning | implementation | verification | deployment | complete), `task {id, phase, text, status}`, `node {id, name, kind, col, row, paths, libs, api, v, layer}` (layer: frontend | backend | data | ml | external, defaulting from kind), `edge {from, to, via, api, style}`, `flow {id, name, steps}` (steps: `["web>api: POST /ask", …]`, or one string split on `;` in demo tags), `decision {…}`, `question {id, text, options[], about, state: open|answered, answer}`, `assumption {id, text, about, state: open|confirmed|corrected}`, `status {id, v}`, `rename`, `note`, `remove`, `unlink`, `adopt {el, id, name, kind}`, `adopt-edge {el, from, to}`, `adopt-note {el}`. Demo-only (Session, not Board): `diff {id}` (files from `DEMO_CHANGES`) and `run {cmd, pass, fail, ok}` (an activity row + result with `tests`).
 
 **Decision op fields:** `id, title, chose, over[], why, affects[], evidence[], builds_on[], state (proposed|accepted|changed|rejected), verify, proof (pass|fail), proof_by`. Server-added on emitted ops: `cause` ("you" | "test"), `cause_text`, `fromTests: true` (proof set by the server from test output).
 
@@ -139,7 +145,10 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 Pictograms per kind (client = browser window, service = server rack, data = cylinder, external = cloud, queue, test = clipboard, user = person), name under it, main library in small grey text, status = color + corner badge (… building, ✓ verified, ✗ failed, ★ live); outlines are always solid (planned is grey, not dashed). 3×3 grid (`freeCell`, spills below), arrows bind to invisible hit-boxes (`convertToExcalidrawElements` only binds within one batch, so geometry proxies are passed and points computed by hand), dashed when async, short protocol tag (`via`) on the arrow if it fits.
 
 - **C4 style** (`Board.style`, "pictures" | "c4", from the **Pictures | C4** switch, kept in localStorage `wb-style`): `drawNode` draws a square box that *is* the hit-box (190×92, centered on the pictogram's column), with the name (`:label`) and `c4Tag()` (`:libs`) inside, the same badge and diffstat. Ids don't change, so diff, decisions, ghosts and highlights work unchanged. `node.style` records how a node was drawn so `redrawNode` finds its origin from the hit-box (`HIT` offsets). `setStyle()` redraws every node, then every arrow (`redrawEdges()` → `drawEdge()`, recomputed from the new hit-boxes; an arrow you deleted stays deleted), then the diamonds. The Why tab keeps pictograms.
-- **⧉ Mermaid** copies `toMermaid(model)` (`src/engine/c4.js`): a `flowchart LR` in C4 notation (square boxes, the system boundary as a subgraph, people and external systems outside, async links dashed, C4 colors). Mermaid's own `C4Container` diagrams were tried first and rendered one box per row (Mermaid 11.17, even for a 4-box example), so the export uses the flowchart layout. Checked by rendering with Mermaid in headless Chrome.
+- **Official look in C4:** `Board.look()` / `font()` give 1 px, roughness-0 lines and Nunito (`SANS = 6`) in C4 style (boxes, arrows, diamonds, ties, option pills, question stickies); pictures keep the hand-drawn 2 px look. `redrawKey()` draws the Key (`key:*`: statuses, sync/async lines, decision) under the lowest box, C4 only. `init()` preloads Nunito so text is measured right.
+- **Show picker (layers and flows):** `Board.setFocus({ layer } | { flow } | null)`. `commit()` runs every scene write through `faded()`: elements outside `focusSet()` go to opacity 15 (their own opacity is kept in `customData.o0` and restored), so the fade survives live redraws. A layer keeps its components plus people (`layerOf` → null) and the links between them; a flow keeps its steps' components and links. `drawFlowSteps()` puts numbered dots (`flow:<id>:<i>`) near the ends of the links (a reply's dot at the far end, several spread end to end) and a dashed arrow for a step with no link. `FlowSteps` (App) lists the steps; hovering one highlights its link.
+- **Export** (App `exportView`): Mermaid copies `toMermaid` (a layer exports only its components) or, with a flow shown, `toSequence`; SVG/PNG use Excalidraw's `exportToSvg` / `exportToBlob` (PNG at 2×) on `Board.exportElements(title)`, which drops the highlighter, the grid frame and open option pills, and adds a title ("DocQA · Container view", "… · Flow: Ask a question"). Mermaid's own `C4Container` diagrams were tried first and rendered one box per row (Mermaid 11.17, even for a 4-box example), so the container export uses the flowchart layout. Both exports were checked by rendering with Mermaid in headless Chrome.
+- **Decision log diagrams:** the server mirrors `layer` and `flow`s, normalizes names with `sentenceCase`, and `planMarkdown()` writes a Diagrams section (container view + one sequence per flow) from `viewModel()` through the same `views.js`.
 
 ### 4.3 Steering from the board
 

@@ -589,13 +589,13 @@ export function drawTimeline(tl, { now = tl.end } = {}) {
     sk.push(text(`tl:g:${key}:t`, lx + 22, ly - 9, label, 13, MUTED));
     lx += 22 + label.length * 7 + 22;
   };
-  item("p", (id, x, y) => [dia(id, x, y, 16, DECISION.proposed)], "proposed");
-  item("a", (id, x, y) => [dia(id, x, y, 16, DECISION.accepted)], "approved");
-  item("c", (id, x, y) => [dia(id, x, y, 16, DECISION.changed)], "changed");
-  item("r", (id, x, y) => [dia(id, x, y, 16, DECISION.rejected)], "rejected");
-  item("v", (id, x, y) => dot(id, x, y, 16, PROOF.pass.color, PROOF.pass.color, "✓", "#ffffff"), "proven");
-  item("f", (id, x, y) => dot(id, x, y, 16, PROOF.fail.color, PROOF.fail.color, "✗", "#ffffff"), "failed");
-  item("y", (id, x, y) => dot(id, x, y, 16, YOU.stroke, YOU.fill), "you");
-  item("i", (id, x, y) => [line(id, [[x - 8, y], [x + 8, y]], { strokeColor: MUTED, strokeStyle: "dotted", strokeWidth: 2, roughness: 0 })], "idle");
+  item("p", (id, x, y) => [dia(id, x, y, 16, DECISION.proposed)], "Proposed");
+  item("a", (id, x, y) => [dia(id, x, y, 16, DECISION.accepted)], "Approved");
+  item("c", (id, x, y) => [dia(id, x, y, 16, DECISION.changed)], "Changed");
+  item("r", (id, x, y) => [dia(id, x, y, 16, DECISION.rejected)], "Rejected");
+  item("v", (id, x, y) => dot(id, x, y, 16, PROOF.pass.color, PROOF.pass.color, "✓", "#ffffff"), "Proven");
+  item("f", (id, x, y) => dot(id, x, y, 16, PROOF.fail.color, PROOF.fail.color, "✗", "#ffffff"), "Failed");
+  item("y", (id, x, y) => dot(id, x, y, 16, YOU.stroke, YOU.fill), "You");
+  item("i", (id, x, y) => [line(id, [[x - 8, y], [x + 8, y]], { strokeColor: MUTED, strokeStyle: "dotted", strokeWidth: 2, roughness: 0 })], "Idle");
   return sk;
 }

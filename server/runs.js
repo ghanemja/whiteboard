@@ -6,6 +6,7 @@ import { z } from "zod";
 import { commitsSince, diff, head, isRepo, snapshot } from "./changes.js";
 import { BOARD_INSTRUCTIONS, PLAN_INSTRUCTIONS } from "./instructions.js";
 import { listRecordings, readDecisions, readRecording, Recorder } from "./recordings.js";
+import { layerOf, LAYERS, parseSteps, sentenceCase, toMermaid, toSequence } from "../src/engine/views.js";
 
 // A run = one Claude Agent SDK session working in a real repo. Its board drawing
 // (update_board tool calls) and its real activity (reads, edits, commands) are
@@ -38,9 +39,11 @@ const settings = () => ({
 // One board op. Mirrors Board.apply() in src/engine/board.js.
 const strs = z.array(z.string());
 const Op = z.object({
-  op: z.enum(["project", "phase", "task", "node", "edge", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note"]),
-  id: z.string().optional().describe("component id (node/status/rename/remove/adopt), task id (task), decision id (decision), q1… (question) or a1… (assumption)"),
-  name: z.string().optional().describe("project name, phase name, or component name (≤16 chars)"),
+  op: z.enum(["project", "phase", "task", "node", "edge", "flow", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note"]),
+  id: z.string().optional().describe("component id (node/status/rename/remove/adopt), task id (task), decision id (decision), flow id (flow), q1… (question) or a1… (assumption)"),
+  name: z.string().optional().describe("project name, phase name, component name (≤16 chars, sentence case), or flow name (≤24 chars)"),
+  layer: z.enum(LAYERS.map((l) => l.key)).optional().describe("node: frontend | backend | data | ml | external (defaults from kind; set ml for models, embeddings, evals)"),
+  steps: z.union([z.string(), strs]).optional().describe('flow: the steps in order, each "from>to: what", e.g. ["web>api: POST /ask", "api>vdb: top 8 chunks"]'),
   goal: z.string().optional().describe("project: the goal in one sentence"),
   kind: z.enum(["client", "service", "data", "external", "queue", "test", "user"]).optional(),
   col: z.number().int().min(0).max(2).optional(),
@@ -157,11 +160,12 @@ const AREA_ICON = { architecture: "▢", decision: "◇", scope: "✐" };
 const logEdit = (d) => `${AREA_ICON[d.area] ? `${AREA_ICON[d.area]} ` : ""}${describeEdit(d)}`;
 
 const cell = (s) => String(s ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : "");
 
 const COMPONENT_STATUS = new Set(["planned", "building", "built", "verified", "failed", "live"]);
 const DECISION_STATES = new Set(["proposed", "accepted", "changed", "rejected"]);
 
-class Run {
+export class Run {
   constructor({ repo, brief }) {
     this.id = randomUUID().slice(0, 8);
     this.repo = repo;
@@ -179,6 +183,7 @@ class Run {
     this.tasks = new Map(); // task id -> { phase, text, status }
     this.decisions = new Map(); // decision id -> { n, title, chose, over, why, affects, evidence, builds_on, state, verify, proof, proof_by, cause, cause_text }
     this.questions = new Map(); // question/assumption id -> { kind, n, text, options, about, state, answer }
+    this.flows = new Map(); // flow id -> { id, name, steps: [{ from, to, what }] }
     this.goal = null;
     this.tests = new Map(); // test name -> passed?, from the latest test output that printed it
     this.steer = null; // what the user asked this turn, so decisions it changes can say so
@@ -224,15 +229,28 @@ class Run {
 
   // The whole current plan, for the top of the decision log: goal, architecture,
   // connections and the reasoning chain (ADR-style decision records).
+  // The mirror in the board's model shape, for the shared views (src/engine/views.js).
+  viewModel() {
+    const nodes = Object.fromEntries([...this.nodes].map(([id, n]) => [id, { id, ...n }]));
+    const edges = Object.fromEntries([...this.edges].map(([k, e]) => { const [from, to] = k.split(">"); return [k, { from, to, ...e }]; }));
+    return { project: this.project ?? "", nodes, edges };
+  }
+
   planMarkdown() {
     const name = (id) => this.nodes.get(id)?.name ?? id;
     const out = [];
     if (this.goal) out.push("### Goal", "", this.goal, "");
     if (this.nodes.size) {
-      out.push("### Architecture", "", "| Component | Kind | Libraries | Interface | Files | Status |", "|---|---|---|---|---|---|");
-      for (const n of this.nodes.values())
-        out.push(`| ${cell(n.name)} | ${n.kind} | ${cell(n.libs?.join(", "))} | ${cell(n.api?.map((a) => `\`${a}\``).join(", "))} | ${cell(n.paths?.map((p) => `\`${p}\``).join(", "))} | ${n.status} |`);
+      out.push("### Architecture", "", "| Component | Kind | Layer | Libraries | Interface | Files | Status |", "|---|---|---|---|---|---|---|");
+      for (const [id, n] of this.nodes) {
+        const layer = LAYERS.find((l) => l.key === layerOf({ id, ...n }))?.label ?? "";
+        out.push(`| ${cell(n.name)} | ${cap(n.kind)} | ${layer} | ${cell(n.libs?.join(", "))} | ${cell(n.api?.map((a) => `\`${a}\``).join(", "))} | ${cell(n.paths?.map((p) => `\`${p}\``).join(", "))} | ${cap(n.status)} |`);
+      }
       out.push("");
+      // The diagrams, for whoever picks this up next (GitHub renders Mermaid).
+      const model = this.viewModel();
+      out.push("### Diagrams", "", "Container view (C4):", "", "```mermaid", toMermaid(model).trimEnd(), "```", "");
+      for (const f of this.flows.values()) out.push(`Flow: ${f.name}`, "", "```mermaid", toSequence(model, f).trimEnd(), "```", "");
     }
     if (this.edges.size) {
       out.push("### Connections", "");
@@ -295,6 +313,7 @@ class Run {
       const arr = (v) => (Array.isArray(v) ? v : typeof v === "string" ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
       switch (op.op) {
         case "project":
+          if (op.name) this.project = op.name;
           if (op.goal) this.goal = op.goal;
           if (op.name || op.goal) this.recorder.update({ ...(op.name ? { project: op.name } : {}), ...(op.goal ? { goal: op.goal } : {}) });
           break;
@@ -303,8 +322,9 @@ class Run {
           if (!op.id) break;
           const prev = this.nodes.get(op.id);
           this.nodes.set(op.id, {
-            name: op.name ?? prev?.name ?? op.id,
+            name: sentenceCase(op.name ?? prev?.name ?? op.id),
             kind: op.kind ?? prev?.kind ?? "service",
+            layer: op.layer ?? prev?.layer ?? null,
             paths: op.paths ?? prev?.paths ?? [],
             libs: arr(op.libs) ?? prev?.libs ?? [],
             api: arr(op.api) ?? prev?.api ?? [],
@@ -394,17 +414,26 @@ class Run {
           if (this.nodes.has(op.id) && COMPONENT_STATUS.has(op.v)) this.nodes.get(op.id).status = op.v;
           break;
         case "rename":
-          if (this.nodes.has(op.id) && op.name) this.nodes.get(op.id).name = op.name;
+          if (this.nodes.has(op.id) && op.name) this.nodes.get(op.id).name = sentenceCase(op.name);
           break;
         case "remove":
           this.nodes.delete(op.id);
           for (const k of [...this.edges.keys()]) if (k.split(">").includes(op.id)) this.edges.delete(k);
           break;
+        case "flow": {
+          if (!op.id) break;
+          const prev = this.flows.get(op.id);
+          const steps = op.steps != null ? parseSteps(op.steps) : prev?.steps ?? [];
+          if (steps.length) this.flows.set(op.id, { id: op.id, name: sentenceCase(op.name ?? prev?.name ?? op.id), steps });
+          break;
+        }
         case "edge":
         case "adopt-edge": {
           const k = `${op.from}>${op.to}`;
           const prev = this.edges.get(k);
-          this.edges.set(k, { via: op.via ?? prev?.via ?? null, api: (Array.isArray(op.api) ? op.api.join(", ") : op.api) ?? prev?.api ?? null });
+          const via = op.via ?? prev?.via ?? null;
+          const async = op.style ? op.style === "async" : prev?.async ?? /queue|event|pub.?sub|stream|webhook|job/i.test(via ?? "");
+          this.edges.set(k, { via, api: (Array.isArray(op.api) ? op.api.join(", ") : op.api) ?? prev?.api ?? null, async });
           break;
         }
         case "unlink":

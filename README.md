@@ -6,7 +6,15 @@ A real coding agent works in a repo while an Excalidraw board shows what it's do
 
 The board is pictures, not prose. Components are hand-drawn pictograms (browser window, server rack, database cylinder, cloud, queue, clipboard, person) with a short name; status is color plus a corner badge (… building, ✓ verified, ✗ failed, ★ live). Above the board, the project's name and goal sit beside the four phases, drawn as milestones on a road (Plan → Build → Verify → Ship) with a dot per task: hover one to read it, click to open it in the Plan tab. Below that, the board has a tab per canvas: **Architecture** (what's being built; edit it to steer), **Why** (the reasoning behind it) and **Timeline** (how that reasoning moved over the run). Words stay in the side panel.
 
-**Pictures | C4** above the board switches how components are drawn: the pictograms, or [C4](https://c4model.com) container boxes (name, `[Container: FastAPI 0.115]`, `[Database: …]`, `[External system]`), with status still shown by color. Your choice is remembered, and steering works the same in both. **⧉ Mermaid** copies the board as a Mermaid diagram in C4 notation, which GitHub renders in a README or PR.
+## Views and exports
+
+Above the board:
+
+- **Pictures | C4** switches how components are drawn: the pictograms, or [C4](https://c4model.com) container boxes (name, `[Container: FastAPI 0.115]`, `[Database: …]`, `[External system]`). C4 is the official look: square boxes, 1 px lines, a plain typeface and a Key. Status is color in both, your choice is remembered, and steering works the same.
+- **Show** narrows the board to one **layer** (Frontend, Backend, Data, ML, External) or one **flow**: the path a request takes, its steps numbered on the arrows and listed in a card. Everything else fades.
+- **Export** what the board shows: **Copy Mermaid** (the container view, or the flow as a sequence diagram; GitHub renders both in a README or PR), **SVG** or **PNG** with a title.
+
+The agent draws the flows (`flow` op) and sets each component's layer; names are kept in sentence case.
 
 ## Setup
 
@@ -87,7 +95,7 @@ The demo shows all five, including a false claim (a README it never touched) and
 Every run is saved in `recordings/` (git-ignored) while it happens:
 
 - `<id>.jsonl`: every event with its time: what the agent drew, said, read, edited and ran, and what you did (approvals, board edits, messages, allowed or denied commands). It's also where the agent's session id is kept.
-- `<id>.decisions.md`: a readable log of the development decisions. It opens with the current plan (goal, an architecture table with libraries and interfaces, connections, its questions and assumptions, the files it changed and which component owns each, and each decision with what it beat, why, its evidence, what it replaced and why, its check and its proof), then a timeline: the plan the agent proposed, what you approved, challenged or changed, every decision the agent revised, each decision proven or failed (by the agent or by a test run), every command you allowed, and how the run ended, each with its time.
+- `<id>.decisions.md`: a readable log of the development decisions. It's the handoff document for whoever picks the work up next. It opens with the current plan (goal, an architecture table with layers, libraries and interfaces, the diagrams as Mermaid (container view and each flow), connections, its questions and assumptions, the files it changed and which component owns each, and each decision with what it beat, why, its evidence, what it replaced and why, its check and its proof), then a timeline: the plan the agent proposed, what you approved, challenged or changed, every decision the agent revised, each decision proven or failed (by the agent or by a test run), every command you allowed, and how the run ended, each with its time.
 
 The start screen lists saved boards. **Replay** plays a run back on the board at its own rhythm (long waits are shortened, and pause and speed work as usual). **Open** jumps straight to the finished board. **Decisions** opens the decision log. A finished live run also links to its replay and decision log.
 
@@ -110,16 +118,16 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `src/engine/board.js` | Owns the three Excalidraw canvases: the Architecture pictograms and decision diamonds, the Why chains, the Timeline, highlighter marks, and `diff()` of your edits |
 | `src/engine/timeline.js` | The Timeline as pure functions: `buildTimeline(events)` (lanes, marks, causes, the time axis with compressed waits), `timeToX`, `drawTimeline` (Excalidraw skeletons) |
 | `src/engine/palette.js` | Phases and the colors the canvases share |
-| `src/engine/c4.js` | C4 notation: the line under a box's name in C4 style, and the board as Mermaid |
+| `src/engine/views.js` | The views of one model, shared with the server: C4 labels, layers, flows, sentence case, and the Mermaid exports (container view, flow sequence) |
 | `src/engine/claims.js` | Receipts: finds checkable claims in the agent's sentences (and questions or assumptions said in passing) and checks them against the run's record |
 | `src/engine/review.js` | The end-of-run review card: what needs a look, and where |
 | `src/PhaseHeader.jsx` | The journey above the tabs: title, goal, milestones and task dots, drawn with roughjs (Excalidraw's renderer) |
 | `src/engine/transcript.js` | Sentences and activity rows, each linked to the board items it touched |
 | `src/engine/parser.js`, `player.js`, `src/agent/script.js`, `replies.js` | The scripted demo (inline `<board/>` tags typed out at reading pace) |
 | `scripts/make-sandbox.mjs` | Creates the sample repo |
-| `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, the C4 labels and Mermaid export, and git change tracking on a throwaway repo |
+| `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, the views and their Mermaid exports, the decision log's diagrams, and git change tracking on a throwaway repo |
 
-Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node`, `edge`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner.
+Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node` (with `layer`), `edge`, `flow`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner.
 
 ## License
 

@@ -22,7 +22,8 @@ const clip = (s, n) => {
 
 export function buildReview({ model, claims = [], passing = [], changes = null, commits = 0, lastTest = null, denied = [] }) {
   const rows = [];
-  const row = (key, tone, icon, text, links = []) => rows.push({ key, tone, icon, text, links });
+  // Sentence case: "False claim", "Open", "Tests 47/50".
+  const row = (key, tone, icon, text, links = []) => rows.push({ key, tone, icon, text: text[0].toUpperCase() + text.slice(1), links });
   const decisions = Object.values(model.decisions ?? {})
     .filter((d) => d.state !== "rejected")
     .sort((a, b) => a.n - b.n);
@@ -61,6 +62,6 @@ export function buildReview({ model, claims = [], passing = [], changes = null, 
   else if (decisions.length) row("tests", "warn", "?", "no tests ran");
   if (denied.length) row("denied", "info", "✕", "denied", denied.map((c) => ({ label: clip(c, 32), lid: null, title: c })));
 
-  if (!rows.some((r) => r.tone === "bad" || r.tone === "warn")) rows.unshift({ key: "clear", tone: "ok", icon: "✓", text: "all clear", links: [] });
+  if (!rows.some((r) => r.tone === "bad" || r.tone === "warn")) rows.unshift({ key: "clear", tone: "ok", icon: "✓", text: "All clear", links: [] });
   return rows;
 }

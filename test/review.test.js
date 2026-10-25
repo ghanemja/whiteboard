@@ -31,7 +31,7 @@ test("a run with work left to check", () => {
   assert.equal(rows[2].links[0].lid, "sentence:s1");
   assert.match(rows[2].links[0].title, /wasn't changed/);
   assert.equal(rows.find((r) => r.key === "code").text, "2 files +29 −4 · uncommitted");
-  assert.equal(rows.find((r) => r.key === "tests").text, "tests 47/50");
+  assert.equal(rows.find((r) => r.key === "tests").text, "Tests 47/50");
 });
 
 test("a clean run says so", () => {
