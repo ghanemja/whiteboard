@@ -28,8 +28,10 @@ export class Transcript {
   }
 
   addUserMessage(data) {
-    this.messages.push({ id: nextId("m"), role: "you", items: [], streaming: false, ...data });
+    const m = { id: nextId("m"), role: "you", items: [], streaming: false, ...data };
+    this.messages.push(m);
     this.h.onChange?.();
+    return m;
   }
 
   addNotice(text) {

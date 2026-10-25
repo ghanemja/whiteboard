@@ -75,6 +75,9 @@ export function buildEditsReply(decisions, model) {
       case "note":
         lines.push(`Noted: “${short(d.text, 60)}”${op({ op: "adopt-note", el: d.elId })}.`);
         break;
+      case "reject":
+        lines.push(`Dropping **${d.label}** (${d.title}) from the plan${op({ op: "decision", id: d.decision, state: "rejected" })}.`);
+        break;
     }
   }
   return lines.join("\n\n");

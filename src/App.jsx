@@ -3,6 +3,7 @@ import { Excalidraw, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw"
 import { Board, PHASES } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
+import { fmt } from "./engine/timeline";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 
 // Tasks that fit the sample repo (sandbox/linkshort, created by `npm run sandbox`).
@@ -15,7 +16,7 @@ const EXAMPLES = [
 // Stable props so Excalidraw doesn't re-render on every streamed character.
 const INITIAL_DATA = { appState: { viewBackgroundColor: "#ffffff", currentItemRoughness: 1 } };
 const UI_OPTIONS = { canvasActions: { loadScene: false, saveToActiveFile: false }, tools: { image: false } };
-// The Why canvas is drawn from the decisions: look, pan and zoom, click a row to read it.
+// The Why and Timeline canvases are drawn for you: look, pan and zoom, click to read (or, in a replay, to jump).
 const WHY_UI_OPTIONS = { canvasActions: { loadScene: false, saveToActiveFile: false, export: false, clearCanvas: false, changeViewBackgroundColor: false, toggleTheme: false } };
 const SPEEDS = [1, 2, 4];
 
@@ -419,6 +420,7 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
 export default function App() {
   const [api, setApi] = useState(null);
   const [whyApi, setWhyApi] = useState(null);
+  const [timelineApi, setTimelineApi] = useState(null);
   const sessionRef = useRef(null);
   const [, setVersion] = useState(0);
   const [phase, setPhase] = useState(null);
@@ -441,13 +443,13 @@ export default function App() {
   const stick = useRef(true);
 
   useEffect(() => {
-    if (!api || !whyApi) return;
+    if (!api || !whyApi || !timelineApi) return;
     // Fresh session: clear UI state that belonged to the previous one (e.g. after a hot reload).
     setPhase(null);
     setDecisions([]);
     setLinked(new Set());
     setSpeed(1);
-    const board = new Board(api, { whyApi, onPhase: setPhase });
+    const board = new Board(api, { whyApi, timelineApi, onPhase: setPhase });
     const s = new Session({ board, onChange: () => setVersion((v) => v + 1) });
     sessionRef.current = s;
     if (import.meta.env.DEV) window.__wb = s;
@@ -472,7 +474,7 @@ export default function App() {
       window.removeEventListener("pagehide", onHide);
       s.dispose();
     };
-  }, [api, whyApi]);
+  }, [api, whyApi, timelineApi]);
 
   // Keep the transcript pinned to the bottom while streaming, unless the user scrolled up.
   useEffect(() => {
@@ -507,6 +509,14 @@ export default function App() {
     // Bring the matching sentence (Activity) or plan entry (Plan) into view.
     const target = tabRef.current === "plan" ? lids[0] && `plan-${lids[0]}` : ids.at(-1);
     if (target) document.getElementById(target)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, []);
+  // From the Timeline: open the Activity tab at your message, or at the command that ran the tests.
+  const focusInActivity = useCallback((id) => {
+    tabRef.current = "activity";
+    setTab("activity");
+    stick.current = false; // don't snap back to the bottom
+    setLinked(new Set([id]));
+    setTimeout(() => document.getElementById(id.startsWith("m-") ? `msg-${id}` : id)?.scrollIntoView({ block: "center", behavior: "smooth" }), 30);
   }, []);
   // From the header or the Why canvas: open the Plan tab at it.
   const focusInPlan = useCallback(
@@ -631,8 +641,11 @@ export default function App() {
     setDraft(brief);
     document.getElementById("ask")?.focus();
   };
-  // The board's tabs: Architecture (editable) and Why (drawn from the decisions; its words are in the Plan tab).
+  // The board's tabs: Architecture (editable), Why (drawn from the decisions; its words are in the Plan tab)
+  // and Timeline (how the decisions moved over the run).
   const boardView = s?.board.view ?? "board";
+  const tl = s?.board.tl;
+  const hasTimeline = !!tl?.segments.length;
   const model = s?.board.model;
   const nodeCount = model ? Object.keys(model.nodes).length : 0;
   const allDecisions = model ? Object.values(model.decisions) : [];
@@ -644,6 +657,8 @@ export default function App() {
       s.board.fitWhy();
       if (allDecisions.length && messages.length) setTab("plan");
     }
+    // It may have grown while hidden; refit unless you've framed it yourself (⛶ fits it again).
+    if (view === "timeline" && s.board.tlFollow) s.board.fitTimeline();
     setVersion((v) => v + 1);
   };
   // A click (not a drag) on the Why canvas opens what's under it in the Plan tab.
@@ -654,6 +669,27 @@ export default function App() {
     if (!s || !whyApi || !d || Math.hypot(e.clientX - d[0], e.clientY - d[1]) > 5) return;
     const { x, y } = viewportCoordsToSceneCoords({ clientX: e.clientX, clientY: e.clientY }, whyApi.getAppState());
     focusInPlan(s.board.whyHit(x, y));
+  };
+  // The Timeline: a click in a replay jumps the board to that moment; otherwise a decision's
+  // mark opens its card, your mark your message, a test run its command. Panning or zooming
+  // it stops it refitting itself as the run grows.
+  const tlDown = useRef(null);
+  const tlClick = (e) => {
+    const d = tlDown.current;
+    tlDown.current = null;
+    if (!s || !timelineApi || !d) return;
+    if (Math.hypot(e.clientX - d[0], e.clientY - d[1]) > 5) {
+      s.board.tlFollow = false;
+      return;
+    }
+    const { x, y } = viewportCoordsToSceneCoords({ clientX: e.clientX, clientY: e.clientY }, timelineApi.getAppState());
+    const hit = s.board.timelineHit(x, y);
+    if (!hit) return;
+    if (replayMode && hit.t != null) return s.seekReplay(hit.t);
+    if (hit.msg) return focusInActivity(hit.msg);
+    const act = hit.tool && messages.flatMap((m) => m.items).find((it) => it.type === "act" && it.toolUseIds.includes(hit.tool));
+    if (act) return focusInActivity(act.id);
+    focusInPlan(hit.lids);
   };
   const sendEdits = () => {
     if (!s || !decisions.length) return;
@@ -849,7 +885,7 @@ export default function App() {
                 onFocus={(ids) => s?.board.scrollTo(ids)}
               />
             ) : (
-              <div key={m.id} className="msg you">
+              <div key={m.id} id={`msg-${m.id}`} className={["msg you", linked.has(m.id) && "linked"].filter(Boolean).join(" ")}>
                 <div className="who">You</div>
                 {m.kind === "chat" ? (
                   <p>{m.text}</p>
@@ -1005,8 +1041,22 @@ export default function App() {
               </span>
             )}
           </button>
+          <button role="tab" aria-selected={boardView === "timeline"} onClick={() => showView("timeline")} title="How the decisions moved over the run: what changed, when, and because of what">
+            <span className="tl-icon" aria-hidden="true" />
+            Timeline
+            {hasTimeline && <span className="ct-count" title="How long the run took">{fmt(tl.duration)}</span>}
+            {tl?.changes > 0 && (
+              <span className="ct-changes" title={`${tl.changes} decision change${tl.changes === 1 ? "" : "s"}`}>
+                ◆{tl.changes}
+              </span>
+            )}
+          </button>
           <span className="ct-hint">
-            {boardView === "why" ? "Evidence → decision → what it shapes → proof. Click a row to read it." : "Edit it to steer: rename, connect, delete, or draw a box."}
+            {boardView === "why"
+              ? "Evidence → decision → what it shapes → proof. Click a row to read it."
+              : boardView === "timeline"
+                ? `How the decisions moved. ${replayMode ? "Click a moment to jump there." : "Click a mark to read it."}`
+                : "Edit it to steer: rename, connect, delete, or draw a box."}
           </span>
         </div>
         <div className="canvases">
@@ -1024,6 +1074,19 @@ export default function App() {
             <Excalidraw excalidrawAPI={setWhyApi} initialData={INITIAL_DATA} UIOptions={WHY_UI_OPTIONS} viewModeEnabled theme={theme} />
             {model && !allDecisions.length && (
               <p className="canvas-empty">Each technical decision appears here as a chain: the evidence behind it, what it shapes, and the check that proves it.</p>
+            )}
+          </div>
+          <div
+            className={`canvas ${boardView === "timeline" ? "on" : ""}`}
+            role="tabpanel"
+            aria-label="Timeline"
+            onPointerDownCapture={(e) => (tlDown.current = [e.clientX, e.clientY])}
+            onPointerUpCapture={tlClick}
+            onWheelCapture={() => s && (s.board.tlFollow = false)}
+          >
+            <Excalidraw excalidrawAPI={setTimelineApi} initialData={INITIAL_DATA} UIOptions={WHY_UI_OPTIONS} viewModeEnabled theme={theme} />
+            {model && !hasTimeline && (
+              <p className="canvas-empty">The run appears here over time: what you did, each test run, and every decision as a lane, from proposed to proven.</p>
             )}
           </div>
         </div>

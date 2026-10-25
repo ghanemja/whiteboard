@@ -603,15 +603,22 @@ class Run {
     // Last real output line; skip Claude Code's own bracketed notes.
     const lines = text.split("\n").map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
     const last = lines.at(-1) ?? "";
+    // Per-test results it printed: the Timeline's Tests lane counts them.
+    const results = testResults(text);
+    const fails = [...results.values()].filter((ok) => !ok).length;
     // `cmd | tail` exits 0 even when cmd fails, so read the output too.
     const failed =
       /\b[1-9]\d* (failed|errors?)\b|no such file or directory|command not found|Traceback \(most recent call last\)/i.test(text) ||
-      /^FAILED\b/m.test(text); // pytest's per-test failure lines
-    this.emit({ type: "activity-result", toolUseId: block.tool_use_id, ok: !block.is_error && !failed, summary: last.slice(0, 120) });
+      /^FAILED\b/m.test(text) || // pytest's per-test failure lines
+      /^\s*(#|ℹ)\s*fail [1-9]/m.test(text) || // TAP and node's spec reporter totals
+      fails > 0;
+    this.emit({
+      type: "activity-result", toolUseId: block.tool_use_id, ok: !block.is_error && !failed, summary: last.slice(0, 120),
+      ...(results.size ? { tests: { pass: results.size - fails, fail: fails } } : {}),
+    });
 
     // Tests the output names keep each decision's proof current: a check that starts
     // failing crosses its diamond, a fixed one ticks it, without waiting for the agent.
-    const results = testResults(text);
     if (!results.size) return;
     for (const [name, ok] of results) this.tests.set(name, ok);
     const ops = [];

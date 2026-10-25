@@ -3,24 +3,23 @@ import {
   convertToExcalidrawElements,
   getCommonBounds,
 } from "@excalidraw/excalidraw";
+import { DECISION, INK, MILESTONE, MUTED, PHASES, PROOF, YOU } from "./palette";
+import { buildTimeline, drawTimeline, TL, xToTime } from "./timeline";
+
+export { MILESTONE, PHASES };
 
 // Owns the board's Excalidraw scenes and keeps them pictures, not documents:
 //   - Architecture: hand-drawn pictograms colored by status, connections, and the
 //     numbered decision diamonds pinned to what they shape. The user edits this one.
 //   - Why: each decision as a chain, evidence → decision → what it shapes → proof.
 //     Derived from the model; redrawn whenever a decision or component changes.
+//   - Timeline: how the decisions moved over the run (src/engine/timeline.js), drawn
+//     from the Session's timed events.
 // The phase journey (milestones + task dots) is drawn above both by PhaseHeader,
 // from this.model. Words live in the panel; on the boards there are only short names.
 //
 // It also applies board ops from the agent, paints highlighter marks behind
 // whatever the current sentence touched, and diffs the user's edits.
-
-export const PHASES = [
-  { key: "planning", label: "Planning", short: "Plan" },
-  { key: "implementation", label: "Implementation", short: "Build" },
-  { key: "verification", label: "Verification", short: "Verify" },
-  { key: "deployment", label: "Deployment", short: "Ship" },
-];
 
 // Component status is color + a corner badge; no words.
 export const STATUS = {
@@ -34,18 +33,12 @@ export const STATUS = {
 
 export const KINDS = ["client", "service", "data", "external", "queue", "test", "user"];
 
-// Task dots and phase milestones, drawn by PhaseHeader.
+// Task dots, drawn by PhaseHeader.
 export const TASK = {
   todo: { stroke: "#adb5bd", fill: "transparent" },
   building: { stroke: "#e8590c", fill: "#ffd8a8" },
   done: { stroke: "#2f9e44", fill: "#8ce99a" },
   failed: { stroke: "#e03131", fill: "#ffa8a8" },
-};
-
-export const MILESTONE = {
-  future: { stroke: "#ced4da", fill: "#f8f9fa", dash: "dashed", width: 2, icon: "#adb5bd", head: "#adb5bd" },
-  current: { stroke: "#f08c00", fill: "#fff3bf", dash: "solid", width: 3, icon: "#e8590c", head: "#e8590c" },
-  done: { stroke: "#2f9e44", fill: "#d3f9d8", dash: "solid", width: 2, icon: "#2f9e44", head: "#2f9e44" },
 };
 
 // Scene geometry. Kept near the aspect of a typical board pane so "fit" stays readable.
@@ -54,8 +47,6 @@ const COL = 290, ROW = 180, NX0 = 55, NY0 = 90; // node grid (icon origin)
 const NOTE_X = 860, NOTE_Y = 90;
 const MARK = "hl-";
 const AGENT = "agent-cursor"; // hashes to Excalidraw's purple cursor hue
-const INK = "#1e1e1e";
-const MUTED = "#868e96";
 
 const rand = () => Math.floor(Math.random() * 2 ** 31);
 const seedOf = (s) => {
@@ -74,22 +65,7 @@ const firstLine = (t) => (t ?? "").split("\n")[0].trim();
 // Ops arrive as JSON arrays (agent tool) or comma-separated strings (demo tags).
 const list = (v) => (Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : []).map((s) => String(s).trim()).filter(Boolean);
 
-// A technical decision is a diamond (the flowchart shape for a decision), numbered,
-// pinned to the components it affects. Its reasoning is in the Plan tab.
-const DECISION = {
-  proposed: { stroke: "#6741d9", fill: "#f3f0ff", dash: "dashed" },
-  accepted: { stroke: "#6741d9", fill: "#e5dbff", dash: "solid" },
-  changed: { stroke: "#1971c2", fill: "#d0ebff", dash: "solid" },
-  rejected: { stroke: "#adb5bd", fill: "#f1f3f5", dash: "dotted" },
-};
-const DW = 40; // diamond size
-
-// Proof marks: a decision's check passed or failed (pending is a dashed "?").
-const PROOF = {
-  pass: { color: "#2f9e44", glyph: "✓" },
-  fail: { color: "#e03131", glyph: "✗" },
-};
-const YOU = { stroke: "#c2255c", fill: "#ffdeeb" }; // the user, in the Why view's evidence
+const DW = 40; // decision diamond size
 const WHY = "why:"; // element id prefix of the Why view
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
@@ -223,11 +199,14 @@ function edgePoint(el, dx, dy, gap) {
 }
 
 export class Board {
-  // api: the Architecture canvas; whyApi: the Why canvas.
-  constructor(api, { whyApi, onPhase } = {}) {
+  // api: the Architecture canvas; whyApi: the Why canvas; timelineApi: the Timeline canvas.
+  constructor(api, { whyApi, timelineApi, onPhase } = {}) {
     this.api = api;
     this.whyApi = whyApi;
+    this.timelineApi = timelineApi;
     this.onPhase = onPhase;
+    this.tlFollow = true; // refit the Timeline as it grows, until the user pans or zooms it
+    this.tlFrame = "";
     this.reset();
   }
 
@@ -237,9 +216,11 @@ export class Board {
     this.hl = new Set();
     this.hlSig = "";
     this.whyHlSig = "";
+    this.tlHlSig = "";
     this.noteSlot = 0;
     this.reviewing = false;
-    this.view = "board"; // which canvas is showing: "board" (architecture) or "why"
+    this.view = "board"; // which canvas is showing: "board" (architecture), "why" or "timeline"
+    this.tl = null; // the Timeline as last drawn (buildTimeline), for clicks and highlights
     this.whyRows = 0; // decisions drawn on the Why canvas, to refit it when one is added
     this.hideCursor();
   }
@@ -316,10 +297,12 @@ export class Board {
     this.whyApi?.updateScene({ elements: [], captureUpdate: CaptureUpdateAction.NEVER });
   }
 
-  // Frame both canvases on their content.
+  // Frame every canvas on its content.
   fit(animate = false) {
     this.api.scrollToContent(this.api.getSceneElements(), { fitToViewport: true, viewportZoomFactor: 0.94, animate });
     this.fitWhy(animate);
+    this.tlFollow = true;
+    this.fitTimeline(animate);
   }
 
   fitWhy(animate = false) {
@@ -330,20 +313,31 @@ export class Board {
   // Which canvas is showing. The cursor, highlights and "scroll to" follow it.
   setView(view) {
     this.hideCursor();
-    this.view = view === "why" ? "why" : "board";
+    this.view = ["why", "timeline"].includes(view) ? view : "board";
     this.refreshMarkers();
   }
 
+  // The showing canvas, and how a logical id finds its element there.
+  canvas() {
+    if (this.view === "why") return [this.whyApi, (l) => this.whyElementFor(l)];
+    if (this.view === "timeline") return [this.timelineApi, (l) => this.timelineElementFor(l)];
+    return [this.api, (l) => this.elementFor(l)];
+  }
+
   // ---- agent cursor: an Excalidraw collaborator that glides to whatever the agent touches ----
-  // On the canvas that's showing: decisions have a place on both, everything else only on Architecture.
+  // On the canvas that's showing: decisions have a place on all three, everything else only on Architecture.
   pointAt(lids, ms = 260) {
-    const why = this.view === "why";
-    const api = why ? this.whyApi : this.api;
+    // On the Timeline it goes to the decision's newest mark, which the next redraw draws.
+    if (this.view === "timeline") this.tlPoint = { lids, ms };
+    else this.glide(...this.canvas(), lids, ms);
+  }
+
+  glide(api, elementFor, lids, ms) {
     if (!api) return;
     const els = api.getSceneElements();
     let target = null;
     for (const lid of lids) {
-      const id = why ? this.whyElementFor(lid) : this.elementFor(lid);
+      const id = elementFor(lid);
       target = id && els.find((e) => e.id === id);
       if (target) break;
     }
@@ -376,6 +370,7 @@ export class Board {
     this.cursor = null;
     this.api.updateScene({ collaborators: new Map() });
     this.whyApi?.updateScene({ collaborators: new Map() });
+    this.timelineApi?.updateScene({ collaborators: new Map() });
   }
 
   // ---- ops ----
@@ -794,6 +789,85 @@ export class Board {
     return els.length ? this.logicalIdsFor([els[0].id]) : [];
   }
 
+  // ---- the Timeline canvas: how the decisions moved over the run ----
+  // events: the run's timed events; now: where the board is in them (a replay's position).
+  redrawTimeline(events, { now } = {}) {
+    if (!this.timelineApi) return;
+    const tl = (this.tl = buildTimeline(events, this.model));
+    this.tlNow = now ?? tl.end;
+    const sk = drawTimeline(tl, now == null ? {} : { now });
+    // Text centered on its point once measured; seeds from ids, so redraws never re-wobble.
+    const at = new Map();
+    const out = this.convert(sk.map(({ _c, ...e }) => (_c && at.set(e.id, _c), e)));
+    for (const e of out) {
+      const c = at.get(e.id);
+      if (c) {
+        e.x = c[0] - e.width / 2;
+        e.y = c[1] - e.height / 2;
+      }
+      e.seed = seedOf(e.id);
+    }
+    const marks = this.timelineApi.getSceneElements().filter((e) => e.id.startsWith(MARK));
+    this.replace(() => true, [...out, ...marks], this.timelineApi);
+    this.tlHlSig = null; // repaint: lanes may have moved under their marks, or gone
+    this.refreshMarkers();
+    // Keep the whole run in view as it grows, unless the user has panned or zoomed.
+    const frame = out.find((e) => e.id === "tl:frame");
+    const size = frame ? `${Math.round(frame.width)}x${Math.round(frame.height)}` : "";
+    if (size !== this.tlFrame && this.view === "timeline" && this.tlFollow) this.fitTimeline();
+    this.tlFrame = size;
+    if (this.tlPoint && this.view === "timeline") this.glide(this.timelineApi, (l) => this.timelineMarkFor(l), this.tlPoint.lids, this.tlPoint.ms);
+    this.tlPoint = null;
+  }
+
+  fitTimeline(animate = false) {
+    const els = this.timelineApi?.getSceneElements() ?? [];
+    if (els.length) this.timelineApi.scrollToContent(els, { fitToViewport: true, viewportZoomFactor: 0.95, animate });
+  }
+
+  // What a point on the Timeline canvas (scene coordinates) is over: the moment it stands
+  // for (t, ms), the decision it belongs to (lids), your message (msg) or the test run (tool).
+  timelineHit(x, y) {
+    const tl = this.tl;
+    if (!tl?.segments.length) return null;
+    const pad = 5;
+    const near = (e) => x >= e.x - pad && x <= e.x + e.width + pad && y >= e.y - pad && y <= e.y + e.height + pad;
+    const els = this.timelineApi.getSceneElements().filter((e) => /^tl:[ykmr]:/.test(e.id) && e.type !== "arrow" && near(e));
+    els.sort((a, b) => a.width * a.height - b.width * b.height);
+    const at = x >= TL.X0 - 6 ? Math.max(0, xToTime(tl, x)) : null; // left of the axis are the lane labels
+    if (!els.length) return { t: at, lids: [] };
+    const [, part, a, b] = els[0].id.split(":");
+    const lane = tl.lanes[+a];
+    switch (part) {
+      case "y": {
+        const y = tl.you[+a];
+        return { t: y.t, lids: y.target ? [`decision:${y.target}`] : [], msg: y.msg ?? null };
+      }
+      case "k":
+        return { t: tl.tests[+a].t, lids: [], tool: tl.tests[+a].toolUseId };
+      case "m":
+        return { t: lane.marks[+b].t, lids: [`decision:${lane.id}`] };
+      default:
+        return { t: at, lids: [`decision:${lane.id}`] };
+    }
+  }
+
+  // The Timeline element for a logical id: a decision is its lane's title, a phase its band.
+  timelineElementFor(lid) {
+    const [k, v] = lid.split(":");
+    const i = k === "decision" ? this.tl?.lanes.findIndex((l) => l.id === v) : k === "phase" ? this.tl?.phases.findIndex((p) => p.key === v) : -1;
+    if (i == null || i === -1) return null;
+    return k === "decision" ? `tl:l:${i}:t` : `tl:p:${i}`;
+  }
+
+  // A decision's newest mark on its lane (up to the now line), where the agent's cursor goes.
+  timelineMarkFor(lid) {
+    const [k, v] = lid.split(":");
+    const i = k === "decision" ? this.tl?.lanes.findIndex((l) => l.id === v) : -1;
+    const m = i == null || i === -1 ? -1 : this.tl.lanes[i].marks.findLastIndex((m) => m.t <= this.tlNow + 5);
+    return m === -1 ? null : `tl:m:${i}:${m}`;
+  }
+
   setStatus(id, v) {
     const node = this.model.nodes[id];
     if (!node || !STATUS[v]) return [];
@@ -1042,9 +1116,8 @@ export class Board {
 
   // Bring these into view on the canvas that's showing.
   scrollTo(lids) {
-    const why = this.view === "why";
-    const api = why ? this.whyApi : this.api;
-    const ids = new Set(lids.map((l) => (why ? this.whyElementFor(l) : this.elementFor(l))).filter(Boolean));
+    const [api, elementFor] = this.canvas();
+    const ids = new Set(lids.map(elementFor).filter(Boolean));
     const els = api.getSceneElements().filter((e) => ids.has(e.id));
     if (els.length) api.scrollToContent(els, { animate: true, duration: 300 });
   }
@@ -1054,10 +1127,11 @@ export class Board {
     this.refreshMarkers();
   }
 
-  // Highlighter marks on both canvases: a yellow halo behind shapes, a marker stroke under text and arrows.
+  // Highlighter marks on every canvas: a yellow halo behind shapes, a marker stroke under text and arrows.
   refreshMarkers() {
     this.hlSig = this.paintMarks(this.api, (l) => this.elementFor(l), this.hlSig);
     if (this.whyApi) this.whyHlSig = this.paintMarks(this.whyApi, (l) => this.whyElementFor(l), this.whyHlSig);
+    if (this.timelineApi) this.tlHlSig = this.paintMarks(this.timelineApi, (l) => this.timelineElementFor(l), this.tlHlSig);
   }
 
   // Returns the marks' signature, so an unchanged set isn't repainted.
