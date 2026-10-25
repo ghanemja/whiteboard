@@ -5,6 +5,7 @@ import {
 } from "@excalidraw/excalidraw";
 import { DECISION, INK, MILESTONE, MUTED, PHASES, PROOF, YOU } from "./palette";
 import { buildTimeline, drawTimeline, TL, xToTime } from "./timeline";
+import { c4Tag } from "./c4";
 
 export { MILESTONE, PHASES };
 
@@ -43,6 +44,10 @@ export const TASK = {
 
 // Scene geometry. Kept near the aspect of a typical board pane so "fit" stays readable.
 const IW = 110, IH = 80; // pictogram size
+// A C4 box, relative to the pictogram's origin: same center line, so the grid holds either.
+const C4B = { x: -40, y: -10, w: 190, h: 92 };
+// Where a component's hit-box sits relative to that origin, per drawing style.
+const HIT = { pictures: { x: -10, y: -10 }, c4: { x: C4B.x, y: C4B.y } };
 const COL = 290, ROW = 180, NX0 = 55, NY0 = 90; // node grid (icon origin)
 const NOTE_X = 860, NOTE_Y = 90;
 const MARK = "hl-";
@@ -209,8 +214,9 @@ function edgePoint(el, dx, dy, gap) {
 
 export class Board {
   // api: the Architecture canvas; whyApi: the Why canvas; timelineApi: the Timeline canvas.
-  constructor(api, { whyApi, timelineApi, onPhase } = {}) {
+  constructor(api, { whyApi, timelineApi, onPhase, style } = {}) {
     this.api = api;
+    this.style = style === "c4" ? "c4" : "pictures"; // how components are drawn (the viewer's choice)
     this.whyApi = whyApi;
     this.timelineApi = timelineApi;
     this.onPhase = onPhase;
@@ -492,24 +498,33 @@ export class Board {
 
   // A component: an invisible hit-box (what arrows bind to and selection grabs),
   // the pictogram, its name underneath, and a status badge, all in one group.
+  // In C4 style the hit-box is the visible box, with the name and "[Type: tech]" inside.
   drawNode(node, ox, oy, labelText) {
     const s = STATUS[node.status] ?? STATUS.planned;
     const pid = node.elId;
-    const sk = [
-      { type: "rectangle", id: pid, x: ox - 10, y: oy - 10, width: IW + 20, height: IH + 74, strokeColor: "transparent", backgroundColor: "transparent", strokeWidth: 1, roughness: 0 },
-      ...iconParts(node.kind, ox, oy, s, pid),
-      { type: "text", id: `${pid}:label`, x: ox, y: oy + IH + 8, text: labelText ?? node.name, fontSize: 18, strokeColor: INK },
-    ];
-    // The main library, small and grey under the name; the full stack is in the Plan tab.
+    const c4 = this.style === "c4";
+    node.style = this.style; // redrawNode finds the origin again from the hit-box
     const libs = node.libs ?? [];
-    if (libs.length) {
+    const sk = c4
+      ? [
+          { type: "rectangle", id: pid, x: ox + C4B.x, y: oy + C4B.y, width: C4B.w, height: C4B.h, strokeColor: s.stroke, backgroundColor: s.fill, fillStyle: "solid", strokeWidth: 2, roughness: 1, roundness: null },
+          { type: "text", id: `${pid}:label`, x: ox, y: oy + 6, text: labelText ?? node.name, fontSize: 18, strokeColor: INK },
+          { type: "text", id: `${pid}:libs`, x: ox, y: oy + 34, text: c4Tag(node), fontSize: 13, strokeColor: MUTED },
+        ]
+      : [
+          { type: "rectangle", id: pid, x: ox - 10, y: oy - 10, width: IW + 20, height: IH + 74, strokeColor: "transparent", backgroundColor: "transparent", strokeWidth: 1, roughness: 0 },
+          ...iconParts(node.kind, ox, oy, s, pid),
+          { type: "text", id: `${pid}:label`, x: ox, y: oy + IH + 8, text: labelText ?? node.name, fontSize: 18, strokeColor: INK },
+        ];
+    // The main library, small and grey under the name; the full stack is in the Plan tab.
+    if (libs.length && !c4) {
       const first = libs[0].length > 18 ? `${libs[0].slice(0, 17)}…` : libs[0];
       sk.push({ type: "text", id: `${pid}:libs`, x: ox, y: oy + IH + 31, text: libs.length > 1 ? `${first} +${libs.length - 1}` : first, fontSize: 13, strokeColor: MUTED });
     }
     // What the run changed in its files (git): GitHub's five blocks, green for added lines, red for removed.
     const d = node.diff;
     if (d && d.add + d.del > 0) {
-      const y = oy + IH + (libs.length ? 52 : 34);
+      const y = c4 ? oy + 60 : oy + IH + (libs.length ? 52 : 34);
       const red = d.del ? Math.max(1, Math.round((5 * d.del) / (d.add + d.del))) : 0;
       const green = d.add ? Math.max(1, 5 - red) : 0;
       const x0 = ox + IW / 2 - 40;
@@ -519,7 +534,7 @@ export class Board {
       }
       sk.push({ type: "text", id: `${pid}:dt`, x: x0 + 60, y: y - 3, text: `+${d.add} −${d.del}`, fontSize: 12, strokeColor: MUTED });
     }
-    const bx = ox + IW - 14, by = oy - 14;
+    const [bx, by] = c4 ? [ox + C4B.x + C4B.w - 14, oy + C4B.y - 14] : [ox + IW - 14, oy - 14];
     if (s.badge) {
       sk.push({ type: "ellipse", id: `${pid}:badge`, x: bx, y: by, width: 28, height: 28, strokeColor: s.stroke, backgroundColor: s.stroke, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
       sk.push({ type: "text", id: `${pid}:badge-t`, x: bx, y: by, text: s.badge, fontSize: 17, strokeColor: "#ffffff" });
@@ -573,7 +588,8 @@ export class Board {
     const els = this.scene();
     const main = els.find((e) => e.id === node.elId);
     if (!main || main.isDeleted) return;
-    const ox = at?.ox ?? main.x + 10, oy = at?.oy ?? main.y + 10;
+    const off = HIT[node.style ?? "pictures"];
+    const ox = at?.ox ?? main.x - off.x, oy = at?.oy ?? main.y - off.y;
     // Keep a rename the user typed but hasn't sent yet.
     const label = els.find((e) => e.id === `${node.elId}:label` && !e.isDeleted);
     const pending = label && firstLine(label.text) !== node.name ? label.text : undefined;
@@ -1127,13 +1143,24 @@ export class Board {
     const A = this.model.nodes[from], B = this.model.nodes[to];
     if (!A || !B) return [];
     const els = this.scene();
-    const ai = els.findIndex((e) => e.id === A.elId), bi = els.findIndex((e) => e.id === B.elId);
-    if (ai === -1 || bi === -1) return [];
+    const edge = { from, to, elId: `edge-${from}-${to}`, via: via ?? null, api: api ?? null, async };
+    if (!this.drawEdge(edge, els)) return [];
+    this.model.edges[key] = edge;
+    this.commit(els);
+    return [`edge:${key}`];
+  }
+
+  // An edge's arrow between its two hit-boxes, into els (replacing an earlier drawing of it).
+  drawEdge(edge, els) {
+    const { via, async } = edge;
+    const A = this.model.nodes[edge.from], B = this.model.nodes[edge.to];
+    const ai = els.findIndex((e) => e.id === A?.elId && !e.isDeleted), bi = els.findIndex((e) => e.id === B?.elId && !e.isDeleted);
+    if (ai === -1 || bi === -1) return false;
     const a = els[ai], b = els[bi];
     const dx = b.x + b.width / 2 - (a.x + a.width / 2);
     const dy = b.y + b.height / 2 - (a.y + a.height / 2);
     const p1 = edgePoint(a, dx, dy, 4), p2 = edgePoint(b, -dx, -dy, 4);
-    const id = `edge-${from}-${to}`;
+    const id = edge.elId;
     // Only a short protocol tag, and only where it fits between the boxes.
     const tag = via && via.length <= 8 && via.length * 7.5 < Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) - 40 ? via : null;
     // convertToExcalidrawElements only binds arrows to shapes in the same batch,
@@ -1151,14 +1178,33 @@ export class Board {
     ]);
     const arrow = out.find((e) => e.id === id);
     const text = out.find((e) => e.containerId === id);
-    els[ai] = bump(a, { boundElements: [...(a.boundElements || []), { type: "arrow", id }] });
-    els[bi] = bump(b, { boundElements: [...(b.boundElements || []), { type: "arrow", id }] });
-    els.push(arrow);
-    if (text) els.push(text);
-    this.remember(text ? [arrow, text] : [arrow]);
-    this.model.edges[key] = { from, to, elId: id, via: via ?? null, api: api ?? null };
+    const bind = (e) => bump(e, { boundElements: [...(e.boundElements || []).filter((x) => x.id !== id), { type: "arrow", id }] });
+    els[ai] = bind(a);
+    els[bi] = bind(b);
+    this.upsert(els, text ? [arrow, text] : [arrow]);
+    return true;
+  }
+
+  // Redraw every arrow from the hit-boxes as they are now (after the drawing style changed).
+  // An arrow you deleted stays deleted: that's an unlink waiting to be sent.
+  redrawEdges() {
+    const els = this.scene();
+    const edges = Object.values(this.model.edges).filter((e) => els.some((x) => x.id === e.elId && !x.isDeleted));
+    // Their old labels go; drawEdge makes new ones.
+    this.kill(els, new Set(els.filter((x) => edges.some((e) => x.containerId === e.elId)).map((x) => x.id)));
+    for (const e of edges) this.drawEdge(e, els);
     this.commit(els);
-    return [`edge:${key}`];
+  }
+
+  // Pictures or C4: redraw the components, then their arrows and diamonds, in the new style.
+  setStyle(style) {
+    const next = style === "c4" ? "c4" : "pictures";
+    if (next === this.style) return;
+    this.style = next;
+    this.hideAlternatives();
+    for (const id of Object.keys(this.model.nodes)) this.redrawNode(id);
+    this.redrawEdges();
+    this.redrawDecisions();
   }
 
   // Sticky notes are the one place words belong on the board: they're the user's own.
@@ -1223,7 +1269,8 @@ export class Board {
     let nid = id || "item", k = 2;
     while (this.model.nodes[nid]) nid = `${id}-${k++}`;
     this.model.nodes[nid] = { id: nid, name, kind: KINDS.includes(kind) ? kind : "service", status: "planned", elId: el, cell: null };
-    const ox = shape.x + shape.width / 2 - IW / 2, oy = shape.y + shape.height / 2 - (IH + 30) / 2;
+    const cy = shape.y + shape.height / 2;
+    const ox = shape.x + shape.width / 2 - IW / 2, oy = this.style === "c4" ? cy - C4B.y - C4B.h / 2 : cy - (IH + 30) / 2;
     this.redrawNode(nid, { ox, oy });
     return [`node:${nid}`];
   }

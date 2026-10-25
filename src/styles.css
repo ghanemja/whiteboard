@@ -257,6 +257,32 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Pictures | C4, and copying the board as Mermaid. */
+.style-toggle {
+  align-self: center;
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 12px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.canvas-tabs .style-toggle button {
+  padding: 3px 9px;
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.canvas-tabs .style-toggle button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.canvas-tabs .style-toggle .copy-mermaid {
+  border-left: 1px solid var(--line);
+  border-radius: 0 6px 6px 0;
+}
 .canvases {
   position: relative;
   flex: 1 1 auto;

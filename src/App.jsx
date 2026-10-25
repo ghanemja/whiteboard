@@ -4,6 +4,7 @@ import { Board, PHASES } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
 import { AREAS, areaOf, fmt } from "./engine/timeline";
+import { toMermaid } from "./engine/c4";
 import { buildReview } from "./engine/review";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 
@@ -736,6 +737,38 @@ export default function App() {
       }
       return !v;
     });
+  // How components are drawn: pictograms or C4 boxes. Remembered per browser.
+  const [drawStyle, setDrawStyle] = useState(() => {
+    try {
+      return localStorage.getItem("wb-style") === "c4" ? "c4" : "pictures";
+    } catch {
+      return "pictures";
+    }
+  });
+  const styleRef = useRef(drawStyle);
+  const chooseStyle = (v) => {
+    styleRef.current = v;
+    setDrawStyle(v);
+    sessionRef.current?.board.setStyle(v);
+    try {
+      localStorage.setItem("wb-style", v);
+    } catch {
+      /* private window: just this page */
+    }
+  };
+  // The board as a Mermaid diagram in C4 notation, for a README or a PR (GitHub renders it).
+  const [copied, setCopied] = useState(false);
+  const copyMermaid = async () => {
+    const s = sessionRef.current;
+    if (!s) return;
+    try {
+      await navigator.clipboard.writeText(`\`\`\`mermaid\n${toMermaid(s.board.model)}\`\`\`\n`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* no clipboard access */
+    }
+  };
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [selLids, setSelLids] = useState(() => new Set()); // board selection, as logical ids
@@ -752,7 +785,7 @@ export default function App() {
     setDecisions([]);
     setLinked(new Set());
     setSpeed(1);
-    const board = new Board(api, { whyApi, timelineApi, onPhase: setPhase });
+    const board = new Board(api, { whyApi, timelineApi, onPhase: setPhase, style: styleRef.current });
     const s = new Session({ board, onChange: () => setVersion((v) => v + 1) });
     sessionRef.current = s;
     if (import.meta.env.DEV) window.__wb = s;
@@ -1447,6 +1480,21 @@ export default function App() {
               </span>
             )}
           </button>
+          {boardView === "board" && (
+            <span className="style-toggle" role="group" aria-label="Drawing style">
+              <button aria-pressed={drawStyle === "pictures"} onClick={() => chooseStyle("pictures")} title="Pictograms">
+                Pictures
+              </button>
+              <button aria-pressed={drawStyle === "c4"} onClick={() => chooseStyle("c4")} title="C4 model: containers and how they connect">
+                C4
+              </button>
+              {nodeCount > 0 && (
+                <button className="copy-mermaid" onClick={copyMermaid} title="Copy as a Mermaid diagram in C4 notation (GitHub renders it)">
+                  {copied ? "✓" : "⧉"} Mermaid
+                </button>
+              )}
+            </span>
+          )}
           <span className="ct-hint">
             {boardView === "why"
               ? "Evidence → decision → what it shapes → proof. Click a row to read it."
