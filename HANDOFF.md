@@ -1,6 +1,6 @@
 # Handoff: Agent Whiteboard
 
-Written 2026-10-25 so the work can continue in a fresh (cloud) session without losing anything. It covers what the product is and why, what's built and verified, how every part works, the gotchas we hit, and a full implementation plan for the next feature: **the Timeline tab**.
+Written 2026-10-25 so the work can continue in a fresh (cloud) session without losing anything. It covers what the product is and why, what's built and verified, how every part works, the gotchas we hit, and the **Timeline tab** (planned in section 8, now built; see 4.9).
 
 Read this first, then `README.md` (user-facing docs), then the code.
 
@@ -31,9 +31,9 @@ Every run is recorded so it can be replayed, reopened, and read as a decision lo
 
 ### Status
 
-- Everything below is **built and verified** (demo, live agent runs on the sandbox repo, reopened recordings, narrow window, dark theme). Build is clean (`npx vite build`).
-- **Nothing is committed anywhere. This folder is not a git repo yet.** See section 9 for moving to the cloud.
-- Next: **Timeline tab** (section 8). The user explicitly wants it ("I love that idea").
+- Everything below is **built and verified** (demo, live agent runs on the sandbox repo, reopened recordings, narrow window, dark theme). Build is clean (`npx vite build`); `npm test` passes.
+- The code is on GitHub (section 9). The **Timeline tab** (section 8) was built in a cloud session without an API key: verified on the demo, the three fixture runs (Open and Replay), a recording fed through the live-agent event path, dark theme and a narrow window, but **not yet on a real live agent run**. Do that first with a key (section 7, "Live agent check"), and look at the Timeline while it runs.
+- Next: the backlog in 8.7.
 
 ---
 
@@ -74,6 +74,7 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 │     Architecture + Why canvases  │  control   │   mirror of the board; proofs from   │
 │ engine/session.js  routes events │  POSTs     │   test output; decision log          │
 │ engine/board.js    owns canvases │            │ server/recordings.js  jsonl + .md    │
+│ engine/timeline.js  the Timeline │            │                                      │
 └──────────────────────────────────┘            └──────────────────────────────────────┘
 ```
 
@@ -83,10 +84,12 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 | `server/runs.js` | One Agent SDK `query()` per run. In-process MCP server `board` with tool `update_board({ ops })`. Plan gate (`ExitPlanMode`) and Bash permission prompts via `canUseTool`. Activity events from tool use/results. A server-side **mirror** of the board (nodes, edges, tasks, decisions) for the decision log and for proofs. Test-output parsing. Endpoints. |
 | `server/recordings.js` | `Recorder`: appends every event (with `t`) to `recordings/<id>.jsonl`, keeps the decision timeline, rewrites `recordings/<id>.decisions.md` (Current plan + Timeline). `listRecordings`, `readRecording`, `readDecisions`; ids must match `/^[\w-]+$/`. |
 | `server/instructions.js` | `BOARD_INSTRUCTIONS` (appended to the Claude Code system prompt) and `PLAN_INSTRUCTIONS` (plan mode). Ops must match `Board.apply()`. |
-| `src/App.jsx` | All React UI: side panel (Activity, Plan tab `PlanView`, saved runs, cards, message box) and the board area (`PhaseHeader`, canvas tabs, two `<Excalidraw>` instances). Creates `Board` + `Session` once **both** canvas APIs exist. |
+| `src/App.jsx` | All React UI: side panel (Activity, Plan tab `PlanView`, saved runs, cards, message box) and the board area (`PhaseHeader`, canvas tabs, three `<Excalidraw>` instances). Creates `Board` + `Session` once **all three** canvas APIs exist. |
 | `src/PhaseHeader.jsx` | The journey above the tabs: project title + goal, milestones Plan/Build/Verify/Ship drawn with **roughjs** (`rough.generator()` → `toPaths` → SVG), task dots, ✓/⏸ badges, finish flag, tooltips, hover/click linking. |
-| `src/engine/board.js` | Owns both canvases. Architecture: pictograms, edges, notes, decision diamonds with ✓/✗ proof badges, highlighter marks, agent cursor, `diff()` of user edits. Why: `drawWhy()` chains. Exports `PHASES`, `STATUS`, `KINDS`, `TASK`, `MILESTONE`. |
-| `src/engine/session.js` | Modes `demo` / `agent` / `replay`. Routes events to board + transcript; plan gate and permission state; highlights; replay stepping. |
+| `src/engine/board.js` | Owns the three canvases. Architecture: pictograms, edges, notes, decision diamonds with ✓/✗ proof badges, highlighter marks, agent cursor, `diff()` of user edits. Why: `drawWhy()` chains. Timeline: `redrawTimeline()`, `timelineHit()`, follow/fit. Exports `PHASES`, `STATUS`, `KINDS`, `TASK`, `MILESTONE`. |
+| `src/engine/palette.js` | `PHASES`, `MILESTONE`, `DECISION`, `PROOF`, `YOU`, `INK`, `MUTED`: no imports, so `timeline.js` loads under `node --test`. `board.js` re-exports `PHASES`/`MILESTONE`. |
+| `src/engine/timeline.js` | Pure: `buildTimeline(events, model)`, `timeToX`, `xToTime`, `drawTimeline(tl, { now })` (skeletons, ids `tl:<part>:…`), plus `gist`, `describeEdit`, `saysFailed`. |
+| `src/engine/session.js` | Modes `demo` / `agent` / `replay`. Routes events to board + transcript; plan gate and permission state; highlights; replay stepping and `seekReplay(t)`; the timed event stream for the Timeline. |
 | `src/engine/transcript.js` | Agent messages as sentences + activity rows, each linked to the logical ids it touched (`sentencesTouching(lids)`). |
 | `src/engine/caption.js` | One-line status ("Deciding …", "Proving D2", "D2 failed its check"…). |
 | `src/engine/parser.js`, `player.js`, `src/agent/script.js`, `replies.js` | Scripted demo: prose with inline `<board op="…"/>` tags typed at reading pace. `PLAN_SCRIPT` / `BUILD_SCRIPT`. |
@@ -95,12 +98,13 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 | `scripts/make-sandbox.mjs` | Creates `sandbox/linkshort` (git-initialized). |
 | `scripts/cdp.mjs` | Headless-Chrome driver used for testing and screenshots (section 7). |
 | `fixtures/recordings/` | Sample runs (see above). |
-| `screenshots/` | `live-run/` (real-time frames + timelapse of a run), `why-view/`, `tabs/` (current layout). |
+| `test/timeline.test.js` | `npm test` (`node --test test/*.test.js`): `buildTimeline` over the fixtures, plus the demo's test-caused change, rejects, and the legacy failure reading. |
+| `screenshots/` | `live-run/` (real-time frames + timelapse of a run), `why-view/`, `tabs/`, `timeline/` (current layout). |
 
 ### Event protocol (`/api/runs`)
 
 - `POST /api/runs {repo, brief}` → `{id}`. `GET /api/runs/status`.
-- `GET /api/runs/:id/events` → NDJSON stream, replays from the start. Each event has `t` (ms since run start).
+- `GET /api/runs/:id/events` → NDJSON stream, replays from the start. Each event has `t` (ms since run start). `activity-result` carries `tests: {pass, fail}` when the output printed per-test lines, and `ok` is false when TAP/spec totals (`# fail N`, `ℹ fail N`) or any per-test line failed (a piped `npm test | grep` exits 0).
 - `POST /api/runs/:id/control` with `type`: `approve` (optional `edits`), `revise`, `chat` (`text`), `edits`, `permission` (`requestId`, `decision`: allow | allow-all | deny), `stop`. Every control also carries `board_state` (the board snapshot).
 - `GET /api/runs/recordings`, `/recordings/:id` (jsonl), `/recordings/:id/decisions` (markdown, text/plain).
 - Event types: `stage`, `text`, `break`, `op`, `activity`, `activity-result`, `gate`, `permission`, `answered`, `user`, `turn`, `done`, `error`, `stopped`, `closed`; recording-only: `meta`, `meta-update`, `decision` (log entries).
@@ -156,15 +160,24 @@ Its own Excalidraw canvas (read-only, `viewModeEnabled`). One row per decision: 
 ### 4.7 Layout: header + tabs (latest change)
 
 - **PhaseHeader** above the board: title + goal on the left; milestones on the right with task dots, ✓ when done, blue ⏸ while waiting for plan approval, flag when complete. Hover → tooltip + highlights linked text; click → Plan tab at that phase/step (`plan-phase:<key>`, `plan-task:<id>` anchors). In dark theme it uses Excalidraw's own trick (`filter: invert(93%) hue-rotate(180deg)`).
-- **Canvas tabs:** Architecture (component count; hint "Edit it to steer…") and Why (decision count + ✓n ✗n once proofs exist; hint "Evidence → decision → what it shapes → proof. Click a row to read it.").
-- Both canvases stay mounted and measured; inactive is `visibility: hidden; pointer-events: none` under the active one. Excalidraw's `handleKeyboardGlobally` is false by default, so shortcuts don't cross canvases.
+- **Canvas tabs:** Architecture (component count; hint "Edit it to steer…"), Why (decision count + ✓n ✗n once proofs exist; hint "Evidence → decision → what it shapes → proof. Click a row to read it.") and Timeline (run length + ◆ changes; see 4.9).
+- All three canvases stay mounted and measured; inactive is `visibility: hidden; pointer-events: none` under the active one. Excalidraw's `handleKeyboardGlobally` is false by default, so shortcuts don't cross canvases.
 - The agent's cursor (an Excalidraw collaborator) moves on whichever canvas is showing. Highlights paint on both (`paintMarks` per canvas). The panel's old phase bar was removed (the header replaces it).
 
-### 4.8 Recording, replay, decision log
+### 4.8 Recording, replay, decision log (see 4.9 for scrubbing)
 
 - `recordings/<id>.jsonl`: every event with `t`, plus `meta` (id, brief, repo, model, effort, startedAt, project) and `meta-update` (agent session id, project, goal).
 - `recordings/<id>.decisions.md`: header, **Current plan** (Goal, Architecture table, Connections, Decisions with Chose / Before / Over / Why / Changed because / Check / Proof / Evidence / Affects / Builds on), then **Timeline** (`### mm:ss · You|Agent|Tests: title`, lines, a `sh` code block for commands, a quote of what the agent said).
 - Start screen "Saved boards": **Replay** (plays at its rhythm, gaps capped at 1.5 s, pause/speed work), **Open** (instant: applies all events, no cursor/flash), **Decisions** (the markdown).
+
+### 4.9 Timeline tab
+
+- **Events.** `Session.events` is the run as `{ t, type, … }` for every mode: agent mode pushes every streamed event (a `user` event gets `msg`, the id of the bubble you added locally, from the `sentMsgs` FIFO); the demo synthesizes `start`, `op`, `user`, `gate` (plan done) and `done` (build done) on a clock that runs at `player.speed`, so 4× draws like 1×. A replay's Timeline is its whole recording (`replay.timeline`), with `replayT` as the now line and later marks faded. `timelineChanged()` redraws at most every 200 ms.
+- **`buildTimeline`** follows the 8.3 rules. Details worth knowing: a lane's first mark mirrors `Board.setDecision` (proposed while the phase is planning); `changed` only when `chose` differs; a proof mark only when the result changes (repeats are dropped) and never on a rejected lane; `fromTests` is inferred for old recordings when a bare proof lands ≤ 250 ms after a test result; a test run is a command matching the runner list (not bare "test", so `cat test/*.js` isn't one) or one whose result shows per-test lines; for old recordings without `tests`, a run is failed if the agent's next words say a test failed (`saysFailed`, used by `6e0ae61d`'s 01:29 run). Idle gaps > 15 s become 46 px breaks; px/s adapts (4–14) to fit ~940 px.
+- **Drawing.** Lane line dashed until approved (or while proposed), purple/blue by state, dotted through breaks; causes are arrows (pink from your mark, red arc from the failed proof); a challenge that changes several decisions draws one arrow to the target and dashed ripple arcs; proof ties are dotted lines up to the test tick. Text is centered by `Board` after measuring (`_c`), and every element's seed comes from its id, so redraws never re-wobble.
+- **Clicks** (`App.tlClick` → `board.timelineHit`): in a replay, `seekReplay(t)` (back = reset + re-apply from the start, forward = apply the rest; pauses; keeps the Timeline view). Otherwise a decision mark or row opens its card, a You mark scrolls the Activity tab to `#msg-<id>` and outlines it, a test tick goes to its command row.
+- **Camera.** It refits as it grows (when the frame changes size) until you wheel or drag it (`board.tlFollow = false`); switching tabs keeps it; ⛶ resets follow. The agent cursor goes to the decision's newest mark up to the now line.
+- **Old recordings** also get `cause: "you"` on the board (Plan "Because", Why evidence) when a decision's choice changes after a chat/revise/edits and before the next gate/done (`Session.steerText`), the same rule the server applies live.
 
 ---
 
@@ -196,12 +209,14 @@ Element id conventions: nodes `node-<id>` (+ `:label`, `:libs`, `:badge`…), ed
 9. Old recordings lack `cause`/`fromTests`; the client infers "test" causes from a previous failed proof. "You" causes in old runs could be inferred from a preceding user chat (not done yet; the Timeline plan does it).
 10. Agents sometimes name components after files (`store.js`); instructions could push for role names.
 11. Two stray 3–6 s recordings (`31ae60d3`, `f18e705b`) came from clicks in the browser pane between turns; safe to delete.
+12. Below 860 px the layout is one column: it must be `minmax(0, 1fr)`, or a long command in an activity row (`nowrap`) widens the page to thousands of px and every canvas renders off screen.
+13. `pkill -f vite` from a shell whose own command line contains "vite" kills that shell too; kill the dev server by pid.
 
 ---
 
 ## 7. Testing
 
-- **Build:** `npx vite build`. **Server syntax:** `node --check server/runs.js`.
+- **Build:** `npx vite build`. **Server syntax:** `node --check server/runs.js`. **Unit tests:** `npm test` (the Timeline over the fixtures).
 - **Sandbox tests:** `npm --prefix sandbox/linkshort test` (node:test; currently 12 pass after the expiry run).
 - **Parser check:** the test-output parser was validated against real `npm test` TAP output from the sandbox plus pytest/go/jest/spec samples (copy `server/runs.js` to a temp `.mjs` with `export { testResults, findTest, gist }` appended and import it).
 - **Visual/E2E:** `scripts/cdp.mjs` drives a headless Chrome at 1440×987 @2x:
@@ -211,12 +226,15 @@ Element id conventions: nodes `node-<id>` (+ `:label`, `:libs`, `:badge`…), ed
   - reopen a run instantly: `await window.__wb.startReplay("<id>", { instant: true })`,
   - switch tabs by clicking `.canvas-tabs button` by text; real clicks with `click x y` (CSS px),
   - `shot file.png`; `record dir 1500` captured the real-time frames in `screenshots/live-run/`.
-  - In a Linux cloud box there's no `/Applications/Google Chrome.app`; use any Chromium (`npx playwright install chromium` or the system `chromium`) with the same flags.
+  - In a Linux cloud box there's no `/Applications/Google Chrome.app`; use any Chromium (the cloud image has one at `/opt/pw-browsers/chromium-*/chrome-linux64/chrome`; add `--no-sandbox`) with the same flags.
+  - Timeline: click a mark by mapping its element to client coords: `(e.x + e.width / 2 + st.scrollX) * st.zoom.value + st.offsetLeft` (same for y), with `st = window.__wb.board.timelineApi.getAppState()`. A live run can be simulated without a key by `await s.reset(); s.mode = "agent"` and feeding a recording's events to `s.onAgentEvent` on a timer. Narrow window: `Emulation.setDeviceMetricsOverride` over the same CDP socket.
 - **Live agent check** (needs `ANTHROPIC_API_KEY`): run a sandbox task, approve, allow only test/read/edit commands inside the sandbox, confirm diamonds tick from the output and the `.decisions.md` reads right. Each run costs about $0.20–0.40 at effort low.
 
 ---
 
-## 8. NEXT: the Timeline tab
+## 8. The Timeline tab (built; this was the plan)
+
+Built as planned, with these differences: the demo's clock is scaled by `player.speed`; the You marks' words sit above them (arrows leave from below); switching to the tab refits only while it's still following (to keep each canvas's camera); proofs are drawn when a result changes, not on every repeat; the Session also writes the inferred "you" causes into the board for old recordings; the server gained per-test counts and TAP failure detection on `activity-result`; and the demo's scripted reply now handles a rejected decision. Every 8.6 box is checked except a run with a real agent (no key in the cloud session), which was covered by feeding a recording through the agent-mode event path.
 
 ### 8.1 Goal
 
@@ -309,18 +327,18 @@ Rules:
 
 ### 8.6 Acceptance criteria
 
-- [ ] A third tab "Timeline" sits next to Architecture and Why; switching tabs keeps each canvas's camera.
-- [ ] For `6e0ae61d`: You lane shows start, the D4 challenge (0:34), approve (0:49), and the allowed commands; D4 shows proposed → changed (cause you, connector from the challenge) → ✓; D1–D3 proposed → accepted → ✓; the Tests lane shows the failing run (an old alias test broke) and the passing re-run, and the 01:29 proofs link to it.
-- [ ] For `dafce9c8`: one challenge → D1–D3 all changed at the same moment with ripple arcs; no proofs.
-- [ ] For the demo: D2 shows ✗ (eval 41/50) → changed (cause test) → ✓ (47/50).
-- [ ] Idle gaps > 15 s are compressed with a visible break marker.
-- [ ] In a replay, clicking a moment jumps the board, header and panel to that moment and pauses; the now line follows the replay.
-- [ ] Clicking a decision mark opens its card in the Plan tab; clicking a You mark shows that message.
-- [ ] Live run: the timeline updates as events arrive, without stealing the camera if the user panned.
-- [ ] `buildTimeline` has a `node --test` unit test over `fixtures/recordings/*.jsonl`.
-- [ ] Works in dark theme and in a narrow window. Build clean.
+- [x] A third tab "Timeline" sits next to Architecture and Why; switching tabs keeps each canvas's camera.
+- [x] For `6e0ae61d`: You lane shows start, the D4 challenge (0:34), approve (0:49), and the allowed commands; D4 shows proposed → changed (cause you, connector from the challenge) → ✓; D1–D3 proposed → accepted → ✓; the Tests lane shows the failing run (an old alias test broke) and the passing re-run, and the 01:29 proofs link to it.
+- [x] For `dafce9c8`: one challenge → D1–D3 all changed at the same moment with ripple arcs; no proofs.
+- [x] For the demo: D2 shows ✗ (eval 41/50) → changed (cause test) → ✓ (47/50).
+- [x] Idle gaps > 15 s are compressed with a visible break marker.
+- [x] In a replay, clicking a moment jumps the board, header and panel to that moment and pauses; the now line follows the replay.
+- [x] Clicking a decision mark opens its card in the Plan tab; clicking a You mark shows that message.
+- [x] Live run (simulated; see above): the timeline updates as events arrive, without stealing the camera if the user panned.
+- [x] `buildTimeline` has a `node --test` unit test over `fixtures/recordings/*.jsonl`.
+- [x] Works in dark theme and in a narrow window. Build clean.
 
-### 8.7 After the Timeline (backlog, from the sketches the user saw)
+### 8.7 NEXT: after the Timeline (backlog, from the sketches the user saw)
 
 - **Ghost alternatives** on the Architecture tab: the rejected options (`over`) as faded ghosts by their decision; hover for "why not" (needs a per-alternative reason); **drag a ghost onto a component to request a swap** (reuses the Challenge path). Closest to the original pitch: "influence technical decisions by dragging components".
 - **Blast radius on hover:** hovering a diamond lights everything it affects; hovering a component shows the decisions constraining it.

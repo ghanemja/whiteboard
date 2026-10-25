@@ -2,7 +2,7 @@
 
 A real coding agent works in a repo while an Excalidraw board shows what it's doing: its plan, the parts of the system it's touching, and how far along it is. You steer it by editing the board.
 
-The board is pictures, not prose. Components are hand-drawn pictograms (browser window, server rack, database cylinder, cloud, queue, clipboard, person) with a short name; status is color plus a corner badge (… building, ✓ verified, ✗ failed, ★ live). Above the board, the project's name and goal sit beside the four phases, drawn as milestones on a road (Plan → Build → Verify → Ship) with a dot per task: hover one to read it, click to open it in the Plan tab. Below that, the board has a tab per canvas: **Architecture** (what's being built; edit it to steer) and **Why** (the reasoning behind it). Words stay in the side panel.
+The board is pictures, not prose. Components are hand-drawn pictograms (browser window, server rack, database cylinder, cloud, queue, clipboard, person) with a short name; status is color plus a corner badge (… building, ✓ verified, ✗ failed, ★ live). Above the board, the project's name and goal sit beside the four phases, drawn as milestones on a road (Plan → Build → Verify → Ship) with a dot per task: hover one to read it, click to open it in the Plan tab. Below that, the board has a tab per canvas: **Architecture** (what's being built; edit it to steer), **Why** (the reasoning behind it) and **Timeline** (how that reasoning moved over the run). Words stay in the side panel.
 
 ## Run
 
@@ -15,6 +15,8 @@ npm run dev
 Opens on http://localhost:5199. `npm run sandbox` creates `sandbox/linkshort`, a tiny URL shortener with real tests, as a safe repo to try the agent on (run it again to reset it). `npm install` also copies Excalidraw's fonts into `public/fonts`.
 
 With `ANTHROPIC_API_KEY` set in the shell (or in `.env.local`, see `.env.example`), pick a repo, describe a task, and a [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session starts in that folder. Without a key the app plays a scripted demo.
+
+Three real runs are kept in `fixtures/recordings/`: copy them into `recordings/` to open them under "Saved boards". `npm test` checks the Timeline against them.
 
 ## What happens in a run
 
@@ -38,6 +40,15 @@ Every decision also names its **check**: how we'll know it was right, usually a 
 
 The **Why** tab draws each decision as a chain: evidence (files from the repo, facts, your request, a failed check) → the decision → the components it shapes → its proof. Dashed purple links show which decisions build on which. It's drawn from the decisions, so it's read-only: pan and zoom it, and click a row to open that decision in the Plan tab. The tab itself counts the decisions and how many are proven (✓) or failed (✗).
 
+The **Timeline** tab answers "what changed, when, and because of what?" across the run, left to right with mm:ss ticks:
+
+- **You** (top): a pink mark for each thing you did: the start, a message (a **?** when it challenges a decision, with the decision named above it), approving the plan, board edits (their count), and each command you allowed or denied.
+- **Tests:** a ✓ or ✗ for every test run (a command like `npm test`, `pytest` or `go test`, or one that printed per-test results), with its pass count when the runner printed one.
+- **One lane per decision:** a dashed diamond when it's proposed and a dashed lane while the plan isn't approved; the lane turns solid when you approve (a faint line drops from your approval to the decisions it made solid). A blue diamond marks a change, with an arrow from what caused it: from your message, or from the ✗ of the check that failed. When one message changes several decisions, the arrow goes to the one you asked about and dashed arcs ripple from it to the rest. A ✓ or ✗ is its check's result; a dotted tie leads up to the test run that ticked it. A grey diamond ends the lane when it's rejected.
+- **Phases** (bottom): Plan, Build, Verify and Ship as segments in the milestone colors, with a flag when it shipped.
+
+Waits longer than 15 seconds (reading the plan, a permission you hadn't answered yet) are drawn short, with a break on the axis that says how long they were, so a long pause doesn't flatten the rest. An orange line marks now. During a live run the Timeline grows as events arrive and keeps the whole run in view, unless you've panned or zoomed it (⛶ fits it again). Click a decision's mark to open its card in the Plan tab, one of your marks to see that message, or a test run to see its command. The tab shows the run's length and how many times a decision changed (◆).
+
 ## Saved boards and decision logs
 
 Every run is saved in `recordings/` (git-ignored) while it happens:
@@ -46,6 +57,8 @@ Every run is saved in `recordings/` (git-ignored) while it happens:
 - `<id>.decisions.md`: a readable log of the development decisions. It opens with the current plan (goal, an architecture table with libraries and interfaces, connections, and each decision with what it beat, why, its evidence, what it replaced and why, its check and its proof), then a timeline: the plan the agent proposed, what you approved, challenged or changed, every decision the agent revised, each decision proven or failed (by the agent or by a test run), every command you allowed, and how the run ended, each with its time.
 
 The start screen lists saved boards. **Replay** plays a run back on the board at its own rhythm (long waits are shortened, and pause and speed work as usual). **Open** jumps straight to the finished board. **Decisions** opens the decision log. A finished live run also links to its replay and decision log.
+
+In a replay the Timeline shows the whole run, with what hasn't happened yet faded and the now line following playback. It's a scrubber: click any moment (a mark, or anywhere along the axis) and the board, the phases and the panel jump to that point and pause there; play continues from it. Recordings made before the server recorded what caused a change still show it: a decision that changed right after you asked for something changed because of you (the Plan and Why tabs say so too), and a test run the agent said had failed counts as failed.
 
 The panel lists what the agent actually did (files read and edited, commands and whether they passed) and links each row to the component it touched. Hover a sentence or row to highlight it on the board; select a component to find what changed it.
 
@@ -59,11 +72,14 @@ Settings: `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `AGENT_EFFORT` (default
 | `server/recordings.js` | Writes each run to `recordings/` (events + decision log), lists and serves them |
 | `server/instructions.js` | What the agent is told about the board (appended to the Claude Code system prompt) |
 | `src/agent/live.js` | Browser side of `/api/runs`: start, follow the event stream, send approvals and messages |
-| `src/engine/session.js` | Routes agent events to the board and the transcript; plan gate and permission state |
-| `src/engine/board.js` | Owns both Excalidraw canvases: the Architecture pictograms and decision diamonds, the Why chains, highlighter marks, and `diff()` of your edits |
+| `src/engine/session.js` | Routes agent events to the board and the transcript; plan gate and permission state; keeps the run's timed events for the Timeline and seeks replays |
+| `src/engine/board.js` | Owns the three Excalidraw canvases: the Architecture pictograms and decision diamonds, the Why chains, the Timeline, highlighter marks, and `diff()` of your edits |
+| `src/engine/timeline.js` | The Timeline as pure functions: `buildTimeline(events)` (lanes, marks, causes, the time axis with compressed waits), `timeToX`, `drawTimeline` (Excalidraw skeletons) |
+| `src/engine/palette.js` | Phases and the colors the canvases share |
 | `src/PhaseHeader.jsx` | The journey above the tabs: title, goal, milestones and task dots, drawn with roughjs (Excalidraw's renderer) |
 | `src/engine/transcript.js` | Sentences and activity rows, each linked to the board items it touched |
 | `src/engine/parser.js`, `player.js`, `src/agent/script.js`, `replies.js` | The scripted demo (inline `<board/>` tags typed out at reading pace) |
 | `scripts/make-sandbox.mjs` | Creates the sample repo |
+| `test/timeline.test.js` | `npm test`: `buildTimeline` over the sample runs in `fixtures/recordings/` |
 
 Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node`, `edge`, `decision`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`.
