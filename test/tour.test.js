@@ -7,7 +7,7 @@ import { TOUR, advance, back, holds, isFresh, next, startTour, stepOf, targets, 
 // The run before anything happens; each step below changes what the person or the demo did.
 const base = {
   started: false, stage: null, phase: null, gate: false, selected: [], explainUse: false, edits: 0, answered: 0,
-  permission: false, permissions: 0, hovers: 0, view: "board", tab: "activity", testCaused: false, finished: false, reviewOpens: 0,
+  permission: false, permissions: 0, hovers: 0, view: "board", tab: "activity", testCaused: false, finished: false, reviewOpens: 0, lenses: 0,
   firstDecision: null, firstQuestion: null, building: null,
 };
 const at = (tour) => stepOf(tour).id;
@@ -45,7 +45,7 @@ test("a whole tour: each step waits for its action, then moves on by itself", ()
   c = { ...c, selected: ["decision:d1"], explainUse: true };
   t = advance(t, c);
   assert.equal(at(t), "steer");
-  assert.deepEqual(targets(t, c).dom.map((d) => d.sel), ['[data-tour="use-this"]', '[data-tour="stickers"]']);
+  assert.deepEqual(targets(t, c).dom.map((d) => d.sel), ['[data-tour="use-this"]', '[data-tour="glass"]', '[data-tour="stickers"]'], "Use this, or the glass (up) or Stickers (down)");
   assert.deepEqual(targets(t, c).board, [], "the card is open: point at Use this, not the board");
 
   c = { ...c, edits: 1 };
@@ -91,6 +91,13 @@ test("a whole tour: each step waits for its action, then moves on by itself", ()
   t = advance(t, c);
   assert.equal(at(t), "timeline");
   c = { ...c, view: "timeline" };
+  t = advance(t, c);
+  assert.equal(at(t), "views");
+  assert.deepEqual(targets(t, c).dom.map((d) => d.sel), ['[data-tour="arch-tab"]'], "back to Architecture first");
+  c = { ...c, view: "board" };
+  assert.deepEqual(targets(t, c).dom.map((d) => d.sel), ['[data-tour="lens"]']);
+  assert.equal(advance(t, c), t, "waits for you to pick a drawing or a layer");
+  c = { ...c, lenses: 1 };
   t = advance(t, c);
   assert.equal(at(t), "finish");
   assert.equal(next(t, c), t, "nowhere past the end");

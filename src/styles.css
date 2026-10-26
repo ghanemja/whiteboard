@@ -2211,7 +2211,7 @@ button:focus-visible {
   }
 }
 
-/* View: Diagram, Show only and Export in one menu. */
+/* Flows & export: one flow's steps on the board, and Export. */
 .view-items {
   min-width: 220px;
   gap: 2px;
@@ -2225,7 +2225,6 @@ button:focus-visible {
   font-weight: 700;
   color: var(--soft);
 }
-.view-items select.diagram-pick,
 .view-items select.focus-pick {
   margin: 0;
   width: 100%;
@@ -2238,6 +2237,174 @@ button:focus-visible {
   font-size: 11.5px;
   font-weight: 700;
   color: var(--soft);
+}
+
+/* The view bar: the same plan drawn other ways (Draw as), or one layer opened up (Zoom into). */
+.lens-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.lens-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.lens-label {
+  padding: 0 8px 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--soft);
+}
+.lens {
+  padding: 5px 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.lens:hover {
+  color: var(--accent);
+}
+.lens.on {
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+.app[data-theme="dark"] .lens.on {
+  color: #1b1b1f;
+}
+.lens:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The glass over the board: look, and click anything to learn what it is. To change the plan,
+   pull the glass down (it slides away), edit, then Submit, which puts it back. */
+.glass {
+  position: absolute;
+  inset: 6px;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 22px;
+  background:
+    radial-gradient(140% 100% at 16% 0%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 36%),
+    radial-gradient(110% 110% at 100% 100%, rgba(165, 200, 240, 0.2) 0%, rgba(165, 200, 240, 0) 55%),
+    linear-gradient(180deg, rgba(196, 222, 250, 0.08), rgba(196, 222, 250, 0.16));
+  box-shadow:
+    inset 0 0 0 1.5px rgba(135, 172, 210, 0.55),
+    inset 0 0 0 7px rgba(255, 255, 255, 0.3),
+    inset 0 0 80px rgba(105, 155, 215, 0.2);
+  clip-path: inset(0 0 0 0 round 22px);
+  transition:
+    clip-path 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.4s ease 0.2s;
+}
+.glass-glint {
+  position: absolute;
+  left: 5%;
+  top: 4%;
+  width: 34%;
+  height: 26%;
+  border-top: 4px solid rgba(255, 255, 255, 0.75);
+  border-left: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  transform: rotate(-12deg);
+  filter: blur(0.6px);
+}
+.glass::after {
+  content: "";
+  position: absolute;
+  right: 7%;
+  bottom: 8%;
+  width: 12%;
+  height: 10%;
+  border-bottom: 3px solid rgba(255, 255, 255, 0.55);
+  border-radius: 50%;
+  transform: rotate(-12deg);
+}
+.glass.down {
+  clip-path: inset(100% 0 0 0 round 22px);
+  opacity: 0;
+}
+.app[data-theme="dark"] .glass {
+  background:
+    radial-gradient(140% 100% at 16% 0%, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 36%),
+    linear-gradient(180deg, rgba(120, 160, 220, 0.06), rgba(120, 160, 220, 0.12));
+  box-shadow:
+    inset 0 0 0 1.5px rgba(140, 170, 220, 0.45),
+    inset 0 0 0 7px rgba(255, 255, 255, 0.05),
+    inset 0 0 80px rgba(110, 150, 220, 0.16);
+}
+.app[data-theme="dark"] .glass-glint,
+.app[data-theme="dark"] .glass::after {
+  opacity: 0.3;
+}
+.glass-handle {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  z-index: 5;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px 6px;
+  border: 1.5px solid rgba(120, 160, 205, 0.65);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: rgba(240, 247, 255, 0.94);
+  color: #34506e;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(60, 90, 130, 0.15);
+}
+.glass-handle:hover {
+  background: #ffffff;
+  color: var(--accent);
+}
+.app[data-theme="dark"] .glass-handle {
+  background: rgba(43, 50, 66, 0.94);
+  color: #c5d6f0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass {
+    transition: none;
+  }
+}
+.edit-bar.glass-bar {
+  background: linear-gradient(90deg, rgba(214, 232, 252, 0.6), var(--panel-2) 70%);
+}
+.app[data-theme="dark"] .edit-bar.glass-bar {
+  background: linear-gradient(90deg, rgba(90, 120, 170, 0.22), var(--panel-2) 70%);
+}
+.gb-text {
+  font-size: 12.5px;
+  color: var(--soft);
+}
+.edit-bar .gb-pull {
+  margin-left: auto;
+  border-color: rgba(120, 160, 205, 0.75);
+}
+.edit-bar .gb-raise {
+  border-style: dashed;
 }
 
 /* Edit the plan: Excalidraw's tools under plain names. Its own toolbar is behind "Drawing tools". */

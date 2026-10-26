@@ -4,7 +4,7 @@ import { Board, PHASES, STATUS, STICKERS, stickerItems } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
 import { AREAS, areaOf, fmt, STICKER_WORD } from "./engine/timeline";
-import { LAYERS, layerOf, tagCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "./engine/views";
+import { LAYERS, layerOf, openableLayers, tagCase, toDfdMermaid, toErMermaid, toInsideMermaid, toMermaid, toSequence } from "./engine/views";
 import { buildReview, penMarks } from "./engine/review";
 import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour, stepOf, targets as tourTargets, tourLength, waiting as tourWaiting } from "./engine/tour";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
@@ -480,7 +480,7 @@ const DIAGRAMS = [
   { key: "pictures", label: "Pictures", title: "Pictograms: what each part is at a glance" },
   { key: "c4", label: "C4", title: "C4 container diagram: each part's type and technology" },
   { key: "dfd", label: "Data flow", title: "Data flow diagram: processes, data stores, external entities, and the data between them" },
-  { key: "er", label: "Database (ER)", title: "Entity-relationship diagram: the tables, their keys, and how they relate" },
+  { key: "er", label: "Database", title: "Entity-relationship (ER) diagram: the tables, their keys, and how they relate" },
   { key: "sequence", label: "Sequence", title: "UML sequence diagram: one flow, step by step" },
 ];
 // Labels in sentence case: "proposed" → "Proposed".
@@ -978,7 +978,7 @@ const KIND_HELP = {
 };
 const DSTATE_WORD = { proposed: "Proposed: not approved yet", accepted: "Approved", changed: "Changed", rejected: "Rejected" };
 const PROOF_WORD = { pass: "Proven by a test ✓", fail: "Failed its check ✗" };
-function Explain({ lid, model, live, onClose, onRename, onRemove, onAsk, onChallenge, onPick, onOpen, onCode, onAnswer, onConfirm, onCorrect }) {
+function Explain({ lid, model, live, onClose, onRename, onRemove, onAsk, onChallenge, onPick, onOpen, onCode, onInside, onAnswer, onConfirm, onCorrect }) {
   const [k, id] = lid.split(/:(.*)/s);
   const name = (n) => model.nodes[n]?.name ?? n;
   const n = k === "node" && model.nodes[id];
@@ -1041,14 +1041,21 @@ function Explain({ lid, model, live, onClose, onRename, onRemove, onAsk, onChall
               )),
           )}
         </dl>
-        {live && (
-          <div className="ex-actions">
-            <button className="secondary" onClick={() => onRename(id)}>Rename</button>
-            <button className="secondary" onClick={onRemove}>Remove</button>
-            <button className="secondary" onClick={() => onAsk(`About ${n.name}: `)}>Ask about it</button>
-            {n.diff && <button className="secondary" onClick={() => onCode(id)}>See the code</button>}
-          </div>
-        )}
+        <div className="ex-actions">
+          {layerOf(n) && (
+            <button className="secondary" onClick={() => onInside(layerOf(n))} title={`Open the ${LAYERS.find((l) => l.key === layerOf(n))?.label} layer: what's inside this part and its neighbours`}>
+              Look inside
+            </button>
+          )}
+          {live && (
+            <>
+              <button className="secondary" onClick={() => onRename(id)}>Rename</button>
+              <button className="secondary" onClick={onRemove}>Remove</button>
+              <button className="secondary" onClick={() => onAsk(`About ${n.name}: `)}>Ask about it</button>
+              {n.diff && <button className="secondary" onClick={() => onCode(id)}>See the code</button>}
+            </>
+          )}
+        </div>
       </>
     );
   } else if (d) {
@@ -1276,8 +1283,20 @@ export default function App() {
   });
   const styleRef = useRef(["c4", "dfd"].includes(diagram) ? diagram : "pictures");
   const readOnlyDiagram = diagram === "er" || diagram === "sequence";
+  // Zoom into a layer (a LAYERS key) or the whole system (null): the board's map, with that
+  // layer's components opened to show their parts. Read-only, on the diagram canvas.
+  const [inside, setInside] = useState(null);
+  const readOnlyView = readOnlyDiagram || !!inside;
+  const lenses = useRef(0); // diagrams and layers picked (the tour waits for one)
+  const chooseInside = (k) => {
+    setInside(k);
+    lenses.current++;
+    if (k && focus) chooseFocus(null);
+  };
   const chooseDiagram = (v) => {
     setDiagram(v);
+    setInside(null);
+    lenses.current++;
     if (!["er", "sequence"].includes(v)) {
       styleRef.current = v;
       sessionRef.current?.board.setStyle(v);
@@ -1308,22 +1327,23 @@ export default function App() {
     const s = sessionRef.current;
     if (!s) return;
     const b = s.board, m = b.model;
-    const flow = focus?.flow && m.flows[focus.flow];
+    const flow = !inside && focus?.flow && m.flows[focus.flow];
     const layer = focus?.layer && LAYERS.find((l) => l.key === focus.layer);
     const name = diagram === "er" ? "Data model" : diagram === "sequence" ? "Sequence" : diagram === "dfd" ? "Data flow" : diagram === "c4" ? "Container view" : "Architecture";
-    const view = flow && diagram !== "er" ? `${name}: ${flow.name}` : layer ? `${name}: ${layer.label} layer` : name;
+    const view = inside ? `Inside the ${LAYERS.find((l) => l.key === inside)?.label} layer` : flow && diagram !== "er" ? `${name}: ${flow.name}` : layer ? `${name}: ${layer.label} layer` : name;
     const title = [m.project, view].filter(Boolean).join(" · ");
     const file = title.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "board";
     try {
       if (kind === "mermaid") {
         const only = layer && new Set(Object.values(m.nodes).filter((n) => [layer.key, null].includes(layerOf(n))).map((n) => n.id));
-        const text =
-          diagram === "er" ? toErMermaid(m) : flow ? toSequence(m, flow) : diagram === "dfd" ? toDfdMermaid(m, { only }) : toMermaid(m, { only });
+        const text = inside
+          ? toInsideMermaid(m, inside)
+          : diagram === "er" ? toErMermaid(m) : flow ? toSequence(m, flow) : diagram === "dfd" ? toDfdMermaid(m, { only }) : toMermaid(m, { only });
         await navigator.clipboard.writeText(`\`\`\`mermaid\n${text}\`\`\`\n`);
       } else {
-        const api = readOnlyDiagram ? b.diagramApi : b.api;
+        const api = readOnlyView ? b.diagramApi : b.api;
         const opts = {
-          elements: readOnlyDiagram ? b.diagramElements(title) : b.exportElements(title),
+          elements: readOnlyView ? b.diagramElements(title) : b.exportElements(title),
           appState: { ...api.getAppState(), exportBackground: true, viewBackgroundColor: "#ffffff", exportWithDarkMode: false, exportScale: 2 },
           files: api.getFiles(),
           exportPadding: 32,
@@ -1342,7 +1362,8 @@ export default function App() {
   };
   // The read-only diagram follows the model as it changes (Board skips redraws that change nothing).
   useEffect(() => {
-    if (readOnlyDiagram) sessionRef.current?.board.drawDiagram(diagram, focus?.flow);
+    if (inside) sessionRef.current?.board.drawDiagram("inside", inside);
+    else if (readOnlyDiagram) sessionRef.current?.board.drawDiagram(diagram, focus?.flow);
   });
   const tabRef = useRef(tab);
   tabRef.current = tab;
@@ -1694,6 +1715,7 @@ export default function App() {
     decisions.forEach((d) => sentKeys.current.add(d.key));
     s.sendEdits(decisions);
     setDecisions([]);
+    setGlassUp(true);
     stick.current = true;
   };
   // Approve the plan; any pending board edits go along and get folded in before building.
@@ -1702,6 +1724,7 @@ export default function App() {
     decisions.forEach((d) => sentKeys.current.add(d.key));
     s.approve(decisions);
     setDecisions([]);
+    setGlassUp(true);
     stick.current = true;
   };
   const togglePlay = () => {
@@ -1779,7 +1802,7 @@ export default function App() {
               ? {
                   n: 2,
                   title: "Check the plan",
-                  text: `The drawing on the right is its plan. Nothing is built until you approve.${openQuestions ? ` It left ${plural(openQuestions, "question")} for you in Plan details.` : ""} Click a ◇ to see other options, change the drawing with Edit the plan, or stick a sticker (Why?, Not needed, Keep this) on a part.`,
+                  text: `The drawing on the right is its plan. Nothing is built until you approve.${openQuestions ? ` It left ${plural(openQuestions, "question")} for you in Plan details.` : ""} Click a ◇ to see other options. To change the drawing or stick a sticker (Why?, Not needed, Keep this) on a part, pull the glass down.`,
                 }
               : finishedRun || phase === "complete"
                 ? {
@@ -1802,7 +1825,43 @@ export default function App() {
                       };
 
   // Edit the plan: each button picks the matching Excalidraw tool and says what to do with it.
-  const editable = messages.length > 0 && !replayMode && boardView === "board" && !readOnlyDiagram;
+  const editable = messages.length > 0 && !replayMode && boardView === "board" && !readOnlyView;
+  // The board sits behind glass: you can look and click anything to learn what it is, but moving,
+  // deleting or typing waits until you pull the glass down. Submit sends your changes and puts it
+  // back. Use this, Rename and Remove on a card pull it down for you.
+  const [glassUp, setGlassUp] = useState(true);
+  const lowerGlass = () => setGlassUp(false);
+  const raiseGlass = () => {
+    setGlassUp(true);
+    s?.board.api.setActiveTool({ type: "selection" });
+    setToolHint(null);
+  };
+  useEffect(() => {
+    if (!editable || !glassUp) return;
+    const onBoard = (t) => !!t?.closest?.(".canvas.arch") && !t.closest(".explain, .board-submit, .glass-handle, button, input, textarea, select");
+    const typing = (t) => !!t?.closest?.("input, textarea, select, [contenteditable]");
+    let down = false;
+    const handlers = {
+      pointerdown: (e) => (down = onBoard(e.target)),
+      // A click selects (to explain it); a drag would move it, so the drag never reaches the board.
+      pointermove: (e) => down && e.buttons && e.stopPropagation(),
+      pointerup: () => (down = false),
+      dblclick: (e) => e.isTrusted && onBoard(e.target) && (e.stopPropagation(), e.preventDefault()),
+      keydown: (e) => {
+        if (typing(e.target) || !(onBoard(e.target) || e.target === document.body)) return;
+        const k = e.key.toLowerCase();
+        if (["delete", "backspace", "arrowup", "arrowdown", "arrowleft", "arrowright", "enter"].includes(k) || ((e.metaKey || e.ctrlKey) && ["v", "x", "z", "y", "d"].includes(k))) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      },
+      paste: (e) => !typing(e.target) && (e.stopPropagation(), e.preventDefault()),
+    };
+    for (const [type, fn] of Object.entries(handlers)) window.addEventListener(type, fn, true);
+    return () => {
+      for (const [type, fn] of Object.entries(handlers)) window.removeEventListener(type, fn, true);
+    };
+  }, [editable, glassUp]);
   const useTool = (type, hint) => {
     s?.board.api.setActiveTool({ type });
     setToolHint(hint);
@@ -1857,6 +1916,7 @@ export default function App() {
     testCaused: allDecisions.some((d) => d.cause?.who === "test"),
     finished: !!review,
     reviewOpens: reviewOpens.current,
+    lenses: lenses.current,
     firstDecision: allDecisions.filter((d) => d.state !== "rejected").sort((a, b) => a.n - b.n)[0]?.id ?? null,
     firstQuestion: Object.values(model.questions).find((q) => q.kind === "question" && q.state === "open")?.id ?? null,
     building: Object.values(model.nodes).find((n) => n.status === "building")?.id ?? null,
@@ -1949,7 +2009,7 @@ export default function App() {
   useEffect(() => {
     const b = s?.board;
     if (!b) return;
-    const want = tour && boardView === "board" && !readOnlyDiagram ? tourAt.board : [];
+    const want = tour && boardView === "board" && !readOnlyView ? tourAt.board : [];
     const sig = want.length ? `${s.gen}|${JSON.stringify(want)}` : "";
     if (sig === tourTips.current) return;
     tourTips.current = sig;
@@ -1981,7 +2041,7 @@ export default function App() {
       b.showTips(
         [
           d && { lid: `decision:${d.id}`, text: "Click a ◇ to see its other options" },
-          n && { lid: `node:${n.id}`, text: "Double-click a name to rename it" },
+          n && { lid: `node:${n.id}`, text: "Click a part to learn what it is" },
           q && { lid: `question:${q.id}`, circle: true },
         ].filter(Boolean),
       );
@@ -2411,7 +2471,7 @@ export default function App() {
       <main className="board">
         {model && <PhaseHeader model={model} reviewing={s.board.reviewing} hl={s.board.hl} onHover={(ids) => s.setHover(ids)} onFocus={focusInPlan} />}
         <div className="canvas-tabs" role="tablist" aria-label="Board">
-          <button role="tab" aria-selected={boardView === "board"} onClick={() => showView("board")} title="The components and how they connect. Edit it to steer the agent.">
+          <button role="tab" aria-selected={boardView === "board"} data-tour="arch-tab" onClick={() => showView("board")} title="The components and how they connect. Edit it to steer the agent.">
             <span className="ct-icon" aria-hidden="true" />
             Architecture
             <span className="ct-sub">what it builds</span>
@@ -2440,67 +2500,40 @@ export default function App() {
               </span>
             )}
           </button>
-          {boardView === "board" && (
-            // View: how to draw it (Diagram), what to show (one layer or flow), and Export, in one place.
+          {boardView === "board" && nodeCount > 0 && (
+            // One flow's steps on the board, and Export. How to draw it and which layer: the bar below.
             <details className="export-menu view-menu">
-              <summary title="How to draw the board, what to show, and export it">
-                {exported === "ok" ? "✓ Exported" : exported === "failed" ? "✗ Export failed" : `View: ${DIAGRAMS.find((d) => d.key === diagram)?.label}${focus ? " · filtered" : ""}`}
+              <summary title="Show one flow's steps, or export what the board shows">
+                {exported === "ok" ? "✓ Exported" : exported === "failed" ? "✗ Export failed" : focus?.flow && !inside ? `Flow: ${model.flows[focus.flow]?.name ?? ""}` : "Flows & export"}
               </summary>
               <div className="export-items view-items">
-                <label>
-                  <span>Diagram</span>
-                  <select className="diagram-pick" value={diagram} onChange={(e) => chooseDiagram(e.target.value)} title="How to draw the system">
-                    {DIAGRAMS.map((d) => (
-                      <option key={d.key} value={d.key} title={d.title}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {nodeCount > 0 && diagram !== "er" && (
+                {!inside && diagram !== "er" && Object.keys(model.flows).length > 0 && (
                   <label>
-                    <span>Show only</span>
+                    <span>Show a flow</span>
                     <select
                       className="focus-pick"
-                      value={focus?.layer ? `layer:${focus.layer}` : focus?.flow ? `flow:${focus.flow}` : ""}
+                      value={focus?.flow ? `flow:${focus.flow}` : ""}
                       onChange={(e) => {
                         const [k, v] = e.target.value.split(":");
                         chooseFocus(k ? { [k]: v } : null);
                       }}
-                      title="Show one layer, or one flow's steps in order"
+                      title="One flow's steps in order, numbered on the arrows"
                     >
-                      {diagram !== "sequence" && <option value="">Everything</option>}
-                      {diagram !== "sequence" && (
-                        <optgroup label="Layers">
-                          {LAYERS.filter((l) => Object.values(model.nodes).some((n) => layerOf(n) === l.key)).map((l) => (
-                            <option key={l.key} value={`layer:${l.key}`}>
-                              {l.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {Object.keys(model.flows).length > 0 && (
-                        <optgroup label="Flows">
-                          {Object.values(model.flows).map((f) => (
-                            <option key={f.id} value={`flow:${f.id}`}>
-                              {f.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
+                      {diagram !== "sequence" && <option value="">None</option>}
+                      {Object.values(model.flows).map((f) => (
+                        <option key={f.id} value={`flow:${f.id}`}>
+                          {f.name}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 )}
-                {nodeCount > 0 && (
-                  <>
-                    <span className="vi-head">Export</span>
-                    <button onClick={() => exportView("mermaid")} title="Copy as a Mermaid diagram (GitHub renders it)">
-                      Copy Mermaid
-                    </button>
-                    <button onClick={() => exportView("svg")}>Download SVG</button>
-                    <button onClick={() => exportView("png")}>Download PNG</button>
-                  </>
-                )}
+                <span className="vi-head">Export</span>
+                <button onClick={() => exportView("mermaid")} title="Copy as a Mermaid diagram (GitHub renders it)">
+                  Copy Mermaid
+                </button>
+                <button onClick={() => exportView("svg")}>Download SVG</button>
+                <button onClick={() => exportView("png")}>Download PNG</button>
               </div>
             </details>
           )}
@@ -2509,14 +2542,49 @@ export default function App() {
               ? "Evidence → decision → what it shapes → proof. Click a row to read it."
               : boardView === "timeline"
                 ? `How the decisions moved. ${replayMode ? "Click a moment to jump there." : "Click a mark to read it."}`
-                : diagram === "er"
-                  ? "The tables each data store holds: keys, columns and relations. Read-only."
-                  : diagram === "sequence"
-                    ? "One flow, step by step. Pick another under View, Show only. Read-only."
-                    : "Click any part or ◇ to learn what it is."}
+                : inside
+                  ? "What's inside each part, and what passes between them. Read-only."
+                  : diagram === "er"
+                    ? "The tables each data store holds: keys, columns and relations. Read-only."
+                    : diagram === "sequence"
+                      ? "One flow, step by step. Pick another under Flows. Read-only."
+                      : "Click any part or ◇ to learn what it is."}
           </span>
         </div>
-        {editable && (
+        {boardView === "board" && nodeCount > 0 && (
+          // The same plan, seen other ways: how it's drawn, and how far in you look.
+          <div className="lens-bar" data-tour="lens">
+            <div className="lens-group" role="group" aria-label="Draw it as">
+              <span className="lens-label">Draw as</span>
+              {DIAGRAMS.map((d) => (
+                <button key={d.key} className={`lens ${!inside && diagram === d.key ? "on" : ""}`} aria-pressed={!inside && diagram === d.key} onClick={() => chooseDiagram(d.key)} title={d.title}>
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            <div className="lens-group" role="group" aria-label="Zoom into a layer">
+              <span className="lens-label">Zoom into</span>
+              <button className={`lens ${!inside ? "on" : ""}`} aria-pressed={!inside} onClick={() => chooseInside(null)} title="The whole system: every part, closed">
+                Whole system
+              </button>
+              {openableLayers(model).map((l) => (
+                <button key={l.key} className={`lens ${inside === l.key ? "on" : ""}`} aria-pressed={inside === l.key} onClick={() => chooseInside(l.key)} title={`Open the ${l.label} layer: what's inside its parts`}>
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {editable && glassUp && (
+          <div className="edit-bar glass-bar" role="region" aria-label="Behind glass">
+            <span className="eb-label">Behind glass:</span>
+            <span className="gb-text">look, and click anything to learn what it is.</span>
+            <button className="gb-pull" data-tour="glass" onClick={lowerGlass} title="Move, rename, remove or add things, then Submit">
+              <span aria-hidden="true">⇣</span> Pull the glass down to change the plan
+            </button>
+          </div>
+        )}
+        {editable && !glassUp && (
           <div className="edit-bar" role="toolbar" aria-label="Edit the plan">
             <span className="eb-label">Edit the plan:</span>
             <button onClick={() => useTool("selection", null)} title="Select, move and double-click things on the board">
@@ -2551,34 +2619,48 @@ export default function App() {
               <ToolIcon name="tools" />
               Drawing tools
             </button>
+            <button className="gb-raise" onClick={raiseGlass} title="Back to looking: your changes stay in the list until you Submit">
+              <span aria-hidden="true">⇡</span> Glass back up
+            </button>
           </div>
         )}
         <div className="canvases" data-tour="board">
           <div
-            className={`canvas arch ${boardView === "board" && !readOnlyDiagram ? "on" : ""} ${ownSel ? "own-sel" : ""} ${tools ? "tools-on" : "tools-off"}`}
+            className={`canvas arch ${boardView === "board" && !readOnlyView ? "on" : ""} ${ownSel ? "own-sel" : ""} ${tools ? "tools-on" : "tools-off"}`}
             role="tabpanel"
             aria-label="Architecture"
           >
             <Excalidraw excalidrawAPI={setApi} initialData={INITIAL_DATA} onChange={onChange} UIOptions={UI_OPTIONS} />
+            {editable && (
+              <div className={`glass ${glassUp ? "up" : "down"}`} aria-hidden="true">
+                <span className="glass-glint" />
+              </div>
+            )}
+            {editable && glassUp && (
+              <button className="glass-handle" onClick={lowerGlass} title="Pull the glass down to move, rename, remove or add things">
+                <span aria-hidden="true">⇣</span> Pull down to edit
+              </button>
+            )}
             {toolHint && editable && (
               <p className="tool-hint" role="status">
                 {toolHint}
               </p>
             )}
-            {selected && boardView === "board" && !readOnlyDiagram && model && (
+            {selected && boardView === "board" && !readOnlyView && model && (
               <Explain
                 key={selected}
                 lid={selected}
                 model={model}
                 live={!replayMode}
                 onClose={() => s.board.api.updateScene({ appState: { selectedElementIds: {} } })}
-                onRename={(id) => renameOnBoard(id)}
-                onRemove={toolRemove}
+                onRename={(id) => (lowerGlass(), renameOnBoard(id))}
+                onRemove={() => (lowerGlass(), toolRemove())}
                 onAsk={prefill}
                 onChallenge={challenge}
-                onPick={(d, i) => s.board.pickAlternative(d.id, i)}
+                onPick={(d, i) => (lowerGlass(), s.board.pickAlternative(d.id, i))}
                 onOpen={(lid) => focusInPlan([lid])}
                 onCode={(id) => goReview(`code:${id}`)}
+                onInside={chooseInside}
                 onAnswer={(q, text) => {
                   s.answerQuestion(q, text);
                   stick.current = true;
@@ -2606,12 +2688,19 @@ export default function App() {
               />
             )}
           </div>
-          <div className={`canvas ${boardView === "board" && readOnlyDiagram ? "on" : ""}`} role="tabpanel" aria-label={diagram === "er" ? "Data model" : "Sequence"}>
+          <div
+            className={`canvas ${boardView === "board" && readOnlyView ? "on" : ""}`}
+            role="tabpanel"
+            aria-label={inside ? `Inside the ${LAYERS.find((l) => l.key === inside)?.label} layer` : diagram === "er" ? "Data model" : "Sequence"}
+          >
             <Excalidraw excalidrawAPI={setDiagramApi} initialData={INITIAL_DATA} UIOptions={WHY_UI_OPTIONS} viewModeEnabled theme={theme} />
-            {model && diagram === "er" && !Object.keys(model.tables ?? {}).length && (
+            {model && inside && !openableLayers(model).some((l) => l.key === inside) && (
+              <p className="canvas-empty">Nothing in this layer yet. Its parts appear here once the agent draws them.</p>
+            )}
+            {model && !inside && diagram === "er" && !Object.keys(model.tables ?? {}).length && (
               <p className="canvas-empty">The data model appears here when the agent describes its tables: columns, keys and how they relate.</p>
             )}
-            {model && diagram === "sequence" && !Object.keys(model.flows ?? {}).length && (
+            {model && !inside && diagram === "sequence" && !Object.keys(model.flows ?? {}).length && (
               <p className="canvas-empty">A flow appears here as a sequence diagram once the agent maps one: who calls whom, in order.</p>
             )}
           </div>
@@ -2641,7 +2730,7 @@ export default function App() {
             )}
           </div>
         </div>
-        {boardView === "board" && diagram === "pictures" && nodeCount > 0 && <BoardKey />}
+        {boardView === "board" && diagram === "pictures" && !inside && nodeCount > 0 && <BoardKey />}
       </main>
     </div>
   );

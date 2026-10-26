@@ -229,3 +229,117 @@ export function toErMermaid(model) {
     }
   return `${lines.join("\n")}\n`;
 }
+
+// ---- inside a layer: the parts in each component (C4's component level) ----
+// The agent's part ops: { id, of, name, kind, layer, links: [{ to, what }] }, `to` a part, table or
+// component id. "Look inside" a layer keeps the board's map, opens each of the layer's components
+// to show its parts, and adds the parts of other components that belong to the layer (an embedding
+// step in a backend worker shows up under ML). Components it links to stay closed, at their place.
+
+// A part's links, from the agent ("api.ask: POST /ask; vdb: top 8 chunks") or objects.
+export function parseLinks(links) {
+  const items = Array.isArray(links) ? links : String(links ?? "").split(/;|\n/);
+  return items
+    .map((l) => {
+      if (l && typeof l === "object") return l.to ? { to: String(l.to), what: String(l.what ?? l.label ?? "").trim() } : null;
+      const m = /^\s*([\w.#-]+)\s*(?::\s*(.*?))?\s*$/.exec(String(l ?? ""));
+      return m && { to: m[1], what: m[2] ?? "" };
+    })
+    .filter(Boolean);
+}
+
+const ROUTE = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s/i;
+const KIND_OF_API = { client: "view", data: "store", queue: "queue", external: "API", user: "person" };
+// What a component holds, in order: its tables (a data store's), then the parts the agent named;
+// with none named, what it exposes (its api), each as a part.
+export function partsOf(model, nodeId) {
+  const n = model.nodes?.[nodeId];
+  if (!n) return [];
+  const tables = Object.values(model.tables ?? {})
+    .filter((t) => t.of === nodeId)
+    .map((t) => ({ id: t.id, of: nodeId, name: t.name, kind: "table", table: t, links: [] }));
+  const own = Object.values(model.parts ?? {})
+    .filter((p) => p.of === nodeId)
+    .sort((a, b) => a.n - b.n);
+  if (own.length) return [...tables, ...own];
+  if (tables.length) return tables; // its api restates the tables
+  return (n.api ?? []).map((a, i) => ({ id: `${nodeId}#${i}`, of: nodeId, name: a, kind: ROUTE.test(a) ? "route" : KIND_OF_API[n.kind] ?? "function", links: [], derived: true }));
+}
+
+// A part's layer: its own, else its component's.
+export const partLayer = (model, p) => (LAYERS.some((l) => l.key === p.layer) ? p.layer : layerOf(model.nodes?.[p.of] ?? {}));
+
+// The inside of one layer: { groups: [{ node, parts, partial }], stubs: [node], links: [{ from, to, what }] }.
+// Link ends are { node, part } (part null: the component as a whole). Groups and stubs keep the
+// board's grid order.
+export function insideOf(model, layer) {
+  const at = (n) => (n.cell ? n.cell[1] * 10 + n.cell[0] : 99);
+  const nodes = Object.values(model.nodes ?? {}).sort((a, b) => at(a) - at(b));
+  const groups = [];
+  for (const node of nodes) {
+    const all = partsOf(model, node.id);
+    if (layerOf(node) === layer) groups.push({ node, parts: all, partial: false });
+    else {
+      const mine = all.filter((p) => !p.derived && p.kind !== "table" && partLayer(model, p) === layer);
+      if (mine.length) groups.push({ node, parts: mine, partial: true });
+    }
+  }
+  const open = new Map(groups.map((g) => [g.node.id, g]));
+  const shown = new Map(groups.flatMap((g) => g.parts.map((p) => [p.id, p])));
+  const partById = new Map(nodes.flatMap((n) => partsOf(model, n.id).map((p) => [p.id, p])));
+  // Where a link lands: a part in view, else its component (open, or closed as a stub).
+  const end = (id) => {
+    const p = partById.get(id);
+    if (p) return { node: p.of, part: shown.has(p.id) ? p.id : null };
+    return model.nodes?.[id] ? { node: id, part: null } : null;
+  };
+  const links = [];
+  const seen = new Set();
+  const covered = new Set(); // component pairs a part link already draws
+  const add = (from, to, what) => {
+    if (!from || !to || (from.node === to.node && (!from.part || !to.part || from.part === to.part))) return;
+    // At least one end is in this layer: a part shown here, or a component opened whole (a
+    // component showing only some parts keeps the rest of its traffic off this view).
+    const counts = (x) => (x.part ? shown.has(x.part) : open.has(x.node) && !open.get(x.node).partial);
+    if (!counts(from) && !counts(to)) return;
+    const k = `${from.node}/${from.part}>${to.node}/${to.part}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    covered.add(`${from.node}>${to.node}`).add(`${to.node}>${from.node}`);
+    links.push({ from, to, what: what ?? "" });
+  };
+  for (const p of partById.values()) for (const l of p.links ?? []) add({ node: p.of, part: shown.has(p.id) ? p.id : null }, end(l.to), l.what);
+  // Links between components no part link covers: from the component to the part its contract
+  // names ("POST /ask {question}" lands on the POST /ask route), else to the component.
+  for (const e of Object.values(model.edges ?? {})) {
+    if (covered.has(`${e.from}>${e.to}`)) continue;
+    const target = open.get(e.to)?.parts.find((p) => p.kind !== "table" && e.api && String(e.api).startsWith(p.name));
+    add({ node: e.from, part: null }, { node: e.to, part: target?.id ?? null }, e.api || tagCase(e.via) || "");
+  }
+  const stubIds = new Set(links.flatMap((l) => [l.from.node, l.to.node]).filter((id) => !open.has(id)));
+  return { groups, stubs: nodes.filter((n) => stubIds.has(n.id)), links };
+}
+
+// The layers worth opening: those with a component, or a part of their own.
+export function openableLayers(model) {
+  const has = new Set(Object.values(model.nodes ?? {}).map(layerOf));
+  for (const p of Object.values(model.parts ?? {})) if (model.nodes?.[p.of]) has.add(partLayer(model, p));
+  return LAYERS.filter((l) => has.has(l.key));
+}
+
+// The inside of a layer as a Mermaid flowchart: a subgraph per component, its parts inside.
+export function toInsideMermaid(model, layer) {
+  const { groups, stubs, links } = insideOf(model, layer);
+  const pid = (node, part) => (part ? `p_${String(part).replace(/[^A-Za-z0-9_]/g, "_")}` : alias(node));
+  const lines = ["flowchart LR"];
+  for (const g of groups) {
+    lines.push(`  subgraph ${alias(g.node.id)}["${q(g.node.name)}${g.partial ? ` (${q(LAYERS.find((l) => l.key === layer)?.label ?? layer)} parts)` : ""}"]`);
+    for (const p of g.parts) lines.push(`    ${pid(g.node.id, p.id)}["${q(p.name)}<br/>${q(p.kind ?? "")}"]`);
+    if (!g.parts.length) lines.push(`    ${alias(g.node.id)}_empty["(no parts described)"]`);
+    lines.push("  end");
+  }
+  for (const n of stubs) lines.push(`  ${alias(n.id)}(["${q(n.name)}"])`);
+  for (const l of links) lines.push(`  ${pid(l.from.node, l.from.part)} -->${l.what ? `|"${q(clip(l.what, 40))}"|` : ""} ${pid(l.to.node, l.to.part)}`);
+  if (stubs.length) lines.push("  classDef stub fill:#f8f9fa,stroke:#adb5bd,color:#868e96", `  class ${stubs.map((n) => alias(n.id)).join(",")} stub`);
+  return `${lines.join("\n")}\n`;
+}

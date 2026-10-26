@@ -81,15 +81,16 @@ const hostOf = (url) => {
 // One board op. Mirrors Board.apply() in src/engine/board.js.
 const strs = z.array(z.string());
 const Op = z.object({
-  op: z.enum(["project", "phase", "task", "node", "edge", "flow", "table", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note"]),
-  id: z.string().optional().describe("component id (node/status/rename/remove/adopt), task id (task), decision id (decision), flow id (flow), q1… (question) or a1… (assumption)"),
-  name: z.string().optional().describe("project name, phase name, component name (≤16 chars, sentence case), or flow name (≤24 chars)"),
-  layer: z.enum(LAYERS.map((l) => l.key)).optional().describe("node: frontend | backend | data | ml | external (defaults from kind; set ml for models, embeddings, evals)"),
+  op: z.enum(["project", "phase", "task", "node", "part", "edge", "flow", "table", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note"]),
+  id: z.string().optional().describe("component id (node/status/rename/remove/adopt), part id (part, e.g. api.ask), task id (task), decision id (decision), flow id (flow), q1… (question) or a1… (assumption)"),
+  name: z.string().optional().describe("project name, phase name, component name (≤16 chars, sentence case), part name (≤24 chars), or flow name (≤24 chars)"),
+  layer: z.enum(LAYERS.map((l) => l.key)).optional().describe("node: frontend | backend | data | ml | external (defaults from kind; set ml for models, embeddings, evals); part: only when it differs from its component's"),
   steps: z.union([z.string(), strs]).optional().describe('flow: the steps in order, each "from>to: what", e.g. ["web>api: POST /ask", "api>vdb: top 8 chunks"]'),
-  of: z.string().optional().describe("table: the id of the data component that holds it"),
+  of: z.string().optional().describe("table: the id of the data component that holds it; part: the id of the component it's inside"),
+  links: z.union([z.string(), strs]).optional().describe('part: what it hands on, each "target: what" with target a part, table or component id, e.g. ["api.retrieve: the question", "vdb: nearest 8 chunks"]'),
   columns: z.union([z.string(), strs]).optional().describe('table: its columns, each "name type [pk] [unique] [fk>table.column]", e.g. ["id uuid pk", "document_id uuid fk>documents.id", "page int"]'),
   goal: z.string().optional().describe("project: the goal in one sentence"),
-  kind: z.enum(["client", "service", "data", "external", "queue", "test", "user"]).optional(),
+  kind: z.string().optional().describe("node: client | service | data | external | queue | test | user; part: one word, e.g. page, view, route, job, module, step, model, index, bucket, dataset"),
   col: z.number().int().min(0).max(2).optional(),
   row: z.number().int().min(0).max(2).optional(),
   paths: strs.optional().describe("node: repo-relative files or folders this component owns"),

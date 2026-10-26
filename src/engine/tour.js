@@ -16,6 +16,7 @@
 //   view, tab,                          board tab: "board" | "why" | "timeline"; panel tab: "activity" | "plan"
 //   testCaused,                         a decision was changed because its check failed
 //   finished, reviewOpens,              the run is over (review card); review rows / red pen opened
+//   lenses,                             diagrams and layers picked in the bar above the board
 //   firstDecision, firstQuestion, building: ids to point at (or null)
 // }
 // A step's done(ctx, start) gets the context from when the step began, so "did something new"
@@ -56,10 +57,11 @@ export const TOUR = [
   {
     id: "steer",
     title: "Change its mind",
-    text: "Press Use this on one of the other options, or drag a sticker (Stickers, above the board) onto a part: Why? asks it to explain, Not needed asks to drop it. Nothing is sent yet; changes wait in a list.",
+    text: "You've been looking through glass: clicks only explain. Press Use this on one of the other options (that pulls the glass down for you), or pull the glass down and drag a sticker (Stickers, above the board) onto a part: Why? asks it to explain, Not needed asks to drop it. Nothing is sent until you Submit.",
     done: (c, s) => c.edits > s.edits || c.stage === "building",
     dom: (c) => [
       c.explainUse ? { sel: '[data-tour="use-this"]', label: "Use this" } : null,
+      { sel: '[data-tour="glass"]', label: "Pull the glass down" },
       { sel: '[data-tour="stickers"]', label: "Or a sticker" },
     ].filter(Boolean),
     board: (c) => (!c.explainUse && c.firstDecision ? [{ lid: `decision:${c.firstDecision}`, text: "Click a ◇ for its options" }] : []),
@@ -130,6 +132,13 @@ export const TOUR = [
     text: "One lane per decision, from proposed to proven. Your clicks are on top, test runs below. Spot D2's ✗ and the change that followed it.",
     done: (c) => c.view === "timeline",
     dom: () => [{ sel: '[data-tour="timeline-tab"]', label: "Timeline" }],
+  },
+  {
+    id: "views",
+    title: "See the same plan other ways",
+    text: "On Architecture, the bar above the board redraws the plan. Draw as: C4, Data flow, Database (its tables) or Sequence (one request, step by step). Zoom into opens a layer to show what's inside its parts: try ML for the pipeline from chunking to the answer.",
+    done: (c, s) => c.lenses > s.lenses,
+    dom: (c) => (c.view === "board" ? [{ sel: '[data-tour="lens"]', label: "Draw as · Zoom into" }] : [{ sel: '[data-tour="arch-tab"]', label: "Architecture" }]),
   },
   {
     id: "finish",

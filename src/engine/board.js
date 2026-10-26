@@ -5,8 +5,8 @@ import {
 } from "@excalidraw/excalidraw";
 import { DECISION, INK, MILESTONE, MUTED, PHASES, PROOF, YOU } from "./palette";
 import { buildTimeline, drawTimeline, TL, xToTime } from "./timeline";
-import { c4Tag, dataOf, dfdIds, dfdRole, layerOf, parseColumns, parseSteps, sentenceCase, tagCase } from "./views";
-import { drawEr, drawSequence } from "./diagrams";
+import { c4Tag, dataOf, dfdIds, dfdRole, layerOf, parseColumns, parseLinks, parseSteps, sentenceCase, tagCase } from "./views";
+import { drawEr, drawInside, drawSequence } from "./diagrams";
 import { STICKERS, stickerEdit } from "./stickers";
 
 export { MILESTONE, PHASES, STICKERS };
@@ -277,7 +277,7 @@ export class Board {
   }
 
   reset() {
-    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {}, questions: {}, flows: {}, tables: {}, unowned: [] };
+    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {}, questions: {}, flows: {}, tables: {}, parts: {}, unowned: [] };
     this.diagramSig = null; // what the diagram canvas last drew
     this.focus = null; // what the board is narrowed to: { layer } or { flow }, the rest faded
     this.known = new Set();
@@ -517,6 +517,7 @@ export class Board {
       case "node": return this.addNode(a);
       case "flow": return this.setFlow(a);
       case "table": return this.setTable(a);
+      case "part": return this.setPart(a);
       case "edge": return this.addEdge(a);
       case "status": return this.setStatus(a.id, a.v);
       case "rename": return this.rename(a.id, a.name);
@@ -1456,6 +1457,20 @@ export class Board {
     return [`table:${key}`, ...(this.model.tables[key].of ? [`node:${this.model.tables[key].of}`] : [])];
   }
 
+  // ---- inside a component: its parts (the "Look inside" layer views) ----
+  // { id, of (the component), name, kind (route, page, job, step, model…), layer (when not its
+  // component's: an embedding step in a worker is ml), links: [{ to: part, table or component, what }] }
+  setPart({ id, of, name, kind, layer, links }) {
+    if (!id) return [];
+    const prev = this.model.parts[id];
+    if (!prev && (!of || !name)) return [];
+    this.model.parts[id] = {
+      id, n: prev?.n ?? Object.keys(this.model.parts).length + 1, of: of ?? prev.of, name: name ?? prev.name,
+      kind: kind ?? prev?.kind ?? "", layer: layer ?? prev?.layer ?? null, links: links != null ? parseLinks(links) : prev?.links ?? [],
+    };
+    return [`part:${id}`, `node:${this.model.parts[id].of}`];
+  }
+
   // Data-flow numbering follows the grid, so a new or removed component can shift the others'.
   renumber() {
     if (this.style !== "dfd") return;
@@ -1463,15 +1478,16 @@ export class Board {
     for (const n of Object.values(this.model.nodes)) if ((n.dfdId ?? "") !== (ids[n.id] ?? "")) this.redrawNode(n.id);
   }
 
-  // ---- the diagram canvas: the data model (ER) or a flow as a sequence diagram ----
+  // ---- the diagram canvas: the data model (ER), a flow as a sequence diagram, or inside a layer ----
   // Read-only, drawn from the model; redrawn only when what it shows changes, and refit when the
   // diagram itself changes (not on every redraw, so a pan or zoom holds).
+  // `flowId` is the flow for a sequence diagram, the layer for inside.
   drawDiagram(kind, flowId) {
     if (!this.diagramApi) return;
     const flow = this.model.flows[flowId] ?? Object.values(this.model.flows)[0];
-    const sk = kind === "er" ? drawEr(this.model) : kind === "sequence" ? drawSequence(this.model, flow) : [];
+    const sk = kind === "er" ? drawEr(this.model) : kind === "sequence" ? drawSequence(this.model, flow) : kind === "inside" ? drawInside(this.model, flowId) : [];
     const sig = JSON.stringify(sk);
-    const which = `${kind}:${kind === "sequence" ? flow?.id : ""}`;
+    const which = `${kind}:${kind === "sequence" ? flow?.id : kind === "inside" ? flowId : ""}`;
     if (sig === this.diagramSig && which === this.diagramWhich) return;
     const refit = which !== this.diagramWhich || !this.diagramSig;
     this.diagramSig = sig;
