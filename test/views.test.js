@@ -1,7 +1,8 @@
 // The board's views (src/engine/views.js): C4 labels, layers, flows, names, and the Mermaid exports (run with `npm test`).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { c4Tag, layerOf, parseSteps, sentenceCase, tagCase, toMermaid, toSequence } from "../src/engine/views.js";
+import { c4Tag, dfdIds, dfdRole, layerOf, parseColumns, parseSteps, sentenceCase, tagCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "../src/engine/views.js";
+import { drawEr, drawSequence } from "../src/engine/diagrams.js";
 
 const model = {
   project: 'Link "shortener"',
@@ -102,4 +103,65 @@ test("a flow as a numbered sequence diagram: replies dashed, async open-headed",
   assert.ok(lines.includes("  n_web->>n_api: POST /links"));
   assert.ok(lines.includes("  n_api-)n_q_1: enqueue"));
   assert.ok(lines.includes("  n_api-->>n_web: {code}"));
+});
+
+test("columns from the agent: types, primary keys, unique, and foreign keys written three ways", () => {
+  const cols = parseColumns("id uuid pk; document_id uuid fk>documents.id; owner uuid references users(id); parent int -> nodes.id; email text unique; embedding vector(1024)");
+  assert.deepEqual(cols.map((c) => [c.name, c.type, c.pk, c.unique, c.fk && `${c.fk.table}.${c.fk.col}`]), [
+    ["id", "uuid", true, false, null],
+    ["document_id", "uuid", false, false, "documents.id"],
+    ["owner", "uuid", false, false, "users.id"],
+    ["parent", "int", false, false, "nodes.id"],
+    ["email", "text", false, true, null],
+    ["embedding", "vector(1024)", false, false, null],
+  ]);
+  assert.deepEqual(parseColumns([{ name: "id", type: "uuid", pk: true }]), [{ name: "id", type: "uuid", pk: true, unique: false, fk: null }]);
+});
+
+test("the data model as a Mermaid ER diagram: keys marked, one-to-many for a foreign key, one-to-one when it's unique", () => {
+  const m = toErMermaid({
+    tables: {
+      users: { name: "users", columns: parseColumns("id uuid pk; email text unique") },
+      links: { name: "links", columns: parseColumns("code text pk; owner uuid fk>users.id") },
+      profiles: { name: "profiles", columns: parseColumns("user_id uuid pk fk>users.id; bio text") },
+    },
+  });
+  assert.match(m, /^erDiagram\n {2}users \{\n {4}uuid id PK\n {4}text email UK\n {2}\}/);
+  assert.match(m, / {4}uuid owner FK/);
+  assert.match(m, / {4}uuid user_id PK, FK/);
+  assert.match(m, /users \|\|--o\{ links : "owner"/);
+  assert.match(m, /users \|\|--o\| profiles : "user_id"/);
+});
+
+test("data flow: processes numbered, stores DS1…, entities outside the boundary, links labeled with their data", () => {
+  assert.deepEqual(dfdIds(model), { web: "1", api: "2", db: "DS1", "q-1": "DS2" }); // grid order: rows, then columns
+  assert.deepEqual(["web", "db", "q-1", "llm", "user"].map((id) => dfdRole(model.nodes[id])), ["process", "store", "store", "entity", "entity"]);
+  const m = toDfdMermaid(model);
+  assert.match(m, /n_api\("2 · API server"\)/);
+  assert.match(m, /n_db\[\("DS1 · Store"\)\]/);
+  assert.match(m, /n_web -->\|"POST \/links \{url\} → \{code\}"\| n_api/);
+  assert.match(m, /n_api -\.->\|"Queue"\| n_q_1/); // no contract: its protocol
+  const lines = m.split("\n");
+  assert.ok(lines.indexOf('  n_llm["Claude API"]') > lines.indexOf("  end"));
+});
+
+test("drawn diagrams: crow's feet on a foreign key, and a reply dashed in a sequence", () => {
+  const m = {
+    nodes: { pg: { id: "pg", name: "Postgres", kind: "data" }, web: { id: "web", name: "Web", kind: "client" }, api: { id: "api", name: "API", kind: "service" } },
+    edges: { "web>api": { from: "web", to: "api", api: "POST /ask" } },
+    tables: {
+      documents: { id: "documents", name: "documents", of: "pg", columns: parseColumns("id uuid pk") },
+      chunks: { id: "chunks", name: "chunks", of: "pg", columns: parseColumns("id uuid pk; document_id uuid fk>documents.id") },
+    },
+  };
+  const er = drawEr(m);
+  const rel = er.filter((e) => e.type === "arrow");
+  assert.equal(rel.length, 1);
+  assert.equal(rel[0].startArrowhead, "crowfoot_many"); // at chunks.document_id
+  assert.equal(rel[0].endArrowhead, "crowfoot_one"); // at documents.id
+  assert.ok(er.some((e) => e.id === "er:g:pg:t" && e.text.startsWith("Postgres [Database")));
+  const seq = drawSequence(m, { name: "Ask", steps: parseSteps("web>api: POST /ask; api>web: answer") }).filter((e) => e.type === "arrow");
+  assert.deepEqual(seq.map((a) => [a.strokeStyle, a.endArrowhead]), [["solid", "triangle"], ["dashed", "arrow"]]);
+  assert.deepEqual(drawEr({ tables: {} }), []);
+  assert.deepEqual(drawSequence(m, null), []);
 });

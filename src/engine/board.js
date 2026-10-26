@@ -5,7 +5,8 @@ import {
 } from "@excalidraw/excalidraw";
 import { DECISION, INK, MILESTONE, MUTED, PHASES, PROOF, YOU } from "./palette";
 import { buildTimeline, drawTimeline, TL, xToTime } from "./timeline";
-import { c4Tag, layerOf, parseSteps, sentenceCase, tagCase } from "./views";
+import { c4Tag, dataOf, dfdIds, dfdRole, layerOf, parseColumns, parseSteps, sentenceCase, tagCase } from "./views";
+import { drawEr, drawSequence } from "./diagrams";
 
 export { MILESTONE, PHASES };
 
@@ -46,8 +47,10 @@ export const TASK = {
 const IW = 110, IH = 80; // pictogram size
 // A C4 box, relative to the pictogram's origin: same center line, so the grid holds either.
 const C4B = { x: -40, y: -10, w: 190, h: 92 };
-// Where a component's hit-box sits relative to that origin, per drawing style.
-const HIT = { pictures: { x: -10, y: -10 }, c4: { x: C4B.x, y: C4B.y } };
+// Data-flow (Gane-Sarson) shapes, on the same center column: a process, a data store, an external entity.
+const DFD = { process: { x: -40, y: -10, w: 190, h: 92 }, store: { x: -40, y: 8, w: 190, h: 56 }, entity: { x: -30, y: -4, w: 170, h: 80 } };
+// Where a component's hit-box sits relative to the pictogram's origin, per drawing style.
+const shapeOf = (style, kind) => (style === "c4" ? C4B : style === "dfd" ? DFD[dfdRole({ kind })] : { x: -10, y: -10, w: IW + 20, h: IH + 74 });
 // The C4 style is the official one: crisp 1 px lines and a plain typeface (Nunito, Excalidraw's "Normal").
 const SANS = 6;
 const FADE = 15; // opacity of what a layer or flow filter leaves out
@@ -217,9 +220,10 @@ function edgePoint(el, dx, dy, gap) {
 
 export class Board {
   // api: the Architecture canvas; whyApi: the Why canvas; timelineApi: the Timeline canvas.
-  constructor(api, { whyApi, timelineApi, onPhase, style } = {}) {
+  constructor(api, { whyApi, timelineApi, diagramApi, onPhase, style } = {}) {
     this.api = api;
-    this.style = style === "c4" ? "c4" : "pictures"; // how components are drawn (the viewer's choice)
+    this.diagramApi = diagramApi; // the read-only ER and sequence diagrams
+    this.style = ["c4", "dfd"].includes(style) ? style : "pictures"; // how components are drawn (the viewer's choice)
     this.whyApi = whyApi;
     this.timelineApi = timelineApi;
     this.onPhase = onPhase;
@@ -229,7 +233,8 @@ export class Board {
   }
 
   reset() {
-    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {}, questions: {}, flows: {}, unowned: [] };
+    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {}, questions: {}, flows: {}, tables: {}, unowned: [] };
+    this.diagramSig = null; // what the diagram canvas last drew
     this.focus = null; // what the board is narrowed to: { layer } or { flow }, the rest faded
     this.known = new Set();
     this.hl = new Set();
@@ -261,11 +266,15 @@ export class Board {
   }
 
   // Line and type for the drawing style: hand-drawn pictures, or the official C4 look.
+  // C4 and data flow are the official notations; pictures are hand-drawn.
+  get official() {
+    return this.style === "c4" || this.style === "dfd";
+  }
   look(width = 2) {
-    return this.style === "c4" ? { strokeWidth: 1, roughness: 0 } : { strokeWidth: width, roughness: 1 };
+    return this.official ? { strokeWidth: 1, roughness: 0 } : { strokeWidth: width, roughness: 1 };
   }
   font() {
-    return this.style === "c4" ? { fontFamily: SANS } : {};
+    return this.official ? { fontFamily: SANS } : {};
   }
 
   // What the focus keeps: { nodes, edges } (sets of ids and edge keys), or null for everything.
@@ -458,6 +467,7 @@ export class Board {
       case "task": return this.setTask(a);
       case "node": return this.addNode(a);
       case "flow": return this.setFlow(a);
+      case "table": return this.setTable(a);
       case "edge": return this.addEdge(a);
       case "status": return this.setStatus(a.id, a.v);
       case "rename": return this.rename(a.id, a.name);
@@ -555,10 +565,39 @@ export class Board {
   drawNode(node, ox, oy, labelText) {
     const s = STATUS[node.status] ?? STATUS.planned;
     const pid = node.elId;
-    const c4 = this.style === "c4";
+    const c4 = this.style === "c4", dfd = this.style === "dfd";
     node.style = this.style; // redrawNode finds the origin again from the hit-box
     const libs = node.libs ?? [];
-    const sk = c4
+    // Data flow (Gane-Sarson): a process is a rounded box with its number on top, a data store an
+    // open-ended box with its id on the left, an external entity a box with a shadow.
+    const b = shapeOf(this.style, node.kind), bx0 = ox + b.x, by0 = oy + b.y;
+    const role = dfdRole(node);
+    node.dfdId = dfd ? dfdIds(this.model)[node.id] ?? "" : "";
+    const edge = { strokeColor: s.stroke, strokeWidth: 1, roughness: 0 };
+    let labelAt = [ox + IW / 2, null]; // where the name is centered (x; y if not the default)
+    const centers = {};
+    const sk = dfd
+      ? role === "process"
+        ? [
+            { type: "rectangle", id: pid, x: bx0, y: by0, width: b.w, height: b.h, strokeColor: s.stroke, backgroundColor: s.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0, roundness: { type: 3 } },
+            poly(`${pid}:0`, [[bx0, by0 + 24], [bx0 + b.w, by0 + 24]], edge),
+            { type: "text", id: `${pid}:id`, x: bx0, y: by0, text: node.dfdId, fontSize: 12, strokeColor: MUTED, fontFamily: SANS },
+            { type: "text", id: `${pid}:label`, x: ox, y: by0 + 38, text: labelText ?? node.name, fontSize: 17, strokeColor: INK, fontFamily: SANS },
+          ]
+        : role === "store"
+          ? [
+              { type: "rectangle", id: pid, x: bx0, y: by0, width: b.w, height: b.h, strokeColor: "transparent", backgroundColor: s.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0 },
+              poly(`${pid}:0`, [[bx0 + b.w, by0], [bx0, by0], [bx0, by0 + b.h], [bx0 + b.w, by0 + b.h]], edge),
+              poly(`${pid}:1`, [[bx0 + 52, by0], [bx0 + 52, by0 + b.h]], edge),
+              { type: "text", id: `${pid}:id`, x: bx0, y: by0, text: node.dfdId, fontSize: 12, strokeColor: MUTED, fontFamily: SANS },
+              { type: "text", id: `${pid}:label`, x: ox, y: by0 + b.h / 2 - 11, text: labelText ?? node.name, fontSize: 16, strokeColor: INK, fontFamily: SANS },
+            ]
+          : [
+              { type: "rectangle", id: `${pid}:sh`, x: bx0 + 6, y: by0 + 6, width: b.w, height: b.h, strokeColor: "transparent", backgroundColor: "#ced4da", fillStyle: "solid", strokeWidth: 1, roughness: 0 },
+              { type: "rectangle", id: pid, x: bx0, y: by0, width: b.w, height: b.h, strokeColor: s.stroke, backgroundColor: s.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0 },
+              { type: "text", id: `${pid}:label`, x: ox, y: by0 + b.h / 2 - 12, text: labelText ?? node.name, fontSize: 17, strokeColor: INK, fontFamily: SANS },
+            ]
+      : c4
       ? [
           { type: "rectangle", id: pid, x: ox + C4B.x, y: oy + C4B.y, width: C4B.w, height: C4B.h, strokeColor: s.stroke, backgroundColor: s.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0, roundness: null },
           { type: "text", id: `${pid}:label`, x: ox, y: oy + 8, text: labelText ?? node.name, fontSize: 17, strokeColor: INK, fontFamily: SANS },
@@ -569,15 +608,20 @@ export class Board {
           ...iconParts(node.kind, ox, oy, s, pid),
           { type: "text", id: `${pid}:label`, x: ox, y: oy + IH + 8, text: labelText ?? node.name, fontSize: 18, strokeColor: INK },
         ];
+    if (dfd && role === "process") centers[`${pid}:id`] = [ox + IW / 2, by0 + 12];
+    if (dfd && role === "store") {
+      centers[`${pid}:id`] = [bx0 + 26, by0 + b.h / 2];
+      labelAt = [bx0 + 52 + (b.w - 52) / 2, null];
+    }
     // The main library, small and grey under the name; the full stack is in the Plan tab.
-    if (libs.length && !c4) {
+    if (libs.length && !c4 && !dfd) {
       const first = libs[0].length > 18 ? `${libs[0].slice(0, 17)}…` : libs[0];
       sk.push({ type: "text", id: `${pid}:libs`, x: ox, y: oy + IH + 31, text: libs.length > 1 ? `${first} +${libs.length - 1}` : first, fontSize: 13, strokeColor: MUTED });
     }
     // What the run changed in its files (git): GitHub's five blocks, green for added lines, red for removed.
     const d = node.diff;
     if (d && d.add + d.del > 0) {
-      const y = c4 ? oy + 60 : oy + IH + (libs.length ? 52 : 34);
+      const y = c4 ? oy + 60 : dfd ? (role === "process" ? oy + 62 : by0 + b.h + 8) : oy + IH + (libs.length ? 52 : 34);
       const red = d.del ? Math.max(1, Math.round((5 * d.del) / (d.add + d.del))) : 0;
       const green = d.add ? Math.max(1, 5 - red) : 0;
       const x0 = ox + IW / 2 - 40;
@@ -585,9 +629,9 @@ export class Board {
         const c = i < green ? "#2f9e44" : i < green + red ? "#e03131" : "#dee2e6";
         sk.push({ type: "rectangle", id: `${pid}:d${i}`, x: x0 + i * 11, y, width: 9, height: 9, strokeColor: c, backgroundColor: c, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
       }
-      sk.push({ type: "text", id: `${pid}:dt`, x: x0 + 60, y: y - 3, text: `+${d.add} −${d.del}`, fontSize: 12, strokeColor: MUTED, ...(c4 ? { fontFamily: SANS } : {}) });
+      sk.push({ type: "text", id: `${pid}:dt`, x: x0 + 60, y: y - 3, text: `+${d.add} −${d.del}`, fontSize: 12, strokeColor: MUTED, ...(c4 || dfd ? { fontFamily: SANS } : {}) });
     }
-    const [bx, by] = c4 ? [ox + C4B.x + C4B.w - 14, oy + C4B.y - 14] : [ox + IW - 14, oy - 14];
+    const [bx, by] = c4 || dfd ? [bx0 + b.w - 14, by0 - 14] : [ox + IW - 14, oy - 14];
     if (s.badge) {
       sk.push({ type: "ellipse", id: `${pid}:badge`, x: bx, y: by, width: 28, height: 28, strokeColor: s.stroke, backgroundColor: s.stroke, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
       sk.push({ type: "text", id: `${pid}:badge-t`, x: bx, y: by, text: s.badge, fontSize: 17, strokeColor: "#ffffff" });
@@ -596,7 +640,10 @@ export class Board {
     const group = [`g:${pid}`];
     for (const e of out) {
       e.groupIds = group;
-      if (e.id === `${pid}:label` || e.id === `${pid}:libs`) e.x = ox + IW / 2 - e.width / 2;
+      if (e.id === `${pid}:label`) e.x = labelAt[0] - e.width / 2;
+      if (e.id === `${pid}:libs`) e.x = ox + IW / 2 - e.width / 2;
+      const c = centers[e.id];
+      if (c) [e.x, e.y] = [c[0] - e.width / 2, c[1] - e.height / 2];
       if (e.id === `${pid}:badge-t`) {
         e.x = bx + 14 - e.width / 2;
         e.y = by + 14 - e.height / 2;
@@ -629,6 +676,7 @@ export class Board {
     const fresh = this.remember(this.drawNode(node, NX0 + cell[0] * COL, NY0 + cell[1] * ROW));
     this.commit([...this.scene(), ...fresh]);
     if (this.changes.length) this.attributeChanges();
+    this.renumber();
     this.redrawKey();
     // Decisions about it, made before it was drawn, can pin to it now (and the Why view moves down if it must).
     if (Object.keys(this.model.decisions).length) this.redrawDecisions();
@@ -643,7 +691,7 @@ export class Board {
     const els = this.scene();
     const main = els.find((e) => e.id === node.elId);
     if (!main || main.isDeleted) return;
-    const off = HIT[node.style ?? "pictures"];
+    const off = shapeOf(node.style ?? "pictures", node.kind);
     const ox = at?.ox ?? main.x - off.x, oy = at?.oy ?? main.y - off.y;
     // Keep a rename the user typed but hasn't sent yet.
     const label = els.find((e) => e.id === `${node.elId}:label` && !e.isDeleted);
@@ -769,7 +817,7 @@ export class Board {
     const out = this.convert([
       {
         type: "rectangle", id: q.elId, x, y, width: 210, height: 56, strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid",
-        strokeWidth: 1, strokeStyle: q.state === "open" && q.kind === "assumption" ? "dashed" : "solid", roughness: this.style === "c4" ? 0 : 1, roundness: this.style === "c4" ? null : { type: 3 },
+        strokeWidth: 1, strokeStyle: q.state === "open" && q.kind === "assumption" ? "dashed" : "solid", roughness: this.official ? 0 : 1, roundness: this.official ? null : { type: 3 },
         label: { text: clip(q.answer ? `${q.text} → ${q.answer}` : q.text, 76), fontSize: 14, strokeColor: q.state === "corrected" ? MUTED : INK, ...this.font() },
       },
       { type: "ellipse", id: `${q.elId}:b`, x: x - 12, y: y - 12, width: 24, height: 24, strokeColor: badge, backgroundColor: badge, fillStyle: "solid", strokeWidth: 1, roughness: 0 },
@@ -800,7 +848,7 @@ export class Board {
       this.convert(
         options.map((o, i) => ({
           type: "rectangle", id: `alt-${did}-${i}`, x, y: y0 + i * (H + GAP), width: W, height: H,
-          strokeColor: DECISION.proposed.stroke, backgroundColor: "#ffffff", fillStyle: "solid", strokeStyle: "dashed", ...this.look(1.5), roundness: this.style === "c4" ? null : { type: 3 },
+          strokeColor: DECISION.proposed.stroke, backgroundColor: "#ffffff", fillStyle: "solid", strokeStyle: "dashed", ...this.look(1.5), roundness: this.official ? null : { type: 3 },
           label: { text: labels[i], fontSize: 13, strokeColor: o ? INK : MUTED, ...this.font() },
         })),
       ),
@@ -1217,7 +1265,13 @@ export class Board {
     const p1 = edgePoint(a, dx, dy, 4), p2 = edgePoint(b, -dx, -dy, 4);
     const id = edge.elId;
     // Only a short protocol tag, and only where it fits between the boxes.
-    const tag = via && via.length <= 8 && via.length * 7.5 < Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) - 40 ? tagCase(via) : null;
+    // On the link: its protocol, short; in a data flow diagram, as much of the data it carries as
+    // fits (the rest is in the Plan tab and the exports), else its protocol.
+    const dfd = this.style === "dfd";
+    const room = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) - 30;
+    const fits = Math.floor(room / (dfd ? 6.4 : 7.5));
+    const word = dfd ? (fits >= 8 ? clip(dataOf(edge), Math.min(fits, 30)) : tagCase(via) ?? "") : via && via.length <= 8 ? tagCase(via) : "";
+    const tag = word && word.length <= fits ? word : null;
     // convertToExcalidrawElements only binds arrows to shapes in the same batch,
     // so pass geometry-only proxies of both ends and keep just the arrow.
     const proxy = (e) => ({ type: e.type, id: e.id, x: e.x, y: e.y, width: e.width, height: e.height });
@@ -1228,7 +1282,7 @@ export class Board {
         points: [[0, 0], [p2[0] - p1[0], p2[1] - p1[1]]],
         strokeColor: "#495057", ...this.look(2), strokeStyle: async ? "dashed" : "solid",
         start: { id: a.id }, end: { id: b.id },
-        ...(tag ? { label: { text: tag, fontSize: 13, strokeColor: MUTED, ...this.font() } } : {}),
+        ...(tag ? { label: { text: tag, fontSize: dfd ? 12 : 13, strokeColor: MUTED, ...this.font() } } : {}),
       },
     ]);
     const arrow = out.find((e) => e.id === id);
@@ -1253,7 +1307,7 @@ export class Board {
 
   // Pictures or C4: redraw the components, then their arrows and diamonds, in the new style.
   setStyle(style) {
-    const next = style === "c4" ? "c4" : "pictures";
+    const next = ["c4", "dfd"].includes(style) ? style : "pictures";
     if (next === this.style) return;
     this.style = next;
     this.hideAlternatives();
@@ -1334,26 +1388,95 @@ export class Board {
     this.commit([...els, ...out]);
   }
 
+  // ---- the data model: tables held by the data stores ----
+  // { id, name, of (the data component), columns: [{ name, type, pk, unique, fk: { table, col } }] }
+  setTable({ id, name, of, columns }) {
+    const key = id || name;
+    if (!key) return [];
+    const prev = this.model.tables[key];
+    this.model.tables[key] = { id: key, name: name ?? prev?.name ?? key, of: of ?? prev?.of ?? null, columns: columns != null ? parseColumns(columns) : prev?.columns ?? [] };
+    return [`table:${key}`, ...(this.model.tables[key].of ? [`node:${this.model.tables[key].of}`] : [])];
+  }
+
+  // Data-flow numbering follows the grid, so a new or removed component can shift the others'.
+  renumber() {
+    if (this.style !== "dfd") return;
+    const ids = dfdIds(this.model);
+    for (const n of Object.values(this.model.nodes)) if ((n.dfdId ?? "") !== (ids[n.id] ?? "")) this.redrawNode(n.id);
+  }
+
+  // ---- the diagram canvas: the data model (ER) or a flow as a sequence diagram ----
+  // Read-only, drawn from the model; redrawn only when what it shows changes, and refit when the
+  // diagram itself changes (not on every redraw, so a pan or zoom holds).
+  drawDiagram(kind, flowId) {
+    if (!this.diagramApi) return;
+    const flow = this.model.flows[flowId] ?? Object.values(this.model.flows)[0];
+    const sk = kind === "er" ? drawEr(this.model) : kind === "sequence" ? drawSequence(this.model, flow) : [];
+    const sig = JSON.stringify(sk);
+    const which = `${kind}:${kind === "sequence" ? flow?.id : ""}`;
+    if (sig === this.diagramSig && which === this.diagramWhich) return;
+    const refit = which !== this.diagramWhich || !this.diagramSig;
+    this.diagramSig = sig;
+    this.diagramWhich = which;
+    const at = new Map(), right = new Map();
+    const out = this.convert(sk.map(({ _c, _r, ...e }) => (_c && at.set(e.id, _c), _r != null && right.set(e.id, _r), e)));
+    for (const e of out) {
+      const c = at.get(e.id);
+      if (c) [e.x, e.y] = [c[0] - e.width / 2, c[1] - e.height / 2];
+      if (right.has(e.id)) e.x = right.get(e.id) - e.width;
+      e.seed = seedOf(e.id);
+    }
+    this.diagramApi.updateScene({ elements: out, captureUpdate: CaptureUpdateAction.NEVER });
+    if (refit && out.length) setTimeout(() => this.diagramApi.scrollToContent(out, { fitToViewport: true, viewportZoomFactor: 0.9 }), 40);
+  }
+
+  // The diagram canvas for export, with a title above it.
+  diagramElements(title) {
+    const els = this.diagramApi?.getSceneElements() ?? [];
+    if (!title || !els.length) return els;
+    const [x1, y1] = getCommonBounds(els);
+    return [...els, ...this.convert([{ type: "text", id: "export:title", x: x1, y: y1 - 46, text: title, fontSize: 22, strokeColor: INK, fontFamily: SANS }])];
+  }
+
   // The official style's key, under the diagram: what the colors and lines mean.
   redrawKey() {
     const els = this.scene();
     this.kill(els, new Set(els.filter((e) => e.id.startsWith("key:")).map((e) => e.id)));
     const boxes = Object.values(this.model.nodes).map((n) => els.find((e) => e.id === n.elId && !e.isDeleted)).filter(Boolean);
-    if (this.style !== "c4" || !boxes.length) return this.commit(els);
-    const x0 = Math.min(...boxes.map((b) => b.x)), y = Math.max(...boxes.map((b) => b.y + b.height)) + 44;
+    if (!this.official || !boxes.length) return this.commit(els);
+    const x0 = Math.min(...boxes.map((b) => b.x));
+    let y = Math.max(...boxes.map((b) => b.y + b.height)) + 44;
     const sk = [{ type: "text", id: "key:title", x: x0, y: y - 2, text: "Key", fontSize: 13, strokeColor: INK, fontFamily: SANS }];
-    const centers = {};
     let x = x0 + 42;
     const label = (id, text) => {
       sk.push({ type: "text", id, x, y: y - 1, text, fontSize: 12, strokeColor: MUTED, fontFamily: SANS });
       x += text.length * 6.6 + 18;
     };
+    // Data flow: the notation's shapes on a row of their own, then what the colors mean.
+    if (this.style === "dfd") {
+      const ink = { strokeColor: "#495057", backgroundColor: "#f8f9fa", fillStyle: "solid", strokeWidth: 1, roughness: 0 };
+      sk.push({ type: "rectangle", id: "key:proc", x, y: y - 2, width: 26, height: 18, ...ink, roundness: { type: 3 } });
+      x += 32;
+      label("key:proc:t", "Process");
+      sk.push(poly("key:store", [[x + 26, y - 1], [x, y - 1], [x, y + 15], [x + 26, y + 15]], { strokeColor: "#495057", strokeWidth: 1, roughness: 0 }));
+      x += 32;
+      label("key:store:t", "Data store");
+      sk.push({ type: "rectangle", id: "key:ent:s", x: x + 3, y: y + 1, width: 24, height: 16, strokeColor: "transparent", backgroundColor: "#ced4da", fillStyle: "solid", strokeWidth: 1, roughness: 0 });
+      sk.push({ type: "rectangle", id: "key:ent", x, y: y - 2, width: 24, height: 16, ...ink });
+      x += 32;
+      label("key:ent:t", "External entity");
+      sk.push({ type: "arrow", id: "key:flow", x, y: y + 7, points: [[0, 0], [26, 0]], strokeColor: "#495057", strokeWidth: 1, roughness: 0, endArrowhead: "arrow" });
+      x += 32;
+      label("key:flow:t", "Data flow");
+      x = x0 + 42;
+      y += 26;
+    }
     for (const [k, st] of Object.entries(STATUS)) {
       sk.push({ type: "rectangle", id: `key:${k}`, x, y, width: 14, height: 14, strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
       x += 20;
       label(`key:${k}:t`, k[0].toUpperCase() + k.slice(1));
     }
-    for (const [k, dash] of [["sync", "solid"], ["async", "dashed"]]) {
+    for (const [k, dash] of this.style === "dfd" ? [] : [["sync", "solid"], ["async", "dashed"]]) {
       sk.push({ type: "line", id: `key:${k}`, x, y: y + 7, points: [[0, 0], [26, 0]], strokeColor: "#495057", strokeStyle: dash, strokeWidth: 1, roughness: 0 });
       x += 32;
       label(`key:${k}:t`, k === "sync" ? "Synchronous" : "Asynchronous");
@@ -1415,6 +1538,7 @@ export class Board {
     this.kill(els, ids);
     delete this.model.nodes[id];
     this.commit(els);
+    this.renumber();
     this.redrawKey();
     return [];
   }
@@ -1439,7 +1563,8 @@ export class Board {
     while (this.model.nodes[nid]) nid = `${id}-${k++}`;
     this.model.nodes[nid] = { id: nid, name, kind: KINDS.includes(kind) ? kind : "service", status: "planned", elId: el, cell: null };
     const cy = shape.y + shape.height / 2;
-    const ox = shape.x + shape.width / 2 - IW / 2, oy = this.style === "c4" ? cy - C4B.y - C4B.h / 2 : cy - (IH + 30) / 2;
+    const b = shapeOf(this.style, kind);
+    const ox = shape.x + shape.width / 2 - IW / 2, oy = this.official ? cy - b.y - b.h / 2 : cy - (IH + 30) / 2;
     this.redrawNode(nid, { ox, oy });
     return [`node:${nid}`];
   }

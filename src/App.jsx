@@ -4,7 +4,7 @@ import { Board, PHASES } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
 import { AREAS, areaOf, fmt } from "./engine/timeline";
-import { LAYERS, layerOf, tagCase, toMermaid, toSequence } from "./engine/views";
+import { LAYERS, layerOf, tagCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "./engine/views";
 import { buildReview } from "./engine/review";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 
@@ -441,6 +441,14 @@ function QuestionCard({ q, dLabel, canAnswer, onAnswer, onConfirm, onCorrect, li
 
 const STATUS_DOT = { planned: "#adb5bd", building: "#e8590c", built: "#1971c2", verified: "#2f9e44", failed: "#e03131", live: "#6741d9" };
 const KIND_WORD = { client: "Client", service: "Service", data: "Data store", external: "External API", queue: "Queue", test: "Tests", user: "User" };
+// The diagrams the board can show (the Diagram picker above it).
+const DIAGRAMS = [
+  { key: "pictures", label: "Pictures", title: "Pictograms: what each part is at a glance" },
+  { key: "c4", label: "C4", title: "C4 container diagram: each part's type and technology" },
+  { key: "dfd", label: "Data flow", title: "Data flow diagram: processes, data stores, external entities, and the data between them" },
+  { key: "er", label: "Database (ER)", title: "Entity-relationship diagram: the tables, their keys, and how they relate" },
+  { key: "sequence", label: "Sequence", title: "UML sequence diagram: one flow, step by step" },
+];
 // Labels in sentence case: "proposed" → "Proposed".
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
@@ -558,6 +566,38 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {Object.keys(model.tables ?? {}).length > 0 && (
+        <section>
+          <h3>Data model</h3>
+          {Object.values(model.tables).map((t) => (
+            <div
+              key={t.id}
+              {...(t.of && model.nodes[t.of] ? link(`node:${t.of}`) : {})}
+              className={["plan-table", t.of && model.nodes[t.of] && link(`node:${t.of}`).className].filter(Boolean).join(" ")}
+            >
+              <div className="pt-name">
+                <b>{t.name}</b>
+                {t.of && model.nodes[t.of] && <span className="pc-kind">{name(t.of)}</span>}
+              </div>
+              <ul>
+                {t.columns.map((c) => (
+                  <li key={c.name}>
+                    <code>{c.name}</code>
+                    {c.type && <span className="pt-type">{c.type}</span>}
+                    {c.pk && <span className="pt-key">PK</span>}
+                    {c.fk && (
+                      <span className="pt-key" title={`References ${c.fk.table}.${c.fk.col}`}>
+                        FK → {c.fk.table}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </section>
       )}
 
@@ -759,6 +799,7 @@ export default function App() {
   const [api, setApi] = useState(null);
   const [whyApi, setWhyApi] = useState(null);
   const [timelineApi, setTimelineApi] = useState(null);
+  const [diagramApi, setDiagramApi] = useState(null);
   const sessionRef = useRef(null);
   const [, setVersion] = useState(0);
   const [phase, setPhase] = useState(null);
@@ -789,21 +830,34 @@ export default function App() {
       }
       return !v;
     });
-  // How components are drawn: pictograms or C4 boxes. Remembered per browser.
-  const [drawStyle, setDrawStyle] = useState(() => {
+  // Which diagram the board shows. Pictures, C4 and Data flow redraw the editable board in place
+  // (steering works in all three); Database (ER) and Sequence are read-only, on their own canvas.
+  // Remembered per browser.
+  const [diagram, setDiagram] = useState(() => {
     try {
-      return localStorage.getItem("wb-style") === "c4" ? "c4" : "pictures";
+      const v = localStorage.getItem("wb-diagram") ?? localStorage.getItem("wb-style");
+      return DIAGRAMS.some((d) => d.key === v) ? v : "pictures";
     } catch {
       return "pictures";
     }
   });
-  const styleRef = useRef(drawStyle);
-  const chooseStyle = (v) => {
-    styleRef.current = v;
-    setDrawStyle(v);
-    sessionRef.current?.board.setStyle(v);
+  const styleRef = useRef(["c4", "dfd"].includes(diagram) ? diagram : "pictures");
+  const readOnlyDiagram = diagram === "er" || diagram === "sequence";
+  const chooseDiagram = (v) => {
+    setDiagram(v);
+    if (!["er", "sequence"].includes(v)) {
+      styleRef.current = v;
+      sessionRef.current?.board.setStyle(v);
+    }
+    // A sequence diagram is of one flow, so it shows the one picked (or the first); an ER diagram
+    // has no layers or flows to narrow.
+    if (v === "er" && focus) chooseFocus(null);
+    if (v === "sequence" && !focus?.flow) {
+      const first = Object.keys(sessionRef.current?.board.model.flows ?? {})[0];
+      chooseFocus(first ? { flow: first } : null);
+    }
     try {
-      localStorage.setItem("wb-style", v);
+      localStorage.setItem("wb-diagram", v);
     } catch {
       /* private window: just this page */
     }
@@ -823,18 +877,22 @@ export default function App() {
     const b = s.board, m = b.model;
     const flow = focus?.flow && m.flows[focus.flow];
     const layer = focus?.layer && LAYERS.find((l) => l.key === focus.layer);
-    const view = flow ? `Flow: ${flow.name}` : layer ? `${layer.label} layer` : drawStyle === "c4" ? "Container view" : "Architecture";
+    const name = diagram === "er" ? "Data model" : diagram === "sequence" ? "Sequence" : diagram === "dfd" ? "Data flow" : diagram === "c4" ? "Container view" : "Architecture";
+    const view = flow && diagram !== "er" ? `${name}: ${flow.name}` : layer ? `${name}: ${layer.label} layer` : name;
     const title = [m.project, view].filter(Boolean).join(" · ");
     const file = title.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "board";
     try {
       if (kind === "mermaid") {
         const only = layer && new Set(Object.values(m.nodes).filter((n) => [layer.key, null].includes(layerOf(n))).map((n) => n.id));
-        await navigator.clipboard.writeText(`\`\`\`mermaid\n${flow ? toSequence(m, flow) : toMermaid(m, { only })}\`\`\`\n`);
+        const text =
+          diagram === "er" ? toErMermaid(m) : flow ? toSequence(m, flow) : diagram === "dfd" ? toDfdMermaid(m, { only }) : toMermaid(m, { only });
+        await navigator.clipboard.writeText(`\`\`\`mermaid\n${text}\`\`\`\n`);
       } else {
+        const api = readOnlyDiagram ? b.diagramApi : b.api;
         const opts = {
-          elements: b.exportElements(title),
-          appState: { ...b.api.getAppState(), exportBackground: true, viewBackgroundColor: "#ffffff", exportWithDarkMode: false, exportScale: 2 },
-          files: b.api.getFiles(),
+          elements: readOnlyDiagram ? b.diagramElements(title) : b.exportElements(title),
+          appState: { ...api.getAppState(), exportBackground: true, viewBackgroundColor: "#ffffff", exportWithDarkMode: false, exportScale: 2 },
+          files: api.getFiles(),
           exportPadding: 32,
         };
         const blob = kind === "svg" ? new Blob([(await exportToSvg(opts)).outerHTML], { type: "image/svg+xml" }) : await exportToBlob({ ...opts, mimeType: "image/png", getDimensions: (w, h) => ({ width: w * 2, height: h * 2, scale: 2 }) });
@@ -849,6 +907,10 @@ export default function App() {
     }
     setTimeout(() => setExported(null), 1800);
   };
+  // The read-only diagram follows the model as it changes (Board skips redraws that change nothing).
+  useEffect(() => {
+    if (readOnlyDiagram) sessionRef.current?.board.drawDiagram(diagram, focus?.flow);
+  });
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [selLids, setSelLids] = useState(() => new Set()); // board selection, as logical ids
@@ -859,14 +921,14 @@ export default function App() {
   const stick = useRef(true);
 
   useEffect(() => {
-    if (!api || !whyApi || !timelineApi) return;
+    if (!api || !whyApi || !timelineApi || !diagramApi) return;
     // Fresh session: clear UI state that belonged to the previous one (e.g. after a hot reload).
     setPhase(null);
     setDecisions([]);
     setLinked(new Set());
     setSpeed(1);
     setFocus(null);
-    const board = new Board(api, { whyApi, timelineApi, onPhase: setPhase, style: styleRef.current });
+    const board = new Board(api, { whyApi, timelineApi, diagramApi, onPhase: setPhase, style: styleRef.current });
     const s = new Session({ board, onChange: () => setVersion((v) => v + 1) });
     sessionRef.current = s;
     if (import.meta.env.DEV) window.__wb = s;
@@ -891,7 +953,7 @@ export default function App() {
       window.removeEventListener("pagehide", onHide);
       s.dispose();
     };
-  }, [api, whyApi, timelineApi]);
+  }, [api, whyApi, timelineApi, diagramApi]);
 
   // Keep the transcript pinned to the bottom while streaming, unless the user scrolled up.
   useEffect(() => {
@@ -1568,16 +1630,15 @@ export default function App() {
             )}
           </button>
           {boardView === "board" && (
-            <span className="style-toggle" role="group" aria-label="Drawing style">
-              <button aria-pressed={drawStyle === "pictures"} onClick={() => chooseStyle("pictures")} title="Pictograms">
-                Pictures
-              </button>
-              <button aria-pressed={drawStyle === "c4"} onClick={() => chooseStyle("c4")} title="C4 model: containers and how they connect">
-                C4
-              </button>
-            </span>
+            <select className="diagram-pick" value={diagram} onChange={(e) => chooseDiagram(e.target.value)} aria-label="Diagram" title="How to draw the system">
+              {DIAGRAMS.map((d) => (
+                <option key={d.key} value={d.key} title={d.title}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
           )}
-          {boardView === "board" && nodeCount > 0 && (
+          {boardView === "board" && nodeCount > 0 && diagram !== "er" && (
             <select
               className="focus-pick"
               value={focus?.layer ? `layer:${focus.layer}` : focus?.flow ? `flow:${focus.flow}` : ""}
@@ -1588,14 +1649,16 @@ export default function App() {
               aria-label="Show"
               title="Show one layer, or one flow's steps in order"
             >
-              <option value="">All</option>
-              <optgroup label="Layers">
-                {LAYERS.filter((l) => Object.values(model.nodes).some((n) => layerOf(n) === l.key)).map((l) => (
-                  <option key={l.key} value={`layer:${l.key}`}>
-                    {l.label}
-                  </option>
-                ))}
-              </optgroup>
+              {diagram !== "sequence" && <option value="">All</option>}
+              {diagram !== "sequence" && (
+                <optgroup label="Layers">
+                  {LAYERS.filter((l) => Object.values(model.nodes).some((n) => layerOf(n) === l.key)).map((l) => (
+                    <option key={l.key} value={`layer:${l.key}`}>
+                      {l.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
               {Object.keys(model.flows).length > 0 && (
                 <optgroup label="Flows">
                   {Object.values(model.flows).map((f) => (
@@ -1611,7 +1674,7 @@ export default function App() {
             <details className="export-menu">
               <summary title="Export what the board shows">{exported === "ok" ? "✓ Exported" : exported === "failed" ? "✗ Export failed" : "Export"}</summary>
               <div className="export-items">
-                <button onClick={() => exportView("mermaid")} title={focus?.flow ? "Copy as a Mermaid sequence diagram" : "Copy as a Mermaid diagram in C4 notation (GitHub renders it)"}>
+                <button onClick={() => exportView("mermaid")} title="Copy as a Mermaid diagram (GitHub renders it)">
                   Copy Mermaid
                 </button>
                 <button onClick={() => exportView("svg")}>Download SVG</button>
@@ -1624,11 +1687,15 @@ export default function App() {
               ? "Evidence → decision → what it shapes → proof. Click a row to read it."
               : boardView === "timeline"
                 ? `How the decisions moved. ${replayMode ? "Click a moment to jump there." : "Click a mark to read it."}`
-                : "Edit to steer: rename, connect, delete, draw. Select a ◇ to pick another option."}
+                : diagram === "er"
+                  ? "The tables each data store holds: keys, columns and relations. Read-only."
+                  : diagram === "sequence"
+                    ? "One flow, step by step. Pick another under Show. Read-only."
+                    : "Edit to steer: rename, connect, delete, draw. Select a ◇ to pick another option."}
           </span>
         </div>
         <div className="canvases">
-          <div className={`canvas ${boardView === "board" ? "on" : ""} ${ownSel ? "own-sel" : ""}`} role="tabpanel" aria-label="Architecture">
+          <div className={`canvas ${boardView === "board" && !readOnlyDiagram ? "on" : ""} ${ownSel ? "own-sel" : ""}`} role="tabpanel" aria-label="Architecture">
             <Excalidraw excalidrawAPI={setApi} initialData={INITIAL_DATA} onChange={onChange} UIOptions={UI_OPTIONS} />
             {decisions.length > 0 && !replayMode && (
               <button className="board-submit primary" onClick={sendEdits} title={st.busy ? "Sent when the agent finishes this step" : "Send your board changes to the agent"}>
@@ -1647,6 +1714,15 @@ export default function App() {
                 onHover={(ids) => s.setHover(ids)}
                 onClose={() => chooseFocus(null)}
               />
+            )}
+          </div>
+          <div className={`canvas ${boardView === "board" && readOnlyDiagram ? "on" : ""}`} role="tabpanel" aria-label={diagram === "er" ? "Data model" : "Sequence"}>
+            <Excalidraw excalidrawAPI={setDiagramApi} initialData={INITIAL_DATA} UIOptions={WHY_UI_OPTIONS} viewModeEnabled theme={theme} />
+            {model && diagram === "er" && !Object.keys(model.tables ?? {}).length && (
+              <p className="canvas-empty">The data model appears here when the agent describes its tables: columns, keys and how they relate.</p>
+            )}
+            {model && diagram === "sequence" && !Object.keys(model.flows ?? {}).length && (
+              <p className="canvas-empty">A flow appears here as a sequence diagram once the agent maps one: who calls whom, in order.</p>
             )}
           </div>
           <div

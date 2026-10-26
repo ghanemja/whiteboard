@@ -10,7 +10,7 @@ function mirror() {
   const plans = [];
   Object.assign(run, {
     started: Date.now(),
-    nodes: new Map(), edges: new Map(), tasks: new Map(), decisions: new Map(), questions: new Map(), flows: new Map(),
+    nodes: new Map(), edges: new Map(), tasks: new Map(), decisions: new Map(), questions: new Map(), flows: new Map(), tables: new Map(),
     goal: null, steer: null, git: null, tests: new Map(), events: [],
     recorder: { update() {}, decide() {}, setPlan: (p) => plans.push(p), write() {} },
     emit() {},
@@ -19,7 +19,7 @@ function mirror() {
   return { run, plans };
 }
 
-test("the decision log carries the container view and each flow as Mermaid", () => {
+test("the decision log carries the container view, the data flow, the data model and each flow as Mermaid", () => {
   const { run, plans } = mirror();
   run.emitOps([
     { op: "project", name: "Linkshort", goal: "Short links that expire." },
@@ -31,20 +31,27 @@ test("the decision log carries the container view and each flow as Mermaid", () 
     { op: "edge", from: "api", to: "store", via: "call" },
     { op: "edge", from: "api", to: "rank", via: "queue" },
     { op: "flow", id: "shorten", name: "shorten a link", steps: ["web>api: POST /links {url}", "api>store: save(code, url)", "api>web: {code}"] },
+    { op: "table", id: "links", name: "links", of: "store", columns: ["code text pk", "url text", "owner uuid fk>users.id"] },
+    { op: "table", id: "users", name: "users", of: "store", columns: "id uuid pk; email text unique" },
   ]);
   const plan = plans.at(-1);
   // Names in sentence case (a file name stays as it is), and each component's layer.
   assert.match(plan, /\| Web client \| Client \| Frontend \|/);
   assert.match(plan, /\| Link ranker \| Service \| ML \|/);
   assert.match(plan, /\| store\.js \| Data \| Data \|/);
-  // The container view, then the flow, as Mermaid blocks GitHub renders.
+  // The container view, the data flow, the data model, then the flow, as Mermaid blocks GitHub renders.
   const blocks = [...plan.matchAll(/```mermaid\n([\s\S]*?)```/g)].map((m) => m[1]);
-  assert.equal(blocks.length, 2);
+  assert.equal(blocks.length, 4);
   assert.match(blocks[0], /^flowchart LR/);
   assert.match(blocks[0], /n_api -\.->\|"Queue"\| n_rank/);
   assert.match(blocks[0], /subgraph system\["Linkshort"\]/);
-  assert.match(blocks[1], /^sequenceDiagram\n {2}title Shorten a link\n {2}autonumber/);
-  assert.match(blocks[1], /n_api-->>n_web: \{code\}/);
+  assert.match(blocks[1], /^flowchart LR/);
+  assert.match(blocks[1], /n_store\[\("DS1 · store\.js"\)\]/); // a data store, numbered
+  assert.match(blocks[1], /n_web -->\|"POST \/links \{url\}"\| n_api/); // the data, not the protocol
+  assert.match(blocks[2], /^erDiagram/);
+  assert.match(blocks[2], /users \|\|--o\{ links : "owner"/);
+  assert.match(blocks[3], /^sequenceDiagram\n {2}title Shorten a link\n {2}autonumber/);
+  assert.match(blocks[3], /n_api-->>n_web: \{code\}/);
 });
 
 test("renaming keeps sentence case, and a flow with no usable steps is left out", () => {
@@ -56,7 +63,7 @@ test("renaming keeps sentence case, and a flow with no usable steps is left out"
   ]);
   const plan = plans.at(-1);
   assert.match(plan, /\| Ingest worker \|/);
-  assert.equal([...plan.matchAll(/```mermaid/g)].length, 1);
+  assert.equal([...plan.matchAll(/```mermaid/g)].length, 2); // container view and data flow; no flow, no tables
 });
 
 test("which provider the agent runs on, from the variables Claude Code reads", () => {

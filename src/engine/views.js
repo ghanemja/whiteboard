@@ -4,9 +4,12 @@
 //   - Layers (Frontend, Backend, Data, ML, External): what the board's layer filter shows.
 //   - Flows: a request's numbered path through the components (a C4 dynamic view, or a UML
 //     sequence diagram).
+//   - Data flow (DFD, Gane-Sarson): processes, data stores and external entities, with the data
+//     each link carries.
+//   - Data model (ER): the tables the data stores hold, their keys and relations.
 //   - Names in sentence case.
-//   - Mermaid: the container view as a flowchart, a flow as a sequence diagram. GitHub, GitLab
-//     and Notion render both inline.
+//   - Mermaid for each: the container view and the data flow as flowcharts, a flow as a sequence
+//     diagram, the data model as an ER diagram. GitHub, GitLab and Notion render them inline.
 
 // What each component kind is in C4 terms.
 export const C4_TYPE = {
@@ -125,5 +128,104 @@ export function toSequence(model, flow) {
     const arrow = fwd?.async ? "-)" : !fwd && back ? "-->>" : "->>";
     lines.push(`  ${alias(s.from)}${arrow}${alias(s.to)}: ${q(s.what || fwd?.api || "…")}`);
   }
+  return `${lines.join("\n")}\n`;
+}
+
+// ---- data flow (DFD) ----
+// What each component is in a data flow diagram: a process (transforms data), a data store
+// (holds it), or an external entity (outside the system: people, third-party services).
+export const dfdRole = (n) => (n.kind === "data" || n.kind === "queue" ? "store" : OUTSIDE.has(n.kind) ? "entity" : "process");
+
+// Gane-Sarson ids, in the board's grid order: processes 1, 2, 3…; stores DS1, DS2… (D1 is a decision).
+export function dfdIds(model) {
+  const at = (n) => (n.cell ? n.cell[1] * 10 + n.cell[0] : 99);
+  const count = { process: 0, store: 0 };
+  const out = {};
+  for (const n of Object.values(model.nodes ?? {}).sort((a, b) => at(a) - at(b))) {
+    const role = dfdRole(n);
+    if (role === "process") out[n.id] = String(++count.process);
+    else if (role === "store") out[n.id] = `DS${++count.store}`;
+  }
+  return out;
+}
+
+// The data a link carries: its contract, else its protocol.
+export const dataOf = (e) => e.api || tagCase(e.via) || "";
+
+// The data flow as a Mermaid flowchart: processes rounded, data stores as cylinders, external
+// entities square and outside the trust boundary.
+export function toDfdMermaid(model, { only } = {}) {
+  const at = (n) => (n.cell ? n.cell[1] * 10 + n.cell[0] : 99);
+  const nodes = Object.values(model.nodes ?? {}).filter((n) => !only || only.has(n.id)).sort((a, b) => at(a) - at(b));
+  const has = new Set(nodes.map((n) => n.id));
+  const ids = dfdIds(model);
+  const box = (n) => {
+    const label = q(ids[n.id] ? `${ids[n.id]} · ${n.name}` : n.name);
+    return dfdRole(n) === "process" ? `${alias(n.id)}("${label}")` : dfdRole(n) === "store" ? `${alias(n.id)}[("${label}")]` : `${alias(n.id)}["${label}"]`;
+  };
+  const lines = ["flowchart LR"];
+  const inside = nodes.filter((n) => dfdRole(n) !== "entity");
+  for (const n of nodes.filter((n) => dfdRole(n) === "entity" && n.kind === "user")) lines.push(`  ${box(n)}`);
+  if (inside.length) {
+    lines.push(`  subgraph system["${q(model.project || "System")}"]`);
+    for (const n of inside) lines.push(`    ${box(n)}`);
+    lines.push("  end");
+  }
+  for (const n of nodes.filter((n) => dfdRole(n) === "entity" && n.kind !== "user")) lines.push(`  ${box(n)}`);
+  for (const e of Object.values(model.edges ?? {})) {
+    if (!has.has(e.from) || !has.has(e.to)) continue;
+    const label = clip(dataOf(e), 40);
+    lines.push(`  ${alias(e.from)} ${e.async ? "-.->" : "-->"}${label ? `|"${q(label)}"|` : ""} ${alias(e.to)}`);
+  }
+  if (inside.length) lines.push("  style system fill:none,stroke:#444,stroke-dasharray:5 5");
+  return `${lines.join("\n")}\n`;
+}
+
+// ---- data model (ER) ----
+// A table's columns, from the agent: "id uuid pk", "document_id uuid fk>documents.id",
+// "email text unique" (also "-> documents.id" or "references documents(id)"), or objects.
+export function parseColumns(columns) {
+  const items = Array.isArray(columns) ? columns : String(columns ?? "").split(/;|\n/);
+  return items
+    .map((c) => {
+      if (c && typeof c === "object") {
+        const [table, col] = String(c.fk ?? "").split(".");
+        return c.name ? { name: String(c.name), type: String(c.type ?? ""), pk: !!c.pk, unique: !!c.unique, fk: table ? { table, col: col || "id" } : null } : null;
+      }
+      let r = String(c ?? "").trim();
+      if (!r) return null;
+      let fk = null;
+      r = r.replace(/(?:\bfk\b\s*(?:>|->|→)?|->|→|\breferences\b)\s*([\w-]+)(?:\.([\w-]+)|\(([\w-]+)\))?/i, (_, table, a, b) => {
+        fk = { table, col: a || b || "id" };
+        return " ";
+      });
+      const pk = /\bpk\b|\bprimary\s+key\b/i.test(r);
+      const unique = /\bunique\b|\buk\b/i.test(r);
+      const [name, type = ""] = r.replace(/\bpk\b|\bprimary\s+key\b|\bunique\b|\buk\b/gi, " ").trim().split(/\s+/);
+      return name ? { name, type, pk, unique, fk } : null;
+    })
+    .filter(Boolean);
+}
+
+// The data model as a Mermaid ER diagram: each table with its typed columns and keys, and a
+// crow's-foot relation for every foreign key (one referenced row, many referencing ones).
+export function toErMermaid(model) {
+  const word = (s) => String(s ?? "").replace(/[^\w()[\]-]/g, "_").replace(/^[^A-Za-z_]/, "_$&") || "_";
+  const tables = Object.values(model.tables ?? {});
+  const lines = ["erDiagram"];
+  for (const t of tables) {
+    lines.push(`  ${word(t.name)} {`);
+    for (const c of t.columns) {
+      const keys = [c.pk && "PK", c.fk && "FK", c.unique && !c.pk && "UK"].filter(Boolean).join(", ");
+      lines.push(`    ${word(c.type || "any")} ${word(c.name)}${keys ? ` ${keys}` : ""}`);
+    }
+    lines.push("  }");
+  }
+  const byName = new Map(tables.map((t) => [t.name, t]));
+  for (const t of tables)
+    for (const c of t.columns) {
+      if (!c.fk || !byName.has(c.fk.table)) continue;
+      lines.push(`  ${word(c.fk.table)} ||--${c.pk || c.unique ? "o|" : "o{"} ${word(t.name)} : "${q(c.name)}"`);
+    }
   return `${lines.join("\n")}\n`;
 }
