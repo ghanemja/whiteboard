@@ -6,7 +6,7 @@ import { z } from "zod";
 import { commitsSince, diff, head, isRepo, snapshot } from "./changes.js";
 import { BOARD_INSTRUCTIONS, PLAN_INSTRUCTIONS } from "./instructions.js";
 import { listRecordings, readDecisions, readRecording, Recorder } from "./recordings.js";
-import { layerOf, LAYERS, parseSteps, sentenceCase, toMermaid, toSequence } from "../src/engine/views.js";
+import { layerOf, LAYERS, parseColumns, parseSteps, sentenceCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "../src/engine/views.js";
 
 // A run = one Claude Agent SDK session working in a real repo. Its board drawing
 // (update_board tool calls) and its real activity (reads, edits, commands) are
@@ -32,19 +32,41 @@ export function stopAllRuns() {
 }
 
 const settings = () => ({
-  model: process.env.ANTHROPIC_MODEL || "claude-opus-5-5",
+  model: process.env.AGENT_MODEL || process.env.ANTHROPIC_MODEL || "claude-opus-5-5",
   effort: process.env.AGENT_EFFORT || "low",
 });
 
-// Where the agent's model runs, from the same variables Claude Code reads (README: "Models and
-// providers"). null: nothing is configured, so the browser plays the scripted demo.
-export function provider(env = process.env) {
+// The agent's environment, from the three settings people set (README: "Models"):
+//   AGENT_URL    where the model is: any Anthropic-format endpoint (Ollama, LiteLLM, OpenRouter…);
+//                left out for Anthropic's own API
+//   AGENT_KEY    its key; left out for a local server
+//   AGENT_MODEL  the model's name there
+// written into the variables the Claude Agent SDK reads. Without them, Claude Code's own variables
+// (ANTHROPIC_*, CLAUDE_CODE_USE_BEDROCK…) work as they do for Claude Code.
+export function agentEnv(env = process.env) {
+  const out = { ...env };
+  const [url, key, model] = ["AGENT_URL", "AGENT_KEY", "AGENT_MODEL"].map((k) => env[k]?.trim() || "");
+  if (url && !/(^|\.)anthropic\.com$/.test(hostOf(url))) {
+    out.ANTHROPIC_BASE_URL = url;
+    out.ANTHROPIC_AUTH_TOKEN = key || "none"; // a local server ignores it, but the SDK wants one
+    out.ANTHROPIC_API_KEY = ""; // set, but empty: otherwise the SDK may sign in to Anthropic instead
+    // Background work goes to the same model: an endpoint like this knows no Claude model names.
+    if (model) for (const tier of ["FABLE", "OPUS", "SONNET", "HAIKU"]) out[`ANTHROPIC_DEFAULT_${tier}_MODEL`] ||= model;
+  } else if (key) out.ANTHROPIC_API_KEY = key;
+  if (model) out.ANTHROPIC_MODEL = model;
+  return out;
+}
+
+// Where the agent's model runs, for the top bar. null: nothing is configured, so the browser
+// plays the scripted demo.
+export function provider(raw = process.env) {
+  const env = agentEnv(raw);
   const on = (v) => ["1", "true"].includes(String(env[v] ?? "").toLowerCase());
   if (on("CLAUDE_CODE_USE_BEDROCK") || on("CLAUDE_CODE_USE_MANTLE")) return "Amazon Bedrock";
   if (on("CLAUDE_CODE_USE_VERTEX")) return "Google Vertex AI";
   if (on("CLAUDE_CODE_USE_FOUNDRY")) return "Microsoft Foundry";
   if (env.ANTHROPIC_BASE_URL && !/(^|\.)anthropic\.com$/.test(hostOf(env.ANTHROPIC_BASE_URL)) && (env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY))
-    return hostOf(env.ANTHROPIC_BASE_URL).endsWith(":11434") ? `Ollama (${hostOf(env.ANTHROPIC_BASE_URL)})` : `Gateway (${hostOf(env.ANTHROPIC_BASE_URL)})`;
+    return hostOf(env.ANTHROPIC_BASE_URL).endsWith(":11434") ? `Ollama (${hostOf(env.ANTHROPIC_BASE_URL)})` : hostOf(env.ANTHROPIC_BASE_URL);
   if (env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN) return "Anthropic API";
   return null;
 }
@@ -59,11 +81,13 @@ const hostOf = (url) => {
 // One board op. Mirrors Board.apply() in src/engine/board.js.
 const strs = z.array(z.string());
 const Op = z.object({
-  op: z.enum(["project", "phase", "task", "node", "edge", "flow", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note"]),
+  op: z.enum(["project", "phase", "task", "node", "edge", "flow", "table", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note"]),
   id: z.string().optional().describe("component id (node/status/rename/remove/adopt), task id (task), decision id (decision), flow id (flow), q1… (question) or a1… (assumption)"),
   name: z.string().optional().describe("project name, phase name, component name (≤16 chars, sentence case), or flow name (≤24 chars)"),
   layer: z.enum(LAYERS.map((l) => l.key)).optional().describe("node: frontend | backend | data | ml | external (defaults from kind; set ml for models, embeddings, evals)"),
   steps: z.union([z.string(), strs]).optional().describe('flow: the steps in order, each "from>to: what", e.g. ["web>api: POST /ask", "api>vdb: top 8 chunks"]'),
+  of: z.string().optional().describe("table: the id of the data component that holds it"),
+  columns: z.union([z.string(), strs]).optional().describe('table: its columns, each "name type [pk] [unique] [fk>table.column]", e.g. ["id uuid pk", "document_id uuid fk>documents.id", "page int"]'),
   goal: z.string().optional().describe("project: the goal in one sentence"),
   kind: z.enum(["client", "service", "data", "external", "queue", "test", "user"]).optional(),
   col: z.number().int().min(0).max(2).optional(),
@@ -204,6 +228,7 @@ export class Run {
     this.decisions = new Map(); // decision id -> { n, title, chose, over, why, affects, evidence, builds_on, state, verify, proof, proof_by, cause, cause_text }
     this.questions = new Map(); // question/assumption id -> { kind, n, text, options, about, state, answer }
     this.flows = new Map(); // flow id -> { id, name, steps: [{ from, to, what }] }
+    this.tables = new Map(); // table id -> { id, name, of, columns: [{ name, type, pk, unique, fk }] }
     this.goal = null;
     this.tests = new Map(); // test name -> passed?, from the latest test output that printed it
     this.steer = null; // what the user asked this turn, so decisions it changes can say so
@@ -253,7 +278,7 @@ export class Run {
   viewModel() {
     const nodes = Object.fromEntries([...this.nodes].map(([id, n]) => [id, { id, ...n }]));
     const edges = Object.fromEntries([...this.edges].map(([k, e]) => { const [from, to] = k.split(">"); return [k, { from, to, ...e }]; }));
-    return { project: this.project ?? "", nodes, edges };
+    return { project: this.project ?? "", nodes, edges, tables: Object.fromEntries(this.tables) };
   }
 
   planMarkdown() {
@@ -270,6 +295,8 @@ export class Run {
       // The diagrams, for whoever picks this up next (GitHub renders Mermaid).
       const model = this.viewModel();
       out.push("### Diagrams", "", "Container view (C4):", "", "```mermaid", toMermaid(model).trimEnd(), "```", "");
+      out.push("Data flow:", "", "```mermaid", toDfdMermaid(model).trimEnd(), "```", "");
+      if (this.tables.size) out.push("Data model (ER):", "", "```mermaid", toErMermaid(model).trimEnd(), "```", "");
       for (const f of this.flows.values()) out.push(`Flow: ${f.name}`, "", "```mermaid", toSequence(model, f).trimEnd(), "```", "");
     }
     if (this.edges.size) {
@@ -440,6 +467,13 @@ export class Run {
           this.nodes.delete(op.id);
           for (const k of [...this.edges.keys()]) if (k.split(">").includes(op.id)) this.edges.delete(k);
           break;
+        case "table": {
+          const key = op.id || op.name;
+          if (!key) break;
+          const prev = this.tables.get(key);
+          this.tables.set(key, { id: key, name: op.name ?? prev?.name ?? key, of: op.of ?? prev?.of ?? null, columns: op.columns != null ? parseColumns(op.columns) : prev?.columns ?? [] });
+          break;
+        }
         case "flow": {
           if (!op.id) break;
           const prev = this.flows.get(op.id);
@@ -616,6 +650,7 @@ export class Run {
         systemPrompt: { type: "preset", preset: "claude_code", append: BOARD_INSTRUCTIONS },
         // Repo settings and CLAUDE.md only; keep the user's global hooks and settings out of this agent.
         settingSources: ["project"],
+        env: agentEnv(process.env),
         mcpServers: { board },
         canUseTool: this.canUseTool,
         includePartialMessages: true,

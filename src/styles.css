@@ -257,29 +257,8 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Pictures | C4, and copying the board as Mermaid. */
-.style-toggle {
-  align-self: center;
-  display: inline-flex;
-  gap: 2px;
-  margin-left: 12px;
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-.canvas-tabs .style-toggle button {
-  padding: 3px 9px;
-  margin: 0;
-  border: 0;
-  border-radius: 6px;
-  font-size: 12px;
-}
-.canvas-tabs .style-toggle button[aria-pressed="true"] {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-/* Show: all, one layer, or one flow. */
+/* Diagram: which notation; Show: all, one layer, or one flow. */
+.diagram-pick,
 .focus-pick {
   align-self: center;
   margin-left: 8px;
@@ -340,6 +319,41 @@ button {
   border-radius: 6px;
   text-align: left;
   font-size: 12.5px;
+}
+/* The Plan tab's data model: each table's columns, keys marked. */
+.plan-table {
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.pt-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.plan-table ul {
+  list-style: none;
+  margin: 4px 0 0;
+  padding-left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.plan-table code {
+  font-size: 12px;
+}
+.pt-type {
+  margin-left: 6px;
+  color: var(--soft);
+  font-size: 12px;
+}
+.pt-key {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--blue);
+  font-size: 10.5px;
+  font-weight: 700;
 }
 /* The Plan tab's flows: numbered steps under each name. */
 .plan-flow {

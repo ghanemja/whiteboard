@@ -10,11 +10,21 @@ The board is pictures, not prose. Components are hand-drawn pictograms (browser 
 
 Above the board:
 
-- **Pictures | C4** switches how components are drawn: the pictograms, or [C4](https://c4model.com) container boxes (name, `[Container: FastAPI 0.115]`, `[Database: …]`, `[External system]`). C4 is the official look: square boxes, 1 px lines, a plain typeface and a Key. Status is color in both, your choice is remembered, and steering works the same.
-- **Show** narrows the board to one **layer** (Frontend, Backend, Data, ML, External) or one **flow**: the path a request takes, its steps numbered on the arrows and listed in a card. Everything else fades.
-- **Export** what the board shows: **Copy Mermaid** (the container view, or the flow as a sequence diagram; GitHub renders both in a README or PR), **SVG** or **PNG** with a title.
+- **Diagram** picks the notation (remembered):
 
-The agent draws the flows (`flow` op) and sets each component's layer; names are kept in sentence case.
+  | Diagram | What it shows | Editable |
+  | --- | --- | --- |
+  | Pictures | Pictograms: what each part is at a glance | Yes |
+  | C4 | [C4](https://c4model.com) container boxes: `[Container: FastAPI 0.115]`, `[Database: …]`, `[External system]` | Yes |
+  | Data flow | A data flow diagram (Gane-Sarson): numbered processes, data stores (DS1…), external entities with a shadow, and the data each link carries | Yes |
+  | Database (ER) | Each data store's tables: columns and types, PK/FK/UK keys, crow's-foot relations | Read-only |
+  | Sequence | One flow as a UML sequence diagram: lifelines, numbered messages, replies dashed | Read-only |
+
+  The editable ones redraw the same board, so steering works in all three. C4, Data flow, Database and Sequence use the official look: square boxes, 1 px lines, a plain typeface and a Key. Status is color everywhere.
+- **Show** narrows the board to one **layer** (Frontend, Backend, Data, ML, External) or one **flow**: the path a request takes, its steps numbered on the arrows and listed in a card; everything else fades. In Sequence it picks the flow.
+- **Export** what the board shows: **Copy Mermaid** (each diagram has its Mermaid form: flowcharts, `erDiagram`, `sequenceDiagram`; GitHub renders them in a README or PR), **SVG** or **PNG** with a title.
+
+The agent supplies what these need: flows (`flow` op), tables (`table` op), each component's layer. The Plan tab lists the flows and the data model too, and names are kept in sentence case.
 
 ## Setup
 
@@ -25,45 +35,39 @@ git clone https://github.com/ghanemja/whiteboard.git
 cd whiteboard
 npm install                  # also copies Excalidraw's fonts into public/fonts
 npm run sandbox              # a safe repo to try: sandbox/linkshort (run again to reset)
-cp .env.example .env.local   # pick a model provider to run a real agent (optional; see below)
+cp .env.example .env.local   # optional: set AGENT_URL / AGENT_KEY / AGENT_MODEL to run a real agent
 npm run dev                  # http://localhost:5199
 ```
 
-- **No provider set:** a scripted demo plays.
-- **With a provider** (an Anthropic API key, or another one below): the repo field starts at the sandbox (or `AGENT_REPO`); point it at any local folder, describe a task, start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
+- **Nothing set:** a scripted demo plays.
+- **With a model** ([Models](#models): a key for Anthropic's API, or a URL for anything else): the repo field starts at the sandbox (or `AGENT_REPO`); point it at any local folder, describe a task, start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
 - **Saved runs:** `cp fixtures/recordings/* recordings/` adds three real runs under "Saved boards".
 - **Tests:** `npm test`.
-- **Settings** (`.env.local`): a model provider ([Models and providers](#models-and-providers)), `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo).
+- **Settings** (`.env.local`): `AGENT_URL`, `AGENT_KEY`, `AGENT_MODEL` ([Models](#models)), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo).
 
-## Models and providers
+## Models
 
-The live agent runs on the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) (the engine behind Claude Code): its file and shell tools, permission prompts, plan mode and the board's `update_board` tool. So it isn't model-agnostic, but the SDK can reach a model several ways. Set one in `.env.local` (`.env.example` has every block), restart `npm run dev`, and the top bar names the provider it's using. With none set, the scripted demo plays.
+Three settings in `.env.local`. Leave them all empty and the scripted demo plays.
 
-| Provider | In `.env.local` | Status |
-| --- | --- | --- |
-| Anthropic API | `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL` (default `claude-opus-5-5`) | Tested |
-| [Amazon Bedrock](https://code.claude.com/docs/en/amazon-bedrock) | `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION`, AWS credentials (`AWS_PROFILE`, access keys, or `AWS_BEARER_TOKEN_BEDROCK`) | Supported by the SDK, not tested here |
-| [Google Vertex AI](https://code.claude.com/docs/en/google-vertex-ai) | `CLAUDE_CODE_USE_VERTEX=1`, `CLOUD_ML_REGION`, `ANTHROPIC_VERTEX_PROJECT_ID`, gcloud credentials | Supported by the SDK, not tested here |
-| [Microsoft Foundry](https://code.claude.com/docs/en/microsoft-foundry) | `CLAUDE_CODE_USE_FOUNDRY=1`, `ANTHROPIC_FOUNDRY_RESOURCE`, `ANTHROPIC_FOUNDRY_API_KEY` | Supported by the SDK, not tested here |
-| Local models with [Ollama](https://docs.ollama.com/api/anthropic-compatibility) | `ANTHROPIC_BASE_URL=http://localhost:11434`, `ANTHROPIC_AUTH_TOKEN=ollama`, `ANTHROPIC_MODEL=qwen3-coder` | Unofficial, not tested here |
-| Other models through a gateway ([LiteLLM](https://docs.litellm.ai/docs/proxy/client_setup/claude_code): OpenAI, Gemini, …) | `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL` | Unofficial, not tested here |
+| Setting | What it is |
+| --- | --- |
+| `AGENT_URL` | Where the model is. Leave it empty for Anthropic's API. Anything that speaks the Anthropic Messages API works. |
+| `AGENT_KEY` | Its key. Leave it empty for a local server. |
+| `AGENT_MODEL` | The model's name there (default `claude-opus-5-5`). |
 
-**Local models (Ollama).** Needs Ollama 0.14 or later, which speaks Anthropic's API.
+| To use | `AGENT_URL` | `AGENT_KEY` | `AGENT_MODEL` |
+| --- | --- | --- | --- |
+| Anthropic's API | | your API key | |
+| A local model with [Ollama](https://docs.ollama.com/api/anthropic-compatibility) 0.14+ | `http://localhost:11434` | | `qwen3-coder` |
+| OpenAI, Gemini and others through [LiteLLM](https://docs.litellm.ai/docs/proxy/client_setup/claude_code) | `http://localhost:4000` | its key | a `model_name` from its config |
+| Many models through [OpenRouter](https://openrouter.ai/docs/guides/guides/claude-code-integration) | `https://openrouter.ai/api` | your OpenRouter key | e.g. `moonshotai/kimi-k2` |
 
-```bash
-ollama pull qwen3-coder                      # a coding model that calls tools well
-OLLAMA_CONTEXT_LENGTH=64000 ollama serve     # Ollama recommends 64K+ context for coding agents
-```
+Restart `npm run dev` after changing them; the top bar shows where the agent is running. For Ollama, first run `ollama pull qwen3-coder` and start the server with enough context: `OLLAMA_CONTEXT_LENGTH=64000 ollama serve`.
 
-Then in `.env.local`: `ANTHROPIC_BASE_URL=http://localhost:11434`, `ANTHROPIC_AUTH_TOKEN=ollama` (any value: Ollama ignores it), `ANTHROPIC_MODEL=qwen3-coder`, and the same model for `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL` and `ANTHROPIC_DEFAULT_HAIKU_MODEL`, because the SDK also calls a smaller model for background work.
-
-**Other providers (LiteLLM).** Run [LiteLLM's proxy](https://docs.litellm.ai/docs/proxy/client_setup/claude_code) with your models in its `config.yaml` (`openai/…`, `gemini/…`), then set `ANTHROPIC_BASE_URL=http://localhost:4000`, `ANTHROPIC_AUTH_TOKEN` to its key, and `ANTHROPIC_MODEL` to a `model_name` from the config. OpenRouter, Portkey and other gateways with an Anthropic-format endpoint work the same way.
-
-**What to expect from non-Claude models.** Anthropic doesn't support routing Claude Code to non-Claude models, so these are unofficial. The board needs a model that calls tools reliably: it draws only through `update_board`, with structured ops. A weaker model may plan and code fine but draw little, skip decisions, or forget proofs. Use the strongest coding model you can run, with at least 64K of context.
-
-### Other coding agents (Codex, opencode, pi, …)
-
-Not supported yet. They're separate agents with their own loops, tools and permission models, not models the SDK can call. The likely path is a board MCP server that any agent can add (Codex reads `mcp_servers` in `~/.codex/config.toml`, opencode reads `mcp` in `opencode.json`), so it draws on the same board while the whiteboard follows its edits through git. Plan mode, permission prompts and live activity would then depend on what each agent exposes.
+- **How it works:** the agent is the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) (the engine behind Claude Code): its file and shell tools, permission prompts, plan mode and the board's `update_board` tool. The server passes these three settings to it as the variables it reads. For a URL other than Anthropic's, the same model also does the SDK's background work.
+- **Non-Claude models are unofficial.** The board needs a model that calls tools reliably, because it draws only through `update_board`. A weaker model may write the code but draw little on the board. Use the strongest coding model you can run, with at least 64K of context. Only Anthropic's API has been tested with this app so far.
+- **Claude on Bedrock, Vertex AI or Foundry:** set Claude Code's own variables instead (`CLAUDE_CODE_USE_BEDROCK=1` and AWS credentials, `CLAUDE_CODE_USE_VERTEX=1` with `CLOUD_ML_REGION` and `ANTHROPIC_VERTEX_PROJECT_ID`, `CLAUDE_CODE_USE_FOUNDRY=1` with `ANTHROPIC_FOUNDRY_RESOURCE`); see the [Bedrock](https://code.claude.com/docs/en/amazon-bedrock), [Vertex AI](https://code.claude.com/docs/en/google-vertex-ai) and [Foundry](https://code.claude.com/docs/en/microsoft-foundry) guides. The `ANTHROPIC_*` variables Claude Code reads also work.
+- **Other coding agents (Codex, opencode, pi):** not supported yet. They're separate agents, not models; the likely path is a board MCP server any of them can add.
 
 ## What happens in a run
 
@@ -125,7 +129,7 @@ The demo shows all five, including a false claim (a README it never touched) and
 Every run is saved in `recordings/` (git-ignored) while it happens:
 
 - `<id>.jsonl`: every event with its time: what the agent drew, said, read, edited and ran, and what you did (approvals, board edits, messages, allowed or denied commands). It's also where the agent's session id is kept.
-- `<id>.decisions.md`: a readable log of the development decisions. It's the handoff document for whoever picks the work up next. It opens with the current plan (goal, an architecture table with layers, libraries and interfaces, the diagrams as Mermaid (container view and each flow), connections, its questions and assumptions, the files it changed and which component owns each, and each decision with what it beat, why, its evidence, what it replaced and why, its check and its proof), then a timeline: the plan the agent proposed, what you approved, challenged or changed, every decision the agent revised, each decision proven or failed (by the agent or by a test run), every command you allowed, and how the run ended, each with its time.
+- `<id>.decisions.md`: a readable log of the development decisions. It's the handoff document for whoever picks the work up next. It opens with the current plan (goal, an architecture table with layers, libraries and interfaces, the diagrams as Mermaid (container view, data flow, data model, and each flow), connections, its questions and assumptions, the files it changed and which component owns each, and each decision with what it beat, why, its evidence, what it replaced and why, its check and its proof), then a timeline: the plan the agent proposed, what you approved, challenged or changed, every decision the agent revised, each decision proven or failed (by the agent or by a test run), every command you allowed, and how the run ended, each with its time.
 
 The start screen lists saved boards. **Replay** plays a run back on the board at its own rhythm (long waits are shortened, and pause and speed work as usual). **Open** jumps straight to the finished board. **Decisions** opens the decision log. A finished live run also links to its replay and decision log.
 
@@ -148,7 +152,8 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `src/engine/board.js` | Owns the three Excalidraw canvases: the Architecture pictograms and decision diamonds, the Why chains, the Timeline, highlighter marks, and `diff()` of your edits |
 | `src/engine/timeline.js` | The Timeline as pure functions: `buildTimeline(events)` (lanes, marks, causes, the time axis with compressed waits), `timeToX`, `drawTimeline` (Excalidraw skeletons) |
 | `src/engine/palette.js` | Phases and the colors the canvases share |
-| `src/engine/views.js` | The views of one model, shared with the server: C4 labels, layers, flows, sentence case, and the Mermaid exports (container view, flow sequence) |
+| `src/engine/views.js` | The views of one model, shared with the server: C4 labels, layers, flows, data-flow roles and numbering, table columns, sentence case, and every Mermaid export |
+| `src/engine/diagrams.js` | The read-only diagrams as Excalidraw skeletons: the data model (ER) and a flow as a sequence diagram |
 | `src/engine/claims.js` | Receipts: finds checkable claims in the agent's sentences (and questions or assumptions said in passing) and checks them against the run's record |
 | `src/engine/review.js` | The end-of-run review card: what needs a look, and where |
 | `src/PhaseHeader.jsx` | The journey above the tabs: title, goal, milestones and task dots, drawn with roughjs (Excalidraw's renderer) |
@@ -157,7 +162,7 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `scripts/make-sandbox.mjs` | Creates the sample repo |
 | `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, the views and their Mermaid exports, the decision log's diagrams, and git change tracking on a throwaway repo |
 
-Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node` (with `layer`), `edge`, `flow`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner.
+Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node` (with `layer`), `edge`, `flow`, `table`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner.
 
 ## License
 
