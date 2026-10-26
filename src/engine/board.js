@@ -3,38 +3,38 @@ import {
   convertToExcalidrawElements,
   getCommonBounds,
 } from "@excalidraw/excalidraw";
+import { DECISION, INK, MILESTONE, MUTED, PHASES, PROOF, YOU } from "./palette";
+import { buildTimeline, drawTimeline, TL, xToTime } from "./timeline";
+import { c4Tag, layerOf, parseSteps, sentenceCase, tagCase } from "./views";
+
+export { MILESTONE, PHASES };
 
 // Owns the board's Excalidraw scenes and keeps them pictures, not documents:
 //   - Architecture: hand-drawn pictograms colored by status, connections, and the
 //     numbered decision diamonds pinned to what they shape. The user edits this one.
 //   - Why: each decision as a chain, evidence → decision → what it shapes → proof.
 //     Derived from the model; redrawn whenever a decision or component changes.
+//   - Timeline: how the decisions moved over the run (src/engine/timeline.js), drawn
+//     from the Session's timed events.
 // The phase journey (milestones + task dots) is drawn above both by PhaseHeader,
 // from this.model. Words live in the panel; on the boards there are only short names.
 //
 // It also applies board ops from the agent, paints highlighter marks behind
 // whatever the current sentence touched, and diffs the user's edits.
 
-export const PHASES = [
-  { key: "planning", label: "Planning", short: "Plan" },
-  { key: "implementation", label: "Implementation", short: "Build" },
-  { key: "verification", label: "Verification", short: "Verify" },
-  { key: "deployment", label: "Deployment", short: "Ship" },
-];
-
 // Component status is color + a corner badge; no words.
 export const STATUS = {
-  planned: { stroke: "#868e96", fill: "#f8f9fa", dash: "dashed", badge: null },
-  building: { stroke: "#e8590c", fill: "#fff3bf", dash: "solid", badge: "…" },
-  built: { stroke: "#1971c2", fill: "#d0ebff", dash: "solid", badge: null },
-  verified: { stroke: "#2f9e44", fill: "#d3f9d8", dash: "solid", badge: "✓" },
-  failed: { stroke: "#e03131", fill: "#ffe3e3", dash: "solid", badge: "✗" },
-  live: { stroke: "#6741d9", fill: "#e5dbff", dash: "solid", badge: "★" },
+  planned: { stroke: "#868e96", fill: "#f8f9fa", badge: null },
+  building: { stroke: "#e8590c", fill: "#fff3bf", badge: "…" },
+  built: { stroke: "#1971c2", fill: "#d0ebff", badge: null },
+  verified: { stroke: "#2f9e44", fill: "#d3f9d8", badge: "✓" },
+  failed: { stroke: "#e03131", fill: "#ffe3e3", badge: "✗" },
+  live: { stroke: "#6741d9", fill: "#e5dbff", badge: "★" },
 };
 
 export const KINDS = ["client", "service", "data", "external", "queue", "test", "user"];
 
-// Task dots and phase milestones, drawn by PhaseHeader.
+// Task dots, drawn by PhaseHeader.
 export const TASK = {
   todo: { stroke: "#adb5bd", fill: "transparent" },
   building: { stroke: "#e8590c", fill: "#ffd8a8" },
@@ -42,20 +42,19 @@ export const TASK = {
   failed: { stroke: "#e03131", fill: "#ffa8a8" },
 };
 
-export const MILESTONE = {
-  future: { stroke: "#ced4da", fill: "#f8f9fa", dash: "dashed", width: 2, icon: "#adb5bd", head: "#adb5bd" },
-  current: { stroke: "#f08c00", fill: "#fff3bf", dash: "solid", width: 3, icon: "#e8590c", head: "#e8590c" },
-  done: { stroke: "#2f9e44", fill: "#d3f9d8", dash: "solid", width: 2, icon: "#2f9e44", head: "#2f9e44" },
-};
-
 // Scene geometry. Kept near the aspect of a typical board pane so "fit" stays readable.
 const IW = 110, IH = 80; // pictogram size
+// A C4 box, relative to the pictogram's origin: same center line, so the grid holds either.
+const C4B = { x: -40, y: -10, w: 190, h: 92 };
+// Where a component's hit-box sits relative to that origin, per drawing style.
+const HIT = { pictures: { x: -10, y: -10 }, c4: { x: C4B.x, y: C4B.y } };
+// The C4 style is the official one: crisp 1 px lines and a plain typeface (Nunito, Excalidraw's "Normal").
+const SANS = 6;
+const FADE = 15; // opacity of what a layer or flow filter leaves out
 const COL = 290, ROW = 180, NX0 = 55, NY0 = 90; // node grid (icon origin)
 const NOTE_X = 860, NOTE_Y = 90;
 const MARK = "hl-";
 const AGENT = "agent-cursor"; // hashes to Excalidraw's purple cursor hue
-const INK = "#1e1e1e";
-const MUTED = "#868e96";
 
 const rand = () => Math.floor(Math.random() * 2 ** 31);
 const seedOf = (s) => {
@@ -74,24 +73,18 @@ const firstLine = (t) => (t ?? "").split("\n")[0].trim();
 // Ops arrive as JSON arrays (agent tool) or comma-separated strings (demo tags).
 const list = (v) => (Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : []).map((s) => String(s).trim()).filter(Boolean);
 
-// A technical decision is a diamond (the flowchart shape for a decision), numbered,
-// pinned to the components it affects. Its reasoning is in the Plan tab.
-const DECISION = {
-  proposed: { stroke: "#6741d9", fill: "#f3f0ff", dash: "dashed" },
-  accepted: { stroke: "#6741d9", fill: "#e5dbff", dash: "solid" },
-  changed: { stroke: "#1971c2", fill: "#d0ebff", dash: "solid" },
-  rejected: { stroke: "#adb5bd", fill: "#f1f3f5", dash: "dotted" },
-};
-const DW = 40; // diamond size
+const DW = 40; // decision diamond size
 
-// Proof marks: a decision's check passed or failed (pending is a dashed "?").
-const PROOF = {
-  pass: { color: "#2f9e44", glyph: "✓" },
-  fail: { color: "#e03131", glyph: "✗" },
+// Questions for the user and assumptions the agent works from: sticky notes with a badge.
+const QSTYLE = {
+  question: { stroke: "#f08c00", fill: "#fff4e6", glyph: "?" },
+  assumption: { stroke: "#7048e8", fill: "#f3f0ff", glyph: "≈" },
 };
-const YOU = { stroke: "#c2255c", fill: "#ffdeeb" }; // the user, in the Why view's evidence
+const QSTATES = ["open", "answered", "confirmed", "corrected"];
 const WHY = "why:"; // element id prefix of the Why view
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+// Two elements' boxes touch (within m px).
+const overlaps = (a, b, m = 0) => a.x < b.x + b.width + m && b.x < a.x + a.width + m && a.y < b.y + b.height + m && b.y < a.y + a.height + m;
 
 // A line/polyline skeleton from absolute points. Closing it (last point = first)
 // makes Excalidraw fill it, which is how the cloud and rocket get their shapes.
@@ -110,7 +103,7 @@ function poly(id, pts, style) {
 function iconParts(kind, ox, oy, s, pid) {
   let n = 0;
   const id = () => `${pid}:${n++}`;
-  const shape = { strokeColor: s.stroke, backgroundColor: s.fill, fillStyle: "solid", strokeStyle: s.dash, strokeWidth: 2, roughness: 1 };
+  const shape = { strokeColor: s.stroke, backgroundColor: s.fill, fillStyle: "solid", strokeStyle: "solid", strokeWidth: 2, roughness: 1 };
   const ink = { strokeColor: s.stroke, backgroundColor: "transparent", strokeStyle: "solid", strokeWidth: 2, roughness: 1 };
   const dot = { strokeColor: s.stroke, backgroundColor: s.stroke, fillStyle: "solid", strokeStyle: "solid", strokeWidth: 1, roughness: 1 };
   const rect = (x, y, w, h, st = shape, round = true) => ({ type: "rectangle", id: id(), x: ox + x, y: oy + y, width: w, height: h, roundness: round ? { type: 3 } : null, ...st });
@@ -131,8 +124,8 @@ function iconParts(kind, ox, oy, s, pid) {
       return [
         ell(0, 56, 110, 24),
         rect(0, 12, 110, 56, { ...shape, strokeColor: "transparent" }, false),
-        ln([[0, 12], [0, 68]], { ...ink, strokeStyle: s.dash }),
-        ln([[110, 12], [110, 68]], { ...ink, strokeStyle: s.dash }),
+        ln([[0, 12], [0, 68]], ink),
+        ln([[110, 12], [110, 68]], ink),
         ln([[0, 36], [55, 48], [110, 36]], ink, curved),
         ell(0, 0, 110, 24),
       ];
@@ -223,23 +216,32 @@ function edgePoint(el, dx, dy, gap) {
 }
 
 export class Board {
-  // api: the Architecture canvas; whyApi: the Why canvas.
-  constructor(api, { whyApi, onPhase } = {}) {
+  // api: the Architecture canvas; whyApi: the Why canvas; timelineApi: the Timeline canvas.
+  constructor(api, { whyApi, timelineApi, onPhase, style } = {}) {
     this.api = api;
+    this.style = style === "c4" ? "c4" : "pictures"; // how components are drawn (the viewer's choice)
     this.whyApi = whyApi;
+    this.timelineApi = timelineApi;
     this.onPhase = onPhase;
+    this.tlFollow = true; // refit the Timeline as it grows, until the user pans or zooms it
+    this.tlFrame = "";
     this.reset();
   }
 
   reset() {
-    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {} };
+    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {}, questions: {}, flows: {}, unowned: [] };
+    this.focus = null; // what the board is narrowed to: { layer } or { flow }, the rest faded
     this.known = new Set();
     this.hl = new Set();
     this.hlSig = "";
     this.whyHlSig = "";
+    this.tlHlSig = "";
     this.noteSlot = 0;
     this.reviewing = false;
-    this.view = "board"; // which canvas is showing: "board" (architecture) or "why"
+    this.view = "board"; // which canvas is showing: "board" (architecture), "why" or "timeline"
+    this.tl = null; // the Timeline as last drawn (buildTimeline), for clicks and highlights
+    this.changes = []; // the repo's actual changed files (git), attributed to components by their paths
+    this.alt = null; // a decision's alternatives shown as ghosts: { did, ids, options, labels }
     this.whyRows = 0; // decisions drawn on the Why canvas, to refit it when one is added
     this.hideCursor();
   }
@@ -248,8 +250,61 @@ export class Board {
   scene() {
     return [...this.api.getSceneElementsIncludingDeleted()];
   }
+  // Decision diamonds stay above the components they sit on (a component redrawn later would
+  // cover its diamond and take its clicks), and a decision's option pills above those.
+  // A layer or flow filter fades what it leaves out, whatever was just drawn.
   commit(elements) {
-    this.api.updateScene({ elements, captureUpdate: CaptureUpdateAction.NEVER });
+    const layer = (e) => (e.id.startsWith("alt-") || e.containerId?.startsWith("alt-") ? 2 : e.groupIds?.[0]?.startsWith("g:dec-") || e.id.startsWith("flow:") ? 1 : 0);
+    const ls = elements.map(layer);
+    if (ls.some((l, i) => i && l < ls[i - 1])) elements = elements.map((e, i) => [ls[i], i, e]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , e]) => e);
+    this.api.updateScene({ elements: this.faded(elements), captureUpdate: CaptureUpdateAction.NEVER });
+  }
+
+  // Line and type for the drawing style: hand-drawn pictures, or the official C4 look.
+  look(width = 2) {
+    return this.style === "c4" ? { strokeWidth: 1, roughness: 0 } : { strokeWidth: width, roughness: 1 };
+  }
+  font() {
+    return this.style === "c4" ? { fontFamily: SANS } : {};
+  }
+
+  // What the focus keeps: { nodes, edges } (sets of ids and edge keys), or null for everything.
+  focusSet() {
+    const f = this.focus, m = this.model;
+    if (!f) return null;
+    let nodes;
+    if (f.layer) nodes = new Set(Object.values(m.nodes).filter((n) => [f.layer, null].includes(layerOf(n))).map((n) => n.id));
+    else if (m.flows[f.flow]) nodes = new Set(m.flows[f.flow].steps.flatMap((s) => [s.from, s.to]));
+    else return null;
+    const edges = new Set();
+    if (f.layer) for (const [k, e] of Object.entries(m.edges)) if (nodes.has(e.from) && nodes.has(e.to)) edges.add(k);
+    if (f.flow)
+      for (const st of m.flows[f.flow].steps)
+        for (const k of [`${st.from}>${st.to}`, `${st.to}>${st.from}`]) if (m.edges[k]) edges.add(k);
+    return { nodes, edges };
+  }
+
+  // Elements outside the focus at FADE opacity; each one's own opacity comes back once it's in again.
+  faded(els) {
+    const keep = this.focusSet();
+    if (!keep && !this.wasFocused) return els;
+    this.wasFocused = !!keep;
+    const edgeOf = new Map(Object.entries(this.model.edges).map(([k, e]) => [e.elId, k]));
+    const inFocus = (e) => {
+      const node = this.nodeByEl(e.id);
+      if (node) return keep.nodes.has(node.id);
+      const ek = edgeOf.get(e.id) ?? edgeOf.get(e.containerId);
+      if (ek) return keep.edges.has(ek);
+      const dec = e.groupIds?.[0]?.startsWith("g:dec-") || /^dec-.+-l\d+$/.test(e.id) ? this.model.decisions[e.groupIds?.[0]?.slice(6) ?? e.id.replace(/^dec-(.+)-l\d+$/, "$1")] : null;
+      if (dec) return dec.affects.some((a) => keep.nodes.has(a));
+      return true; // notes, questions, the key, flow steps, your own drawing
+    };
+    return els.map((e) => {
+      if (e.isDeleted) return e;
+      const own = e.customData?.o0 ?? e.opacity;
+      const want = keep && !inFocus(e) ? Math.min(own, FADE) : own;
+      return want === e.opacity ? e : bump(e, { opacity: want, customData: { ...e.customData, o0: own } });
+    });
   }
   convert(skeletons) {
     return convertToExcalidrawElements(skeletons, { regenerateIds: false });
@@ -303,7 +358,7 @@ export class Board {
   // otherwise it gets sized with a fallback font and renders clipped.
   async init() {
     try {
-      await document.fonts.load("24px Excalifont", "Plan Build Verify Ship ✓✗★…");
+      await Promise.all([document.fonts.load("24px Excalifont", "Plan Build Verify Ship ✓✗★…"), document.fonts.load("18px Nunito", "Container Database")]);
     } catch {
       /* fall back to whatever font is available */
     }
@@ -316,10 +371,12 @@ export class Board {
     this.whyApi?.updateScene({ elements: [], captureUpdate: CaptureUpdateAction.NEVER });
   }
 
-  // Frame both canvases on their content.
+  // Frame every canvas on its content.
   fit(animate = false) {
     this.api.scrollToContent(this.api.getSceneElements(), { fitToViewport: true, viewportZoomFactor: 0.94, animate });
     this.fitWhy(animate);
+    this.tlFollow = true;
+    this.fitTimeline(animate);
   }
 
   fitWhy(animate = false) {
@@ -330,20 +387,31 @@ export class Board {
   // Which canvas is showing. The cursor, highlights and "scroll to" follow it.
   setView(view) {
     this.hideCursor();
-    this.view = view === "why" ? "why" : "board";
+    this.view = ["why", "timeline"].includes(view) ? view : "board";
     this.refreshMarkers();
   }
 
+  // The showing canvas, and how a logical id finds its element there.
+  canvas() {
+    if (this.view === "why") return [this.whyApi, (l) => this.whyElementFor(l)];
+    if (this.view === "timeline") return [this.timelineApi, (l) => this.timelineElementFor(l)];
+    return [this.api, (l) => this.elementFor(l)];
+  }
+
   // ---- agent cursor: an Excalidraw collaborator that glides to whatever the agent touches ----
-  // On the canvas that's showing: decisions have a place on both, everything else only on Architecture.
+  // On the canvas that's showing: decisions have a place on all three, everything else only on Architecture.
   pointAt(lids, ms = 260) {
-    const why = this.view === "why";
-    const api = why ? this.whyApi : this.api;
+    // On the Timeline it goes to the decision's newest mark, which the next redraw draws.
+    if (this.view === "timeline") this.tlPoint = { lids, ms };
+    else this.glide(...this.canvas(), lids, ms);
+  }
+
+  glide(api, elementFor, lids, ms) {
     if (!api) return;
     const els = api.getSceneElements();
     let target = null;
     for (const lid of lids) {
-      const id = why ? this.whyElementFor(lid) : this.elementFor(lid);
+      const id = elementFor(lid);
       target = id && els.find((e) => e.id === id);
       if (target) break;
     }
@@ -376,6 +444,7 @@ export class Board {
     this.cursor = null;
     this.api.updateScene({ collaborators: new Map() });
     this.whyApi?.updateScene({ collaborators: new Map() });
+    this.timelineApi?.updateScene({ collaborators: new Map() });
   }
 
   // ---- ops ----
@@ -383,9 +452,12 @@ export class Board {
     switch (a.op) {
       case "project": return this.setTitle(a.name, a.goal);
       case "decision": return this.setDecision(a);
+      case "question":
+      case "assumption": return this.setQuestion(a);
       case "phase": return this.setPhase(a.name);
       case "task": return this.setTask(a);
       case "node": return this.addNode(a);
+      case "flow": return this.setFlow(a);
       case "edge": return this.addEdge(a);
       case "status": return this.setStatus(a.id, a.v);
       case "rename": return this.rename(a.id, a.name);
@@ -469,6 +541,9 @@ export class Board {
         id, title, chose, over, why, affects, state, ...(verify ? { verify } : {}), ...(proof ? { proof } : {}),
       })),
       tasks: Object.values(m.tasks).map(({ id, phase, text, status }) => ({ id, phase, text, status })),
+      ...(Object.keys(m.questions).length
+        ? { questions: Object.values(m.questions).map(({ id, kind, text, state, answer }) => ({ id, kind, text, state, ...(answer ? { answer } : {}) })) }
+        : {}),
       free_cells,
       notes: m.notes.length,
     };
@@ -476,21 +551,43 @@ export class Board {
 
   // A component: an invisible hit-box (what arrows bind to and selection grabs),
   // the pictogram, its name underneath, and a status badge, all in one group.
+  // In C4 style the hit-box is the visible box, with the name and "[Type: tech]" inside.
   drawNode(node, ox, oy, labelText) {
     const s = STATUS[node.status] ?? STATUS.planned;
     const pid = node.elId;
-    const sk = [
-      { type: "rectangle", id: pid, x: ox - 10, y: oy - 10, width: IW + 20, height: IH + 62, strokeColor: "transparent", backgroundColor: "transparent", strokeWidth: 1, roughness: 0 },
-      ...iconParts(node.kind, ox, oy, s, pid),
-      { type: "text", id: `${pid}:label`, x: ox, y: oy + IH + 8, text: labelText ?? node.name, fontSize: 18, strokeColor: INK },
-    ];
-    // The main library, small and grey under the name; the full stack is in the Plan tab.
+    const c4 = this.style === "c4";
+    node.style = this.style; // redrawNode finds the origin again from the hit-box
     const libs = node.libs ?? [];
-    if (libs.length) {
+    const sk = c4
+      ? [
+          { type: "rectangle", id: pid, x: ox + C4B.x, y: oy + C4B.y, width: C4B.w, height: C4B.h, strokeColor: s.stroke, backgroundColor: s.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0, roundness: null },
+          { type: "text", id: `${pid}:label`, x: ox, y: oy + 8, text: labelText ?? node.name, fontSize: 17, strokeColor: INK, fontFamily: SANS },
+          { type: "text", id: `${pid}:libs`, x: ox, y: oy + 34, text: c4Tag(node), fontSize: 12, strokeColor: MUTED, fontFamily: SANS },
+        ]
+      : [
+          { type: "rectangle", id: pid, x: ox - 10, y: oy - 10, width: IW + 20, height: IH + 74, strokeColor: "transparent", backgroundColor: "transparent", strokeWidth: 1, roughness: 0 },
+          ...iconParts(node.kind, ox, oy, s, pid),
+          { type: "text", id: `${pid}:label`, x: ox, y: oy + IH + 8, text: labelText ?? node.name, fontSize: 18, strokeColor: INK },
+        ];
+    // The main library, small and grey under the name; the full stack is in the Plan tab.
+    if (libs.length && !c4) {
       const first = libs[0].length > 18 ? `${libs[0].slice(0, 17)}…` : libs[0];
       sk.push({ type: "text", id: `${pid}:libs`, x: ox, y: oy + IH + 31, text: libs.length > 1 ? `${first} +${libs.length - 1}` : first, fontSize: 13, strokeColor: MUTED });
     }
-    const bx = ox + IW - 14, by = oy - 14;
+    // What the run changed in its files (git): GitHub's five blocks, green for added lines, red for removed.
+    const d = node.diff;
+    if (d && d.add + d.del > 0) {
+      const y = c4 ? oy + 60 : oy + IH + (libs.length ? 52 : 34);
+      const red = d.del ? Math.max(1, Math.round((5 * d.del) / (d.add + d.del))) : 0;
+      const green = d.add ? Math.max(1, 5 - red) : 0;
+      const x0 = ox + IW / 2 - 40;
+      for (let i = 0; i < 5; i++) {
+        const c = i < green ? "#2f9e44" : i < green + red ? "#e03131" : "#dee2e6";
+        sk.push({ type: "rectangle", id: `${pid}:d${i}`, x: x0 + i * 11, y, width: 9, height: 9, strokeColor: c, backgroundColor: c, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
+      }
+      sk.push({ type: "text", id: `${pid}:dt`, x: x0 + 60, y: y - 3, text: `+${d.add} −${d.del}`, fontSize: 12, strokeColor: MUTED, ...(c4 ? { fontFamily: SANS } : {}) });
+    }
+    const [bx, by] = c4 ? [ox + C4B.x + C4B.w - 14, oy + C4B.y - 14] : [ox + IW - 14, oy - 14];
     if (s.badge) {
       sk.push({ type: "ellipse", id: `${pid}:badge`, x: bx, y: by, width: 28, height: 28, strokeColor: s.stroke, backgroundColor: s.stroke, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
       sk.push({ type: "text", id: `${pid}:badge-t`, x: bx, y: by, text: s.badge, fontSize: 17, strokeColor: "#ffffff" });
@@ -508,27 +605,31 @@ export class Board {
     return out;
   }
 
-  addNode({ id, name, kind = "service", col = 0, row = 0, status, v, libs, api, paths }) {
+  addNode({ id, name, kind = "service", col = 0, row = 0, status, v, libs, api, paths, layer }) {
     if (!id) return [];
     const existing = this.model.nodes[id];
     if (existing) {
-      // Repeating a node op fills in its details (libraries, APIs, files) as the agent learns them.
+      // Repeating a node op fills in its details (libraries, APIs, files, layer) as the agent learns them.
+      if (layer != null) existing.layer = layer;
       if (libs != null) existing.libs = list(libs);
       if (api != null) existing.api = list(api);
       if (paths != null) existing.paths = list(paths);
       if (libs != null) this.redrawNode(id);
+      if (paths != null) this.attributeChanges();
       return [`node:${id}`];
     }
     if (!name) return [];
     const cell = this.freeCell(col, row);
     const st = STATUS[v] ? v : STATUS[status] ? status : "planned";
     const node = {
-      id, name, kind: KINDS.includes(kind) ? kind : "service", status: st, elId: `node-${id}`, cell,
-      libs: list(libs), api: list(api), paths: list(paths),
+      id, name: sentenceCase(name), kind: KINDS.includes(kind) ? kind : "service", status: st, elId: `node-${id}`, cell,
+      libs: list(libs), api: list(api), paths: list(paths), layer: layer ?? null,
     };
     this.model.nodes[id] = node;
     const fresh = this.remember(this.drawNode(node, NX0 + cell[0] * COL, NY0 + cell[1] * ROW));
     this.commit([...this.scene(), ...fresh]);
+    if (this.changes.length) this.attributeChanges();
+    this.redrawKey();
     // Decisions about it, made before it was drawn, can pin to it now (and the Why view moves down if it must).
     if (Object.keys(this.model.decisions).length) this.redrawDecisions();
     return [`node:${id}`];
@@ -542,7 +643,8 @@ export class Board {
     const els = this.scene();
     const main = els.find((e) => e.id === node.elId);
     if (!main || main.isDeleted) return;
-    const ox = at?.ox ?? main.x + 10, oy = at?.oy ?? main.y + 10;
+    const off = HIT[node.style ?? "pictures"];
+    const ox = at?.ox ?? main.x - off.x, oy = at?.oy ?? main.y - off.y;
     // Keep a rename the user typed but hasn't sent yet.
     const label = els.find((e) => e.id === `${node.elId}:label` && !e.isDeleted);
     const pending = label && firstLine(label.text) !== node.name ? label.text : undefined;
@@ -550,6 +652,47 @@ export class Board {
     this.replace(mine, this.drawNode(node, ox, oy, pending));
     // Decisions pinned to this component follow it if it moved.
     if (Object.values(this.model.decisions).some((d) => d.affects.includes(nodeId))) this.redrawDecisions();
+  }
+
+  // ---- what the run changed in the repo ----
+  // files: [{ path, add, del, patch }] from git (server/changes.js), or the demo's script.
+  setChanges(files) {
+    this.changes = files ?? [];
+    this.attributeChanges();
+  }
+
+  // Which component owns a repo file, by its declared paths (longest prefix wins, as on the server).
+  ownerOf(file) {
+    let best = null, len = -1;
+    for (const n of Object.values(this.model.nodes))
+      for (const p of n.paths ?? []) {
+        const prefix = p.replace(/^\.\//, "").replace(/\/+$/, "");
+        if ((file === prefix || file.startsWith(`${prefix}/`)) && prefix.length > len) [best, len] = [n.id, prefix.length];
+      }
+    return best;
+  }
+
+  // Each component's share of the changes (redrawn when it moves), and the files no component owns.
+  attributeChanges() {
+    const per = {};
+    this.model.unowned = [];
+    for (const f of this.changes) {
+      const owner = this.ownerOf(f.path);
+      if (!owner) this.model.unowned.push(f);
+      else {
+        const d = (per[owner] ??= { add: 0, del: 0, files: [] });
+        d.add += f.add;
+        d.del += f.del;
+        d.files.push(f.path);
+      }
+    }
+    for (const n of Object.values(this.model.nodes)) {
+      const d = per[n.id] ?? null;
+      const sig = d ? `${d.add}/${d.del}/${d.files.join()}` : "";
+      if (sig === (n.diffSig ?? "")) continue;
+      Object.assign(n, { diff: d, diffSig: sig });
+      this.redrawNode(n.id);
+    }
   }
 
   // ---- decisions: the reasoning chain ----
@@ -587,8 +730,160 @@ export class Board {
       proof_by: proof_by ?? (changed && !result ? null : prev?.proof_by ?? null),
       cause: cause ? { who: cause, text: cause_text ?? "" } : prev?.cause ?? null,
     };
+    if (changed && this.alt?.did === id) this.hideAlternatives(); // the pick landed
     this.redrawDecisions();
     return [`decision:${id}`];
+  }
+
+  // ---- questions for you, and the assumptions it's working from ----
+  // { id, kind: "question" | "assumption", n, text, options[], about, state, answer }
+  // state: open, then answered (a question) or confirmed / corrected (an assumption).
+  setQuestion({ op, id, text, options, about, state, answer }) {
+    if (!id) return [];
+    const m = this.model;
+    const prev = m.questions[id];
+    if (!prev && !text) return [];
+    const kind = prev?.kind ?? (op === "assumption" ? "assumption" : "question");
+    const q = (m.questions[id] = {
+      id,
+      kind,
+      n: prev?.n ?? Object.values(m.questions).filter((x) => x.kind === kind).length + 1,
+      text: text ?? prev.text,
+      options: options != null ? list(options) : prev?.options ?? [],
+      about: about ?? prev?.about ?? null,
+      state: QSTATES.includes(state) ? state : prev?.state ?? "open",
+      answer: answer ?? prev?.answer ?? null,
+      elId: prev?.elId ?? `q-${id}`,
+      slot: prev?.slot ?? this.noteSlot++,
+    });
+    this.drawQuestion(q);
+    return [`question:${id}`];
+  }
+
+  // A sticky in the notes column: the question (and its answer), a badge for what it is or that it's settled.
+  drawQuestion(q) {
+    const st = QSTYLE[q.kind];
+    const x = NOTE_X, y = NOTE_Y + q.slot * 70, g = [`g:${q.elId}`];
+    const settled = q.state === "answered" || q.state === "confirmed";
+    const badge = settled ? "#2f9e44" : q.state === "corrected" ? "#1971c2" : st.stroke;
+    const out = this.convert([
+      {
+        type: "rectangle", id: q.elId, x, y, width: 210, height: 56, strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid",
+        strokeWidth: 1, strokeStyle: q.state === "open" && q.kind === "assumption" ? "dashed" : "solid", roughness: this.style === "c4" ? 0 : 1, roundness: this.style === "c4" ? null : { type: 3 },
+        label: { text: clip(q.answer ? `${q.text} → ${q.answer}` : q.text, 76), fontSize: 14, strokeColor: q.state === "corrected" ? MUTED : INK, ...this.font() },
+      },
+      { type: "ellipse", id: `${q.elId}:b`, x: x - 12, y: y - 12, width: 24, height: 24, strokeColor: badge, backgroundColor: badge, fillStyle: "solid", strokeWidth: 1, roughness: 0 },
+      { type: "text", id: `${q.elId}:g`, x, y, text: settled ? "✓" : q.state === "corrected" ? "↻" : st.glyph, fontSize: 15, strokeColor: "#ffffff" },
+    ]);
+    for (const e of out) {
+      e.groupIds = g;
+      if (e.id === `${q.elId}:g`) [e.x, e.y] = [x - e.width / 2, y - e.height / 2];
+    }
+    this.replace((e) => e.id === q.elId || e.id.startsWith(`${q.elId}:`) || e.containerId === q.elId, out);
+  }
+
+  // ---- choosing a decision on the board ----
+  // Selecting a diamond fans its alternatives out to its right as ghost pills, plus a blank one
+  // to write your own. Drop one on the diamond and it's the pick: it settles beside it, solid,
+  // the rest go, and diff() reports a "choose" edit. Delete it (or select the diamond) to undo.
+  showAlternatives(did) {
+    if (this.alt?.did === did && this.alt.picked == null) return;
+    this.hideAlternatives();
+    const d = this.model.decisions[did];
+    const dia = this.api.getSceneElements().find((e) => e.id === `dec-${did}`);
+    if (!d || !dia || d.state === "rejected") return;
+    const options = [...d.over.slice(0, 3), ""];
+    const labels = options.map((o) => (o ? clip(o, 24) : "+ your own"));
+    const W = 176, H = 30, GAP = 6;
+    const x = dia.x + dia.width + 14, y0 = dia.y + dia.height / 2 - (options.length * (H + GAP) - GAP) / 2;
+    const out = this.remember(
+      this.convert(
+        options.map((o, i) => ({
+          type: "rectangle", id: `alt-${did}-${i}`, x, y: y0 + i * (H + GAP), width: W, height: H,
+          strokeColor: DECISION.proposed.stroke, backgroundColor: "#ffffff", fillStyle: "solid", strokeStyle: "dashed", ...this.look(1.5), roundness: this.style === "c4" ? null : { type: 3 },
+          label: { text: labels[i], fontSize: 13, strokeColor: o ? INK : MUTED, ...this.font() },
+        })),
+      ),
+    );
+    for (const e of out) e.seed = seedOf(e.id);
+    this.alt = { did, ids: options.map((_, i) => `alt-${did}-${i}`), options, labels, picked: null };
+    this.commit([...this.scene(), ...out]);
+  }
+
+  hideAlternatives() {
+    if (!this.alt) return;
+    const els = this.scene();
+    this.kill(els, new Set(this.alt.ids));
+    this.alt = null;
+    this.commit(els);
+  }
+
+  // What ghost i says: the option, or what you typed over it (blank if you left "+ your own" as is).
+  altText(i, els = this.scene()) {
+    const a = this.alt;
+    const label = els.find((t) => t.containerId === a.ids[i] && !t.isDeleted);
+    const typed = firstLine(label?.originalText ?? label?.text);
+    return typed && typed !== a.labels[i] ? typed : a.options[i];
+  }
+
+  // Make ghost i the pick: beside the diamond, solid in the "changed" color; the others go.
+  settle(i) {
+    const a = this.alt, els = this.scene();
+    const dia = els.find((e) => e.id === `dec-${a.did}` && !e.isDeleted);
+    const g = els.find((e) => e.id === a.ids[i] && !e.isDeleted);
+    if (!dia || !g) return;
+    const dx = dia.x + dia.width + 8 - g.x, dy = dia.y + dia.height / 2 - g.height / 2 - g.y;
+    const c = DECISION.changed;
+    for (const [k, e] of els.entries()) {
+      if (e.id === g.id) els[k] = bump(e, { x: e.x + dx, y: e.y + dy, strokeStyle: "solid", strokeColor: c.stroke, backgroundColor: c.fill });
+      else if (e.containerId === g.id) els[k] = bump(e, { x: e.x + dx, y: e.y + dy, strokeColor: c.stroke });
+    }
+    this.kill(els, new Set(a.ids.filter((id) => id !== g.id)));
+    a.picked = i;
+    this.commit(els);
+  }
+
+  // After a drag: a ghost (with something to say) dropped on its diamond becomes the pick.
+  settlePick() {
+    const a = this.alt;
+    if (!a || a.picked != null) return;
+    const els = this.scene();
+    const dia = els.find((e) => e.id === `dec-${a.did}` && !e.isDeleted);
+    const i = a.ids.findIndex((id, k) => {
+      const g = els.find((e) => e.id === id && !e.isDeleted);
+      return g && dia && overlaps(g, dia, 6) && this.altText(k, els);
+    });
+    if (i !== -1) this.settle(i);
+  }
+
+  // Pick alternative i from outside the board (the Plan tab).
+  pickAlternative(did, i) {
+    this.hideAlternatives();
+    this.showAlternatives(did);
+    if (this.alt?.did === did) this.settle(i);
+  }
+
+  // The pick, as a "choose" edit, while it's still by its diamond.
+  choice(els = this.scene()) {
+    const a = this.alt, d = a && this.model.decisions[a.did];
+    if (!d || a.picked == null) return null;
+    const dia = els.find((e) => e.id === `dec-${d.id}` && !e.isDeleted);
+    const g = els.find((e) => e.id === a.ids[a.picked] && !e.isDeleted);
+    const to = g && dia && overlaps(g, dia, 40) && this.altText(a.picked, els);
+    return to && to !== d.chose ? { key: `choose:${d.id}:${to}`, kind: "choose", decision: d.id, label: `D${d.n}`, title: d.title, from: d.chose, to } : null;
+  }
+
+  // The selection changed: a diamond shows its alternatives; they go away once you click elsewhere,
+  // unless you're moving or typing in one, or there's a pick waiting to be sent.
+  onSelect(ids, st = {}) {
+    if (st.editingTextElement || st.selectedElementsAreBeingDragged) return;
+    const did = this.logicalIdsFor(ids).find((l) => l.startsWith("decision:"))?.slice("decision:".length);
+    if (did) return this.showAlternatives(did);
+    if (!this.alt) return;
+    const els = this.scene();
+    const ghost = (id) => this.alt.ids.includes(id) || els.some((e) => e.id === id && this.alt.ids.includes(e.containerId));
+    if (ids.some(ghost) || this.choice(els)) return;
+    this.hideAlternatives();
   }
 
   // Approving the plan makes its proposed decisions accepted.
@@ -627,8 +922,8 @@ export class Board {
         y = NY0 - 72;
       }
       const g = [`g:dec-${d.id}`];
-      sk.push({ type: "diamond", id: `dec-${d.id}`, x, y, width: DW, height: DW, strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid", strokeStyle: st.dash, strokeWidth: 2, roughness: 1, groupIds: g });
-      sk.push({ type: "text", id: `dec-${d.id}-t`, x, y, text: `D${d.n}`, fontSize: 14, strokeColor: st.stroke, groupIds: g });
+      sk.push({ type: "diamond", id: `dec-${d.id}`, x, y, width: DW, height: DW, strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid", strokeStyle: st.dash, ...this.look(2), groupIds: g });
+      sk.push({ type: "text", id: `dec-${d.id}-t`, x, y, text: `D${d.n}`, fontSize: 14, strokeColor: st.stroke, groupIds: g, ...this.font() });
       centers[`dec-${d.id}-t`] = [x + DW / 2, y + DW / 2];
       // Its check's result: ✓ or ✗ on the diamond's shoulder.
       if (d.proof) {
@@ -642,7 +937,7 @@ export class Board {
         if (!t) return;
         const cx = x + DW / 2, cy = y + DW / 2;
         const [ex, ey] = edgePoint(t, cx - (t.x + t.width / 2), cy - (t.y + t.height / 2), 2);
-        sk.push(poly(`dec-${d.id}-l${i}`, [[cx, cy], [ex, ey]], { strokeColor: st.stroke, strokeStyle: "dotted", strokeWidth: 1.5, opacity: 55, roughness: 1, locked: true }));
+        sk.push(poly(`dec-${d.id}-l${i}`, [[cx, cy], [ex, ey]], { strokeColor: st.stroke, strokeStyle: "dotted", ...this.look(1.5), opacity: 55, locked: true }));
       });
     }
     const out = this.convert(sk);
@@ -794,6 +1089,85 @@ export class Board {
     return els.length ? this.logicalIdsFor([els[0].id]) : [];
   }
 
+  // ---- the Timeline canvas: how the decisions moved over the run ----
+  // events: the run's timed events; now: where the board is in them (a replay's position).
+  redrawTimeline(events, { now } = {}) {
+    if (!this.timelineApi) return;
+    const tl = (this.tl = buildTimeline(events, this.model));
+    this.tlNow = now ?? tl.end;
+    const sk = drawTimeline(tl, now == null ? {} : { now });
+    // Text centered on its point once measured; seeds from ids, so redraws never re-wobble.
+    const at = new Map();
+    const out = this.convert(sk.map(({ _c, ...e }) => (_c && at.set(e.id, _c), e)));
+    for (const e of out) {
+      const c = at.get(e.id);
+      if (c) {
+        e.x = c[0] - e.width / 2;
+        e.y = c[1] - e.height / 2;
+      }
+      e.seed = seedOf(e.id);
+    }
+    const marks = this.timelineApi.getSceneElements().filter((e) => e.id.startsWith(MARK));
+    this.replace(() => true, [...out, ...marks], this.timelineApi);
+    this.tlHlSig = null; // repaint: lanes may have moved under their marks, or gone
+    this.refreshMarkers();
+    // Keep the whole run in view as it grows, unless the user has panned or zoomed.
+    const frame = out.find((e) => e.id === "tl:frame");
+    const size = frame ? `${Math.round(frame.width)}x${Math.round(frame.height)}` : "";
+    if (size !== this.tlFrame && this.view === "timeline" && this.tlFollow) this.fitTimeline();
+    this.tlFrame = size;
+    if (this.tlPoint && this.view === "timeline") this.glide(this.timelineApi, (l) => this.timelineMarkFor(l), this.tlPoint.lids, this.tlPoint.ms);
+    this.tlPoint = null;
+  }
+
+  fitTimeline(animate = false) {
+    const els = this.timelineApi?.getSceneElements() ?? [];
+    if (els.length) this.timelineApi.scrollToContent(els, { fitToViewport: true, viewportZoomFactor: 0.95, animate });
+  }
+
+  // What a point on the Timeline canvas (scene coordinates) is over: the moment it stands
+  // for (t, ms), the decision it belongs to (lids), your message (msg) or the test run (tool).
+  timelineHit(x, y) {
+    const tl = this.tl;
+    if (!tl?.segments.length) return null;
+    const pad = 5;
+    const near = (e) => x >= e.x - pad && x <= e.x + e.width + pad && y >= e.y - pad && y <= e.y + e.height + pad;
+    const els = this.timelineApi.getSceneElements().filter((e) => /^tl:[ykmr]:/.test(e.id) && e.type !== "arrow" && near(e));
+    els.sort((a, b) => a.width * a.height - b.width * b.height);
+    const at = x >= TL.X0 - 6 ? Math.max(0, xToTime(tl, x)) : null; // left of the axis are the lane labels
+    if (!els.length) return { t: at, lids: [] };
+    const [, part, a, b] = els[0].id.split(":");
+    const lane = tl.lanes[+a];
+    switch (part) {
+      case "y": {
+        const y = tl.you[+a];
+        return { t: y.t, lids: y.target ? [`decision:${y.target}`] : [], msg: y.msg ?? null };
+      }
+      case "k":
+        return { t: tl.tests[+a].t, lids: [], tool: tl.tests[+a].toolUseId };
+      case "m":
+        return { t: lane.marks[+b].t, lids: [`decision:${lane.id}`] };
+      default:
+        return { t: at, lids: [`decision:${lane.id}`] };
+    }
+  }
+
+  // The Timeline element for a logical id: a decision is its lane's title, a phase its band.
+  timelineElementFor(lid) {
+    const [k, v] = lid.split(":");
+    const i = k === "decision" ? this.tl?.lanes.findIndex((l) => l.id === v) : k === "phase" ? this.tl?.phases.findIndex((p) => p.key === v) : -1;
+    if (i == null || i === -1) return null;
+    return k === "decision" ? `tl:l:${i}:t` : `tl:p:${i}`;
+  }
+
+  // A decision's newest mark on its lane (up to the now line), where the agent's cursor goes.
+  timelineMarkFor(lid) {
+    const [k, v] = lid.split(":");
+    const i = k === "decision" ? this.tl?.lanes.findIndex((l) => l.id === v) : -1;
+    const m = i == null || i === -1 ? -1 : this.tl.lanes[i].marks.findLastIndex((m) => m.t <= this.tlNow + 5);
+    return m === -1 ? null : `tl:m:${i}:${m}`;
+  }
+
   setStatus(id, v) {
     const node = this.model.nodes[id];
     if (!node || !STATUS[v]) return [];
@@ -805,7 +1179,7 @@ export class Board {
   rename(id, name) {
     const node = this.model.nodes[id];
     if (!node || !name) return [];
-    node.name = name;
+    node.name = sentenceCase(name);
     this.redrawNode(id);
     return [`node:${id}`];
   }
@@ -824,15 +1198,26 @@ export class Board {
     const A = this.model.nodes[from], B = this.model.nodes[to];
     if (!A || !B) return [];
     const els = this.scene();
-    const ai = els.findIndex((e) => e.id === A.elId), bi = els.findIndex((e) => e.id === B.elId);
-    if (ai === -1 || bi === -1) return [];
+    const edge = { from, to, elId: `edge-${from}-${to}`, via: via ?? null, api: api ?? null, async };
+    if (!this.drawEdge(edge, els)) return [];
+    this.model.edges[key] = edge;
+    this.commit(els);
+    return [`edge:${key}`];
+  }
+
+  // An edge's arrow between its two hit-boxes, into els (replacing an earlier drawing of it).
+  drawEdge(edge, els) {
+    const { via, async } = edge;
+    const A = this.model.nodes[edge.from], B = this.model.nodes[edge.to];
+    const ai = els.findIndex((e) => e.id === A?.elId && !e.isDeleted), bi = els.findIndex((e) => e.id === B?.elId && !e.isDeleted);
+    if (ai === -1 || bi === -1) return false;
     const a = els[ai], b = els[bi];
     const dx = b.x + b.width / 2 - (a.x + a.width / 2);
     const dy = b.y + b.height / 2 - (a.y + a.height / 2);
     const p1 = edgePoint(a, dx, dy, 4), p2 = edgePoint(b, -dx, -dy, 4);
-    const id = `edge-${from}-${to}`;
+    const id = edge.elId;
     // Only a short protocol tag, and only where it fits between the boxes.
-    const tag = via && via.length <= 8 && via.length * 7.5 < Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) - 40 ? via : null;
+    const tag = via && via.length <= 8 && via.length * 7.5 < Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) - 40 ? tagCase(via) : null;
     // convertToExcalidrawElements only binds arrows to shapes in the same batch,
     // so pass geometry-only proxies of both ends and keep just the arrow.
     const proxy = (e) => ({ type: e.type, id: e.id, x: e.x, y: e.y, width: e.width, height: e.height });
@@ -841,21 +1226,153 @@ export class Board {
       {
         type: "arrow", id, x: p1[0], y: p1[1],
         points: [[0, 0], [p2[0] - p1[0], p2[1] - p1[1]]],
-        strokeColor: "#495057", strokeWidth: 2, roughness: 1, strokeStyle: async ? "dashed" : "solid",
+        strokeColor: "#495057", ...this.look(2), strokeStyle: async ? "dashed" : "solid",
         start: { id: a.id }, end: { id: b.id },
-        ...(tag ? { label: { text: tag, fontSize: 13, strokeColor: MUTED } } : {}),
+        ...(tag ? { label: { text: tag, fontSize: 13, strokeColor: MUTED, ...this.font() } } : {}),
       },
     ]);
     const arrow = out.find((e) => e.id === id);
     const text = out.find((e) => e.containerId === id);
-    els[ai] = bump(a, { boundElements: [...(a.boundElements || []), { type: "arrow", id }] });
-    els[bi] = bump(b, { boundElements: [...(b.boundElements || []), { type: "arrow", id }] });
-    els.push(arrow);
-    if (text) els.push(text);
-    this.remember(text ? [arrow, text] : [arrow]);
-    this.model.edges[key] = { from, to, elId: id, via: via ?? null, api: api ?? null };
+    const bind = (e) => bump(e, { boundElements: [...(e.boundElements || []).filter((x) => x.id !== id), { type: "arrow", id }] });
+    els[ai] = bind(a);
+    els[bi] = bind(b);
+    this.upsert(els, text ? [arrow, text] : [arrow]);
+    return true;
+  }
+
+  // Redraw every arrow from the hit-boxes as they are now (after the drawing style changed).
+  // An arrow you deleted stays deleted: that's an unlink waiting to be sent.
+  redrawEdges() {
+    const els = this.scene();
+    const edges = Object.values(this.model.edges).filter((e) => els.some((x) => x.id === e.elId && !x.isDeleted));
+    // Their old labels go; drawEdge makes new ones.
+    this.kill(els, new Set(els.filter((x) => edges.some((e) => x.containerId === e.elId)).map((x) => x.id)));
+    for (const e of edges) this.drawEdge(e, els);
     this.commit(els);
-    return [`edge:${key}`];
+  }
+
+  // Pictures or C4: redraw the components, then their arrows and diamonds, in the new style.
+  setStyle(style) {
+    const next = style === "c4" ? "c4" : "pictures";
+    if (next === this.style) return;
+    this.style = next;
+    this.hideAlternatives();
+    for (const id of Object.keys(this.model.nodes)) this.redrawNode(id);
+    this.redrawEdges();
+    this.redrawDecisions();
+    for (const q of Object.values(this.model.questions)) this.drawQuestion(q);
+    this.redrawKey();
+    this.drawFlowSteps();
+  }
+
+  // ---- layers and flows: narrow the board to one ----
+  // A flow: the steps a request takes through the components, in order (from the agent's
+  // flow op: "web>api: POST /ask", …).
+  setFlow({ id, name, steps }) {
+    if (!id) return [];
+    const prev = this.model.flows[id];
+    const parsed = steps != null ? parseSteps(steps) : prev?.steps ?? [];
+    if (!prev && !parsed.length) return [];
+    this.model.flows[id] = { id, n: prev?.n ?? Object.keys(this.model.flows).length + 1, name: sentenceCase(name ?? prev?.name ?? id), steps: parsed };
+    if (this.focus?.flow === id) this.setFocus(this.focus);
+    return [`flow:${id}`];
+  }
+
+  // { layer: "ml" }, { flow: "ask" }, or null for the whole board.
+  setFocus(focus) {
+    this.focus = focus?.layer || focus?.flow ? focus : null;
+    this.hideAlternatives();
+    this.drawFlowSteps();
+  }
+
+  // A focused flow's steps as numbered dots along its links, in order; a step with no link drawn
+  // gets a thin dashed arrow of its own. Several steps on one link spread out along it.
+  drawFlowSteps() {
+    const els = this.scene();
+    this.kill(els, new Set(els.filter((e) => e.id.startsWith("flow:")).map((e) => e.id)));
+    const flow = this.model.flows[this.focus?.flow];
+    const sk = [];
+    const centers = {};
+    if (flow) {
+      const box = (id) => els.find((e) => e.id === this.model.nodes[id]?.elId && !e.isDeleted);
+      const along = {}; // edge element id (or pair) -> step indexes on it
+      const segs = flow.steps.map((st, i) => {
+        const e = this.model.edges[`${st.from}>${st.to}`] ?? this.model.edges[`${st.to}>${st.from}`];
+        const arrow = e && els.find((x) => x.id === e.elId && !x.isDeleted);
+        if (arrow) {
+          const [[x0, y0], [x1, y1]] = [arrow.points[0], arrow.points.at(-1)].map(([px, py]) => [arrow.x + px, arrow.y + py]);
+          (along[arrow.id] ??= []).push(i);
+          return { key: arrow.id, a: [x0, y0], b: [x1, y1], reverse: e.from !== st.from };
+        }
+        const A = box(st.from), B = box(st.to);
+        if (!A || !B) return null;
+        const dx = B.x + B.width / 2 - (A.x + A.width / 2), dy = B.y + B.height / 2 - (A.y + A.height / 2);
+        const a = edgePoint(A, dx, dy, 4), b = edgePoint(B, -dx, -dy, 4);
+        sk.push({ type: "arrow", id: `flow:${flow.id}:a${i}`, x: a[0], y: a[1], points: [[0, 0], [b[0] - a[0], b[1] - a[1]]], strokeColor: "#1971c2", strokeStyle: "dashed", ...this.look(1.5), endArrowhead: "arrow", locked: true });
+        (along[`pair${i}`] ??= []).push(i);
+        return { key: `pair${i}`, a, b };
+      });
+      segs.forEach((g, i) => {
+        if (!g) return;
+        const on = along[g.key], k = on.indexOf(i);
+        // Near the link's ends, clear of its tag in the middle: one step by where it starts, several spread end to end.
+        const t = on.length === 1 ? (g.reverse ? 0.82 : 0.18) : 0.18 + (0.64 * k) / (on.length - 1);
+
+        const [cx, cy] = [g.a[0] + (g.b[0] - g.a[0]) * t, g.a[1] + (g.b[1] - g.a[1]) * t];
+        const D = 24;
+        sk.push({ type: "ellipse", id: `flow:${flow.id}:${i}`, x: cx - D / 2, y: cy - D / 2, width: D, height: D, strokeColor: "#1971c2", backgroundColor: "#1971c2", fillStyle: "solid", strokeWidth: 1, roughness: 0, locked: true });
+        sk.push({ type: "text", id: `flow:${flow.id}:${i}t`, x: cx, y: cy, text: String(i + 1), fontSize: 14, strokeColor: "#ffffff", fontFamily: SANS, locked: true });
+        centers[`flow:${flow.id}:${i}t`] = [cx, cy];
+      });
+    }
+    const out = this.remember(this.convert(sk));
+    for (const e of out) {
+      e.seed = seedOf(e.id);
+      const c = centers[e.id];
+      if (c) [e.x, e.y] = [c[0] - e.width / 2, c[1] - e.height / 2];
+    }
+    this.commit([...els, ...out]);
+  }
+
+  // The official style's key, under the diagram: what the colors and lines mean.
+  redrawKey() {
+    const els = this.scene();
+    this.kill(els, new Set(els.filter((e) => e.id.startsWith("key:")).map((e) => e.id)));
+    const boxes = Object.values(this.model.nodes).map((n) => els.find((e) => e.id === n.elId && !e.isDeleted)).filter(Boolean);
+    if (this.style !== "c4" || !boxes.length) return this.commit(els);
+    const x0 = Math.min(...boxes.map((b) => b.x)), y = Math.max(...boxes.map((b) => b.y + b.height)) + 44;
+    const sk = [{ type: "text", id: "key:title", x: x0, y: y - 2, text: "Key", fontSize: 13, strokeColor: INK, fontFamily: SANS }];
+    const centers = {};
+    let x = x0 + 42;
+    const label = (id, text) => {
+      sk.push({ type: "text", id, x, y: y - 1, text, fontSize: 12, strokeColor: MUTED, fontFamily: SANS });
+      x += text.length * 6.6 + 18;
+    };
+    for (const [k, st] of Object.entries(STATUS)) {
+      sk.push({ type: "rectangle", id: `key:${k}`, x, y, width: 14, height: 14, strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
+      x += 20;
+      label(`key:${k}:t`, k[0].toUpperCase() + k.slice(1));
+    }
+    for (const [k, dash] of [["sync", "solid"], ["async", "dashed"]]) {
+      sk.push({ type: "line", id: `key:${k}`, x, y: y + 7, points: [[0, 0], [26, 0]], strokeColor: "#495057", strokeStyle: dash, strokeWidth: 1, roughness: 0 });
+      x += 32;
+      label(`key:${k}:t`, k === "sync" ? "Synchronous" : "Asynchronous");
+    }
+    sk.push({ type: "diamond", id: "key:dec", x, y: y - 2, width: 18, height: 18, strokeColor: DECISION.accepted.stroke, backgroundColor: DECISION.accepted.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
+    x += 24;
+    label("key:dec:t", "Decision");
+    const out = this.remember(this.convert(sk.map((e) => ({ ...e, locked: true }))));
+    for (const e of out) e.seed = seedOf(e.id);
+    this.commit([...els, ...out]);
+  }
+
+  // What to export: the board as it shows (faded where a filter leaves things out), without
+  // the highlighter or a decision's open option pills.
+  exportElements(title) {
+    const els = this.api.getSceneElements().filter((e) => !e.id.startsWith(MARK) && e.id !== "frame" && !(this.alt && (this.alt.ids.includes(e.id) || this.alt.ids.includes(e.containerId))));
+    if (!title || !els.length) return els;
+    const [x1, y1] = getCommonBounds(els);
+    return [...els, ...this.convert([{ type: "text", id: "export:title", x: x1, y: y1 - 46, text: title, fontSize: 22, strokeColor: INK, fontFamily: SANS }])];
   }
 
   // Sticky notes are the one place words belong on the board: they're the user's own.
@@ -898,6 +1415,7 @@ export class Board {
     this.kill(els, ids);
     delete this.model.nodes[id];
     this.commit(els);
+    this.redrawKey();
     return [];
   }
 
@@ -920,7 +1438,8 @@ export class Board {
     let nid = id || "item", k = 2;
     while (this.model.nodes[nid]) nid = `${id}-${k++}`;
     this.model.nodes[nid] = { id: nid, name, kind: KINDS.includes(kind) ? kind : "service", status: "planned", elId: el, cell: null };
-    const ox = shape.x + shape.width / 2 - IW / 2, oy = shape.y + shape.height / 2 - (IH + 30) / 2;
+    const cy = shape.y + shape.height / 2;
+    const ox = shape.x + shape.width / 2 - IW / 2, oy = this.style === "c4" ? cy - C4B.y - C4B.h / 2 : cy - (IH + 30) / 2;
     this.redrawNode(nid, { ox, oy });
     return [`node:${nid}`];
   }
@@ -972,6 +1491,9 @@ export class Board {
       if (d.state === "rejected" || live(`dec-${d.id}`) || !byId.has(`dec-${d.id}`)) continue;
       out.push({ key: `reject:${d.id}`, kind: "reject", decision: d.id, label: `D${d.n}`, title: d.title, chose: d.chose });
     }
+    // Dragging one of its alternatives onto a diamond picks it.
+    const pick = this.choice(els);
+    if (pick) out.push(pick);
 
     for (const [k, e] of Object.entries(this.model.edges)) {
       if (live(e.elId)) continue;
@@ -1005,6 +1527,7 @@ export class Board {
       case "edge": return this.model.edges[v]?.elId;
       case "note": return this.model.notes.find((n) => n.n === +v)?.elId;
       case "decision": return this.model.decisions[v] ? `dec-${v}` : null;
+      case "question": return this.model.questions[v]?.elId ?? null;
       default: return null;
     }
   }
@@ -1026,7 +1549,9 @@ export class Board {
         continue;
       }
       const node = this.nodeByEl(id);
+      const q = id.startsWith("q-") && Object.values(this.model.questions).find((x) => id === x.elId || id.startsWith(`${x.elId}:`));
       if (node) out.add(`node:${node.id}`);
+      else if (q) out.add(`question:${q.id}`);
       else if (id.startsWith("dec-")) {
         const d = Object.keys(this.model.decisions).find((k) => id === `dec-${k}` || id.startsWith(`dec-${k}-`));
         if (d) out.add(`decision:${d}`);
@@ -1042,9 +1567,8 @@ export class Board {
 
   // Bring these into view on the canvas that's showing.
   scrollTo(lids) {
-    const why = this.view === "why";
-    const api = why ? this.whyApi : this.api;
-    const ids = new Set(lids.map((l) => (why ? this.whyElementFor(l) : this.elementFor(l))).filter(Boolean));
+    const [api, elementFor] = this.canvas();
+    const ids = new Set(lids.map(elementFor).filter(Boolean));
     const els = api.getSceneElements().filter((e) => ids.has(e.id));
     if (els.length) api.scrollToContent(els, { animate: true, duration: 300 });
   }
@@ -1054,10 +1578,11 @@ export class Board {
     this.refreshMarkers();
   }
 
-  // Highlighter marks on both canvases: a yellow halo behind shapes, a marker stroke under text and arrows.
+  // Highlighter marks on every canvas: a yellow halo behind shapes, a marker stroke under text and arrows.
   refreshMarkers() {
     this.hlSig = this.paintMarks(this.api, (l) => this.elementFor(l), this.hlSig);
     if (this.whyApi) this.whyHlSig = this.paintMarks(this.whyApi, (l) => this.whyElementFor(l), this.whyHlSig);
+    if (this.timelineApi) this.tlHlSig = this.paintMarks(this.timelineApi, (l) => this.timelineElementFor(l), this.tlHlSig);
   }
 
   // Returns the marks' signature, so an unchanged set isn't repainted.

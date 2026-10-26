@@ -20,6 +20,7 @@ export function describeOp(a, model) {
       return d ? `Revising ${a.title ?? d.title}` : `Deciding ${a.title ?? a.id}`;
     }
     case "edge": return `Connecting ${name(a.from)} → ${name(a.to)}`;
+    case "flow": return `Mapping the flow “${a.name ?? a.id}”`;
     case "status": return `Marking ${name(a.id)} ${a.v}`;
     case "rename": return `Renaming ${name(a.id)} to ${a.name}`;
     case "remove": return `Removing ${name(a.id)}`;

@@ -4,13 +4,15 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Live agent whiteboard: a Claude Agent SDK session works in a real repo and draws its plan and progress on an Excalidraw board; your board edits steer it.",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "copy-fonts": "rm -rf public/fonts && mkdir -p public && cp -R node_modules/@excalidraw/excalidraw/dist/prod/fonts public/fonts",
     "postinstall": "npm run copy-fonts",
-    "sandbox": "node scripts/make-sandbox.mjs"
+    "sandbox": "node scripts/make-sandbox.mjs",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.310",

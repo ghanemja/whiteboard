@@ -4,6 +4,7 @@
 //     --user-data-dir=/tmp/wb-chrome --window-size=1440,987 --force-device-scale-factor=2 http://localhost:5199/
 //   node scripts/cdp.mjs <port> eval '<js>'        evaluate in the page, print the value as JSON
 //   node scripts/cdp.mjs <port> click <x> <y>      a real mouse click at CSS pixel (x, y)
+//   node scripts/cdp.mjs <port> drag <x1> <y1> <x2> <y2>  a real mouse drag, in small steps
 //   node scripts/cdp.mjs <port> type '<text>'      type into the focused field
 //   node scripts/cdp.mjs <port> shot <file.png>    full-resolution screenshot
 //   node scripts/cdp.mjs <port> record <dir> <ms>  a JPEG every <ms> until <dir>/STOP exists; logs status to <dir>/frames.tsv
@@ -47,6 +48,16 @@ if (cmd === "eval") {
   const [x, y] = args.map(Number);
   for (const type of ["mouseMoved", "mousePressed", "mouseReleased"])
     await send("Input.dispatchMouseEvent", type === "mouseMoved" ? { type, x, y } : { type, x, y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1 });
+} else if (cmd === "drag") {
+  const [x1, y1, x2, y2] = args.map(Number);
+  const pause = () => new Promise((r) => setTimeout(r, 16));
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: x1, y: y1 });
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", x: x1, y: y1, button: "left", buttons: 1, clickCount: 1 });
+  for (let i = 1; i <= 12; i++) {
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: x1 + ((x2 - x1) * i) / 12, y: y1 + ((y2 - y1) * i) / 12, button: "left", buttons: 1 });
+    await pause();
+  }
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: x2, y: y2, button: "left", buttons: 0, clickCount: 1 });
 } else if (cmd === "type") {
   await send("Input.insertText", { text: args[0] });
 } else if (cmd === "shot") {

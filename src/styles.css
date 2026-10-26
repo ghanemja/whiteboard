@@ -212,10 +212,24 @@ button {
   left: 3px;
   bottom: 0;
 }
+/* Lanes across time. */
+.tl-icon {
+  width: 13px;
+  height: 10px;
+  background:
+    linear-gradient(currentColor, currentColor) 0 0 / 9px 1.6px no-repeat,
+    linear-gradient(currentColor, currentColor) 3px 4.2px / 10px 1.6px no-repeat,
+    linear-gradient(currentColor, currentColor) 1px 8.4px / 7px 1.6px no-repeat;
+}
 .ct-count {
   font-size: 11px;
   font-weight: 700;
   color: var(--faint);
+}
+.ct-changes {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--blue);
 }
 .ct-proofs {
   display: inline-flex;
@@ -242,6 +256,163 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Pictures | C4, and copying the board as Mermaid. */
+.style-toggle {
+  align-self: center;
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 12px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.canvas-tabs .style-toggle button {
+  padding: 3px 9px;
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.canvas-tabs .style-toggle button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+/* Show: all, one layer, or one flow. */
+.focus-pick {
+  align-self: center;
+  margin-left: 8px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+/* Export: Mermaid, SVG, PNG. */
+.export-menu {
+  position: relative;
+  align-self: center;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+.export-menu summary {
+  list-style: none;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.export-menu summary::-webkit-details-marker {
+  display: none;
+}
+.export-menu[open] summary,
+.export-menu summary:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+.export-items {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.14);
+}
+.canvas-tabs .export-items button {
+  margin: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 12.5px;
+}
+/* The Plan tab's flows: numbered steps under each name. */
+.plan-flow {
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.plan-flow .pf-name {
+  font-weight: 700;
+}
+.plan-flow ol {
+  margin: 4px 0 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.plan-flow code {
+  margin-left: 6px;
+  font-size: 11.5px;
+  color: var(--soft);
+}
+/* A flow's steps, over the board's lower right (the Key sits lower left). */
+.flow-steps {
+  position: absolute;
+  right: 16px;
+  bottom: 72px;
+  z-index: 3;
+  width: min(300px, calc(100% - 32px));
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.12);
+  font-size: 12.5px;
+}
+.fs-h {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+.flow-steps ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.flow-steps li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  line-height: 1.35;
+}
+.fs-n {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+.fs-what {
+  display: block;
+  color: var(--soft);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
 }
 .canvases {
   position: relative;
@@ -597,6 +768,10 @@ button.icon.speed {
   border-radius: 12px 12px 4px 12px;
   padding: 10px 12px;
 }
+.msg.you.linked {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
 .msg.you .sub {
   font-size: 13px;
   color: var(--soft);
@@ -641,6 +816,73 @@ button.icon.speed {
 .g-link {
   background: color-mix(in srgb, var(--green) 16%, transparent);
   color: var(--green);
+}
+.g-choose {
+  background: color-mix(in srgb, var(--blue) 16%, transparent);
+  color: var(--blue);
+}
+/* Grouped by what they change: ▢ architecture, ◇ decision, ✐ scope. */
+.edit-area {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.edit-area > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ea-h {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--soft);
+}
+/* A decision's alternatives in its Plan card: click one to pick it. */
+.over {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.alt-pick {
+  padding: 1px 7px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.alt-pick:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* Selecting the board's own drawing (a component, a diamond, an option) skips Excalidraw's style panel. */
+.canvas.own-sel .selected-shape-actions {
+  display: none;
+}
+/* Submit, on the board itself, with what's queued per area. */
+.canvas button.board-submit {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 3;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  margin: 0;
+  padding: 8px 16px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+}
+.bs-area {
+  font-weight: 800;
+  opacity: 0.85;
 }
 
 /* ---- composer ---- */
@@ -806,6 +1048,102 @@ button.primary {
   color: var(--accent);
   font-size: 11px;
 }
+.tab-count.bad {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
+}
+/* Skim: hide the narration. */
+.tabs .skim {
+  align-self: center;
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tabs .skim.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.skim-gap {
+  padding: 0 7px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  vertical-align: 1px;
+}
+.skim-gap:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Receipts: what the run's record says about a sentence's claims. */
+.rcpt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-left: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: help;
+}
+.rcpt.rc-ok {
+  color: var(--green);
+}
+.rcpt.rc-unknown {
+  color: var(--faint);
+}
+.rcpt.rc-bad {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+}
+.rcpt-why {
+  font-weight: 600;
+}
+/* Things the agent asked you or assumed, said in passing. */
+.s.asks {
+  text-decoration: underline dotted #c2255c;
+  text-underline-offset: 3px;
+}
+.s.asks::after {
+  content: "?";
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #c2255c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.s.assumes {
+  text-decoration: underline dotted #7048e8;
+  text-underline-offset: 3px;
+}
+.s.assumes::after {
+  content: "≈";
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #7048e8;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+}
 
 /* The development plan: goal, architecture, connections, decisions, steps. */
 .plan {
@@ -921,6 +1259,320 @@ button.primary {
   font-size: 11px;
   color: var(--faint);
   overflow-wrap: anywhere;
+}
+/* The end of a run: what needs a look. */
+.review {
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+.rv-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.rv-head .hand {
+  font-family: var(--hand);
+  font-size: 20px;
+  color: var(--ink);
+}
+.rv-count {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #f08c00 16%, transparent);
+  color: #e8590c;
+  font-size: 12px;
+  font-weight: 700;
+}
+.review ul {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rv {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.rv-icon {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.rv-bad .rv-icon {
+  background: var(--red);
+}
+.rv-warn .rv-icon {
+  background: #f08c00;
+}
+.rv-info .rv-icon {
+  background: var(--faint);
+}
+.rv-ok .rv-icon {
+  background: var(--green);
+}
+.rv-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.rv-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.rv-link {
+  max-width: 100%;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.rv-link:disabled {
+  color: var(--soft);
+  cursor: default;
+}
+
+/* What it asked you, and what it's assuming. */
+.tab-count.ask {
+  background: color-mix(in srgb, #f08c00 16%, transparent);
+  color: #e8590c;
+}
+.qmark {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.qmark.asks {
+  background: #f08c00;
+}
+.qmark.assumes {
+  background: #7048e8;
+}
+.qcard .pc-head {
+  align-items: flex-start;
+}
+.q-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.qcard.q-question {
+  border-color: color-mix(in srgb, #f08c00 45%, var(--line));
+}
+.qcard.q-assumption.qs-open {
+  border-style: dashed;
+  border-color: color-mix(in srgb, #7048e8 45%, var(--line));
+}
+.qcard.qs-answered .qmark,
+.qcard.qs-confirmed .qmark {
+  background: var(--green);
+}
+.qcard.qs-corrected .qmark {
+  background: var(--blue);
+}
+.q-done {
+  margin: 6px 0 0 28px;
+  font-size: 13px;
+  color: var(--green);
+}
+.q-done.corrected {
+  color: var(--blue);
+}
+.q-done.open {
+  color: var(--faint);
+}
+.q-answer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0 28px;
+}
+.q-opt {
+  padding: 3px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.q-answer input {
+  flex: 1 1 120px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+.q-send {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.q-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.passing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pass-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+}
+.pass-text {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pass-text:hover {
+  text-decoration: underline;
+}
+
+/* What the run changed in a component's files (git), and the code itself. */
+.pc-diff {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--soft);
+  font-size: 12px;
+  cursor: pointer;
+}
+.pc-diff:hover {
+  text-decoration: underline;
+}
+.fd-add {
+  color: var(--green);
+  font-weight: 700;
+}
+.fd-del {
+  color: var(--red);
+  font-weight: 700;
+}
+.code-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  scroll-margin-top: 8px;
+}
+.code-group.unowned {
+  border-style: dashed;
+  border-color: var(--orange);
+}
+.cg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+  font-size: 13px;
+}
+.fd-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 2px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.fd-head:hover {
+  background: var(--panel-2);
+}
+.fd-caret {
+  width: 10px;
+  color: var(--faint);
+}
+.fd-path {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.patch {
+  max-height: 340px;
+  margin: 4px 0 6px;
+  padding: 8px 0;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.patch span {
+  display: block;
+  padding: 0 10px;
+  white-space: pre;
+}
+.patch .a {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+}
+.patch .d {
+  background: color-mix(in srgb, var(--red) 13%, transparent);
+}
+.patch .h {
+  color: var(--blue);
 }
 .plan-edges {
   list-style: none;
@@ -1394,7 +2046,8 @@ button:focus-visible {
 
 @media (max-width: 860px) {
   .app {
-    grid-template-columns: 1fr;
+    /* minmax(0, …): a long command in the panel mustn't widen the page */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 55vh minmax(0, 1fr);
   }
   .board {

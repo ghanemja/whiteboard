@@ -75,11 +75,29 @@ export function buildEditsReply(decisions, model) {
       case "note":
         lines.push(`Noted: “${short(d.text, 60)}”${op({ op: "adopt-note", el: d.elId })}.`);
         break;
+      case "reject":
+        lines.push(`Dropping **${d.label}** (${d.title}) from the plan${op({ op: "decision", id: d.decision, state: "rejected" })}.`);
+        break;
+      case "choose": {
+        // A tag attribute lists with commas, so commas inside an option become semicolons.
+        const over = [d.from, ...(model.decisions[d.decision]?.over ?? []).filter((o) => o !== d.to)].filter(Boolean).map((o) => o.replace(/,/g, ";")).join(", ");
+        lines.push(
+          `Switching **${d.label}** to ${d.to}${op({ op: "decision", id: d.decision, chose: d.to, over, why: `Your pick over ${d.from}.`, cause: "you", cause_text: `${d.label} → ${d.to}` })}${task(`${d.label}: ${short(d.to, 18)}`, planning ? "done" : "building")}.` +
+            (planning ? "" : ` Reworking what it shapes${op({ op: "task", id: t, status: "done" })}.`),
+        );
+        break;
+      }
     }
   }
   return lines.join("\n\n");
 }
 
 export function buildChatReply(text) {
+  // An answer to one of its questions, or a correction to one of its assumptions.
+  const qa = /^About ([QA])(\d+) \(.*?\):\s*(.*)$/s.exec(text);
+  if (qa?.[1] === "Q")
+    return `Thanks: I'll plan for that${op({ op: "question", id: `q${qa[2]}`, state: "answered", answer: short(qa[3], 30) })} and size the upload limit and the worker's memory to match.`;
+  if (qa?.[1] === "A")
+    return `Good catch. I'll correct that assumption${op({ op: "assumption", id: `a${qa[2]}`, state: "corrected" })} and account for it in the plan.`;
   return `Got it${op({ op: "note", text: short(text, 70) })}. I pinned that under Your notes so it stays in view while I work.`;
 }

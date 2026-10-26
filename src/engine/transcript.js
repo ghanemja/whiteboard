@@ -1,6 +1,10 @@
+import { asksYou, assumes, findClaims } from "./claims";
+
 // Turns streamed text + board ops into messages made of sentences.
 // Each sentence remembers which board items (logical ids) it touched, which is
-// what links a line of text to the shapes it drew.
+// what links a line of text to the shapes it drew, and, once it's complete, what it
+// claims (checked against the run's record), whether it asks you something, and
+// whether it states an assumption. t: when it was said (ms into the run).
 
 let seq = 0;
 const nextId = (p) => `${p}-${++seq}`;
@@ -28,8 +32,10 @@ export class Transcript {
   }
 
   addUserMessage(data) {
-    this.messages.push({ id: nextId("m"), role: "you", items: [], streaming: false, ...data });
+    const m = { id: nextId("m"), role: "you", items: [], streaming: false, ...data };
+    this.messages.push(m);
     this.h.onChange?.();
+    return m;
   }
 
   addNotice(text) {
@@ -121,15 +127,16 @@ export class Transcript {
   }
 
   openSentence() {
-    this.sent = { type: "s", id: nextId("s"), text: "", ids: new Set(), ops: 0, live: true };
+    this.sent = { type: "s", id: nextId("s"), text: "", ids: new Set(), ops: 0, live: true, t: this.h.clock?.() ?? 0 };
     this.cur.items.push(this.sent);
     this.h.onOpen?.(this.sent);
   }
 
   closeSentence() {
     if (!this.sent) return;
-    this.sent.live = false;
-    this.h.onClose?.(this.sent);
+    const s = this.sent;
+    Object.assign(s, { live: false, claims: findClaims(s.text), asks: asksYou(s.text), assumes: assumes(s.text) });
+    this.h.onClose?.(s);
     this.sent = null;
   }
 

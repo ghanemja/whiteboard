@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Excalidraw, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
+import { Excalidraw, exportToBlob, exportToSvg, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
 import { Board, PHASES } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
+import { AREAS, areaOf, fmt } from "./engine/timeline";
+import { LAYERS, layerOf, tagCase, toMermaid, toSequence } from "./engine/views";
+import { buildReview } from "./engine/review";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 
 // Tasks that fit the sample repo (sandbox/linkshort, created by `npm run sandbox`).
@@ -15,11 +18,11 @@ const EXAMPLES = [
 // Stable props so Excalidraw doesn't re-render on every streamed character.
 const INITIAL_DATA = { appState: { viewBackgroundColor: "#ffffff", currentItemRoughness: 1 } };
 const UI_OPTIONS = { canvasActions: { loadScene: false, saveToActiveFile: false }, tools: { image: false } };
-// The Why canvas is drawn from the decisions: look, pan and zoom, click a row to read it.
+// The Why and Timeline canvases are drawn for you: look, pan and zoom, click to read (or, in a replay, to jump).
 const WHY_UI_OPTIONS = { canvasActions: { loadScene: false, saveToActiveFile: false, export: false, clearCanvas: false, changeViewBackgroundColor: false, toggleTheme: false } };
 const SPEEDS = [1, 2, 4];
 
-const GLYPH = { rename: "✎", remove: "✕", add: "+", link: "→", unlink: "✂", note: "✐", reject: "◇" };
+const GLYPH = { rename: "✎", remove: "✕", add: "+", link: "→", unlink: "✂", note: "✐", reject: "◇", choose: "⇄" };
 
 function describe(d) {
   switch (d.kind) {
@@ -30,6 +33,7 @@ function describe(d) {
     case "unlink": return <>Disconnect <b>{d.fromName}</b> → <b>{d.toName}</b></>;
     case "note": return <>Note “{d.text}”</>;
     case "reject": return <>Reject <b>{d.label}</b> ({d.title})</>;
+    case "choose": return <><b>{d.label}</b> → <b>{d.to}</b></>;
     default: return null;
   }
 }
@@ -59,18 +63,63 @@ const Icon = ({ name }) => (
   </svg>
 );
 
+// A flow's steps in order, over the board (the numbers match its dots). Hover one to find its link.
+function FlowSteps({ flow, model, onHover, onClose }) {
+  const name = (id) => model.nodes[id]?.name ?? id;
+  return (
+    <div className="flow-steps" role="region" aria-label={`Flow: ${flow.name}`}>
+      <div className="fs-h">
+        <span>{flow.name}</span>
+        <button className="linkish" onClick={onClose} aria-label="Show all" title="Show all">
+          ✕
+        </button>
+      </div>
+      <ol>
+        {flow.steps.map((st, i) => {
+          const key = model.edges[`${st.from}>${st.to}`] ? `${st.from}>${st.to}` : `${st.to}>${st.from}`;
+          return (
+            <li key={i} onMouseEnter={() => onHover([`edge:${key}`, `node:${st.from}`, `node:${st.to}`])} onMouseLeave={() => onHover([])}>
+              <span className="fs-n">{i + 1}</span>
+              <span>
+                {name(st.from)} → {name(st.to)}
+                {st.what && <span className="fs-what">{st.what}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+// Board edits grouped by what they change: ▢ architecture, ◇ decision, ✐ scope.
 function EditList({ decisions }) {
   return (
     <ul className="edits">
-      {decisions.map((d) => (
-        <li key={d.key}>
-          <span className={`g g-${d.kind}`}>{GLYPH[d.kind]}</span>
-          <span>{describe(d)}</span>
-        </li>
-      ))}
+      {Object.entries(AREAS).map(([a, { icon, label }]) => {
+        const ds = decisions.filter((d) => areaOf(d) === a);
+        return (
+          ds.length > 0 && (
+            <li key={a} className={`edit-area ea-${a}`}>
+              <span className="ea-h">
+                {icon} {label}
+              </span>
+              <ul>
+                {ds.map((d) => (
+                  <li key={d.key ?? editKey(d)}>
+                    <span className={`g g-${d.kind}`}>{GLYPH[d.kind]}</span>
+                    <span>{describe(d)}</span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          )
+        );
+      })}
     </ul>
   );
 }
+const editKey = (d) => `${d.kind}:${d.node ?? d.decision ?? d.elId ?? ""}:${d.to ?? d.name ?? d.text ?? ""}`;
 
 const phaseState = (key, current) => {
   const cur = current === "complete" ? PHASES.length : PHASES.findIndex((p) => p.key === current);
@@ -114,7 +163,25 @@ function Activity({ a, linked, onHover, onFocus }) {
   );
 }
 
-function AgentMessage({ m, phase, linked, onHover, onFocus }) {
+// A sentence's receipt: what the run's record says about its claims (src/engine/claims.js).
+const RC = { ok: "✓", unknown: "?", bad: "✗" };
+const RC_SAID = { ok: "Backed by the record", unknown: "Nothing in the record says either way", bad: "The record contradicts this" };
+function Receipt({ r }) {
+  const bad = r.claims.filter((c) => c.verdict === "bad");
+  return (
+    <span className={`rcpt rc-${r.verdict}`} title={`${RC_SAID[r.verdict]}:\n${r.claims.map((c) => `${RC[c.verdict]} “${c.text}”: ${c.why}`).join("\n")}`}>
+      {RC[r.verdict]}
+      {bad.length > 0 && <span className="rcpt-why">{bad.map((c) => c.short ?? c.why).join(", ")}</span>}
+    </span>
+  );
+}
+
+// Skim mode keeps the sentences that carry weight: they drew on the board, claim something
+// checkable, ask you something or state an assumption (and the one being written).
+const weighty = (s) => s.live || s.ops > 0 || s.claims?.length > 0 || s.asks || s.assumes;
+
+function AgentMessage({ m, phase, linked, onHover, onFocus, receipts, skim }) {
+  const [opened, setOpened] = useState(() => new Set()); // paragraphs expanded in skim mode
   // Paragraphs of sentences, with phase headings and activity rows in between.
   const blocks = [];
   let para = null;
@@ -129,6 +196,18 @@ function AgentMessage({ m, phase, linked, onHover, onFocus }) {
     }
   }
   const lastP = blocks.findLastIndex((b) => b.type === "p");
+  // Skim: paragraphs with nothing worth keeping fold, and folds next to each other merge into one.
+  const keep = (s) => weighty(s) || linked.has(s.id);
+  const view = [];
+  blocks.forEach((b, bi) => {
+    if (b.type === "p" && skim && !opened.has(bi) && !b.sentences.some(keep)) {
+      const last = view.at(-1);
+      if (last?.type === "fold") {
+        last.n += b.sentences.length;
+        last.bis.push(bi);
+      } else view.push({ type: "fold", n: b.sentences.length, bis: [bi] });
+    } else view.push({ ...b, bi });
+  });
 
   return (
     <div className="msg agent">
@@ -136,7 +215,16 @@ function AgentMessage({ m, phase, linked, onHover, onFocus }) {
         <span className="avatar">A</span>Agent
         {m.streaming && <span className="typing">working…</span>}
       </div>
-      {blocks.map((b, bi) => {
+      {view.map((b) => {
+        const bi = b.bi;
+        if (b.type === "fold")
+          return (
+            <p key={`fold-${b.bis[0]}`} className="skimmed">
+              <button className="skim-gap" onClick={() => setOpened((o) => new Set([...o, ...b.bis]))} title={`${b.n} sentence${b.n === 1 ? "" : "s"} skim folded away: show them`}>
+                ⋯ {b.n}
+              </button>
+            </p>
+          );
         if (b.type === "phase") {
           const i = PHASES.findIndex((p) => p.key === b.key);
           const st = phaseState(b.key, phase);
@@ -148,22 +236,39 @@ function AgentMessage({ m, phase, linked, onHover, onFocus }) {
           );
         }
         if (b.type === "act") return <Activity key={b.id} a={b} linked={linked} onHover={onHover} onFocus={onFocus} />;
+        // Inside a paragraph, a run of sentences that carry no weight folds into "⋯ n", which opens it.
+        const all = !skim || opened.has(bi);
+        const parts = [];
+        for (const s of b.sentences) {
+          if (all || keep(s)) parts.push(s);
+          else if (parts.at(-1)?.gap) parts.at(-1).gap++;
+          else parts.push({ gap: 1, id: `gap-${s.id}` });
+        }
         return (
-          <p key={bi}>
-            {b.sentences.map((s) => (
-              <span key={s.id}>
-                <span
-                  id={s.id}
-                  className={["s", s.live && "live", linked.has(s.id) && "linked", s.ops > 0 && "has-ops"].filter(Boolean).join(" ")}
-                  title={s.ops > 0 && !s.live ? "Hover to see what this changed on the board; click to jump there" : undefined}
-                  onMouseEnter={() => s.ids.size && onHover([...s.ids])}
-                  onMouseLeave={() => onHover([])}
-                  onClick={() => s.ids.size && onFocus([...s.ids])}
-                >
-                  <Rich text={s.text} />
-                </span>{" "}
-              </span>
-            ))}
+          <p key={bi} className={skim && !all ? "skimmed" : undefined}>
+            {parts.map((s) =>
+              s.gap ? (
+                <span key={s.id}>
+                  <button className="skim-gap" onClick={() => setOpened((o) => new Set(o).add(bi))} title="Show the whole paragraph">
+                    ⋯ {s.gap}
+                  </button>{" "}
+                </span>
+              ) : (
+                <span key={s.id}>
+                  <span
+                    id={s.id}
+                    className={["s", s.live && "live", linked.has(s.id) && "linked", s.ops > 0 && "has-ops", s.asks && "asks", s.assumes && "assumes"].filter(Boolean).join(" ")}
+                    title={s.asks ? "The agent asked you this" : s.assumes ? "An assumption the agent is working from" : s.ops > 0 && !s.live ? "Hover to see what this changed on the board; click to jump there" : undefined}
+                    onMouseEnter={() => s.ids.size && onHover([...s.ids])}
+                    onMouseLeave={() => onHover([])}
+                    onClick={() => s.ids.size && onFocus([...s.ids])}
+                  >
+                    <Rich text={s.text} />
+                  </span>
+                  {receipts?.get(s.id) && <Receipt r={receipts.get(s.id)} />}{" "}
+                </span>
+              ),
+            )}
             {m.streaming && bi === lastP && <span className="caret" />}
           </p>
         );
@@ -211,18 +316,147 @@ function SavedRuns({ recordings, onReplay, onOpen }) {
   );
 }
 
+// One changed file: path and +/−, opening to its patch.
+function FileDiff({ f }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="fd">
+      <button className="fd-head" onClick={() => setOpen((o) => !o)} aria-expanded={open} title={open ? "Hide the diff" : "Show the diff"}>
+        <span className="fd-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
+        <code className="fd-path">{f.path}</code>
+        <span className="fd-add">+{f.add}</span>
+        <span className="fd-del">−{f.del}</span>
+      </button>
+      {open && (
+        <pre className="patch">
+          {(f.patch || (f.binary ? "Binary file" : "No diff recorded")).split("\n").map((l, i) => (
+            <span key={i} className={l.startsWith("@@") ? "h" : l[0] === "+" ? "a" : l[0] === "-" ? "d" : undefined}>
+              {l || " "}
+            </span>
+          ))}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+// The end of a run: what needs a look, each row linked to where to look (src/engine/review.js).
+function ReviewCard({ rows, onGo }) {
+  const todo = rows.filter((r) => r.tone === "bad" || r.tone === "warn").length;
+  return (
+    <div className="review" role="region" aria-label="Review">
+      <div className="rv-head">
+        <span className="hand">Review</span>
+        {todo > 0 && (
+          <span className="rv-count" title={`${todo} to check before you trust this run`}>
+            {todo}
+          </span>
+        )}
+      </div>
+      <ul>
+        {rows.map((r) => (
+          <li key={r.key} className={`rv rv-${r.tone}`}>
+            <span className="rv-icon" aria-hidden="true">{r.icon}</span>
+            <span className="rv-body">
+              <span>{r.text}</span>
+              {r.links.length > 0 && (
+                <span className="rv-links">
+                  {r.links.map((l, i) => (
+                    <button key={i} className="rv-link" disabled={!l.lid} title={l.title} onClick={() => onGo(l.lid)}>
+                      {l.label}
+                    </button>
+                  ))}
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// One of its questions for you (answer it here) or an assumption it works from (confirm or correct it).
+function QuestionCard({ q, dLabel, canAnswer, onAnswer, onConfirm, onCorrect, link }) {
+  const [text, setText] = useState("");
+  const isQ = q.kind === "question";
+  const stop = (e) => e.stopPropagation();
+  return (
+    <div {...link(`question:${q.id}`)} className={["plan-card", "qcard", `q-${q.kind}`, `qs-${q.state}`, link(`question:${q.id}`).className].filter(Boolean).join(" ")}>
+      <div className="pc-head">
+        <span className={`qmark ${isQ ? "asks" : "assumes"}`}>{isQ ? "?" : "≈"}</span>
+        <b>{isQ ? `Q${q.n}` : `A${q.n}`}</b>
+        <span className="q-text">{q.text}</span>
+        {q.about && (
+          <span className="chip" title={`About ${dLabel(q.about)}`}>
+            {dLabel(q.about)}
+          </span>
+        )}
+      </div>
+      {q.state === "answered" && (
+        <p className="q-done" title="Answered">
+          ✓ <b>{q.answer}</b>
+        </p>
+      )}
+      {q.state === "confirmed" && <p className="q-done" title="Confirmed">✓</p>}
+      {q.state === "corrected" && <p className="q-done corrected" title="Corrected">↻</p>}
+      {q.state === "open" && canAnswer && isQ && (
+        <form
+          className="q-answer"
+          onClick={stop}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (text.trim()) onAnswer(q, text.trim());
+          }}
+        >
+          {q.options.map((o) => (
+            <button type="button" key={o} className="q-opt" onClick={() => onAnswer(q, o)}>
+              {o}
+            </button>
+          ))}
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder={q.options.length ? "Other…" : "Answer…"} aria-label="Your answer" />
+          <button type="submit" className="q-send" disabled={!text.trim()} title="Send your answer">
+            ↵
+          </button>
+        </form>
+      )}
+      {q.state === "open" && canAnswer && !isQ && (
+        <div className="q-answer" onClick={stop}>
+          <button className="q-opt" onClick={() => onConfirm(q)} title="Right (the agent sees it with your next message or approval)" aria-label="Right">
+            ✓
+          </button>
+          <button className="q-opt" onClick={() => onCorrect(q)} title="Correct it" aria-label="Correct it">
+            ✎
+          </button>
+        </div>
+      )}
+      {q.state === "open" && !canAnswer && (
+        <p className="q-done open" title="Left open">
+          …
+        </p>
+      )}
+    </div>
+  );
+}
+
 const STATUS_DOT = { planned: "#adb5bd", building: "#e8590c", built: "#1971c2", verified: "#2f9e44", failed: "#e03131", live: "#6741d9" };
-const KIND_WORD = { client: "client", service: "service", data: "data store", external: "external API", queue: "queue", test: "tests", user: "user" };
+const KIND_WORD = { client: "Client", service: "Service", data: "Data store", external: "External API", queue: "Queue", test: "Tests", user: "User" };
+// Labels in sentence case: "proposed" → "Proposed".
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 // The development plan as a document: goal, architecture, connections, the reasoning
 // chain of decisions, and the steps. Every item is linked to its picture on the board.
-function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canChallenge }) {
+function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPick, onShowFlow, canChallenge, changes = [], commits = 0, passing = [], onAnswer, onConfirm, onCorrect, onReply, onShow }) {
   const nodes = Object.values(model.nodes);
+  const changed = nodes.filter((n) => n.diff);
+  const byPath = new Map(changes.map((f) => [f.path, f]));
+  const toCode = (id) => document.getElementById(`plan-code:${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
   const edges = Object.values(model.edges);
   const decisions = Object.values(model.decisions).sort((a, b) => a.n - b.n);
   const tasks = Object.values(model.tasks);
   const name = (id) => model.nodes[id]?.name ?? id;
   const dLabel = (id) => (model.decisions[id] ? `D${model.decisions[id].n}` : id);
+  const questions = Object.values(model.questions ?? {}).sort((a, b) => (a.kind === b.kind ? a.n - b.n : a.kind === "question" ? -1 : 1));
   if (!nodes.length && !decisions.length && !model.goal)
     return <p className="hint plan-empty">The plan appears here as the agent works: its goal, architecture, connections, and the decisions behind them.</p>;
 
@@ -243,13 +477,40 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
         </section>
       )}
 
+      {(questions.length > 0 || passing.length > 0) && (
+        <section id="plan-questions">
+          <h3 title="What it asked you, and what it's assuming">For you</h3>
+          {questions.map((q) => (
+            <QuestionCard key={q.id} q={q} dLabel={dLabel} canAnswer={canChallenge} onAnswer={onAnswer} onConfirm={onConfirm} onCorrect={onCorrect} link={link} />
+          ))}
+          {passing.length > 0 && (
+            <div className="passing">
+              <div className="ps-phase" title="Only said in its messages, not asked on the board">In passing</div>
+              {passing.map((p) => (
+                <div key={p.id} className="pass-row">
+                  <span className={`qmark ${p.kind}`}>{p.kind === "asks" ? "?" : "≈"}</span>
+                  <button className="pass-text" onClick={() => onShow(p.id)} title="Show it in the conversation">
+                    {p.text}
+                  </button>
+                  {canChallenge && (
+                    <button className="q-opt" onClick={() => onReply(p)} title={p.kind === "asks" ? "Reply" : "Correct it"} aria-label={p.kind === "asks" ? "Reply" : "Correct it"}>
+                      {p.kind === "asks" ? "↩" : "✎"}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       {nodes.length > 0 && (
         <section>
           <h3>Architecture</h3>
           {nodes.map((n) => (
             <div key={n.id} {...link(`node:${n.id}`)} className={["plan-card", selected.has(`node:${n.id}`) && "linked"].filter(Boolean).join(" ")}>
               <div className="pc-head">
-                <span className="pc-dot" style={{ background: STATUS_DOT[n.status] }} title={n.status} />
+                <span className="pc-dot" style={{ background: STATUS_DOT[n.status] }} title={cap(n.status)} />
                 <b>{n.name}</b>
                 <span className="pc-kind">{KIND_WORD[n.kind] ?? n.kind}</span>
               </div>
@@ -268,6 +529,18 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
                 </ul>
               )}
               {n.paths?.length > 0 && <div className="pc-files">{n.paths.join(" · ")}</div>}
+              {n.diff && (
+                <button
+                  className="pc-diff"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    toCode(n.id);
+                  }}
+                  title={`Changed in this run: ${n.diff.files.join(", ")}`}
+                >
+                  <span className="fd-add">+{n.diff.add}</span> <span className="fd-del">−{n.diff.del}</span>
+                </button>
+              )}
             </div>
           ))}
         </section>
@@ -280,11 +553,32 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
             {edges.map((e) => (
               <li key={`${e.from}>${e.to}`} {...link(`edge:${e.from}>${e.to}`)}>
                 <span>{name(e.from)} → {name(e.to)}</span>
-                {e.via && <span className="chip">{e.via}</span>}
+                {e.via && <span className="chip">{tagCase(e.via)}</span>}
                 {e.api && <code>{e.api}</code>}
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {Object.keys(model.flows ?? {}).length > 0 && (
+        <section>
+          <h3>Flows</h3>
+          {Object.values(model.flows).map((f) => (
+            <div key={f.id} className="plan-flow">
+              <button className="linkish pf-name" onClick={() => onShowFlow(f.id)} title="Show it on the board">
+                {f.name}
+              </button>
+              <ol>
+                {f.steps.map((st, i) => (
+                  <li key={i}>
+                    {name(st.from)} → {name(st.to)}
+                    {st.what && <code>{st.what}</code>}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
         </section>
       )}
 
@@ -298,10 +592,10 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
                 <b>{d.title}</b>
                 {(d.proof || d.verify) && (
                   <span className={`dproof pf-${d.proof ?? "pending"}`} title={d.proof ? "Its check" : "Not checked yet"}>
-                    {d.proof === "pass" ? "✓ proven" : d.proof === "fail" ? "✗ failed" : "unchecked"}
+                    {d.proof === "pass" ? "✓ Proven" : d.proof === "fail" ? "✗ Failed" : "Unchecked"}
                   </span>
                 )}
-                <span className={`dstate ds-${d.state}`}>{d.state}</span>
+                <span className={`dstate ds-${d.state}`}>{cap(d.state)}</span>
               </div>
               <dl>
                 <dt>Chose</dt>
@@ -324,7 +618,23 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
                 {d.over.length > 0 && (
                   <>
                     <dt>Over</dt>
-                    <dd>{d.over.join(" · ")}</dd>
+                    <dd className="over">
+                      {canChallenge && d.state !== "rejected"
+                        ? d.over.map((o, i) => (
+                            <button
+                              key={o}
+                              className="alt-pick"
+                              title="Pick this instead (then Submit)"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                onPick(d, i);
+                              }}
+                            >
+                              ⇄ {o}
+                            </button>
+                          ))
+                        : d.over.join(" · ")}
+                    </dd>
                   </>
                 )}
                 {d.why && (
@@ -392,6 +702,35 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
         </section>
       )}
 
+      {changes.length > 0 && (
+        <section id="plan-code">
+          <h3 title={`${changes.length} files changed in this run, ${commits ? `in ${commits} commits` : "not committed"}`}>
+            Code{" "}
+            <span className="h3-note">
+              <span className="fd-add">+{changes.reduce((a, f) => a + f.add, 0)}</span> <span className="fd-del">−{changes.reduce((a, f) => a + f.del, 0)}</span> ·{" "}
+              {commits ? `${commits} commit${commits === 1 ? "" : "s"}` : "uncommitted"}
+            </span>
+          </h3>
+          {changed.map((n) => (
+            <div key={n.id} id={`plan-code:${n.id}`} className="code-group" onMouseEnter={() => onHover([`node:${n.id}`])} onMouseLeave={() => onHover([])}>
+              <div className="cg-head">
+                <span className="pc-dot" style={{ background: STATUS_DOT[n.status] }} />
+                <b>{n.name}</b>
+              </div>
+              {n.diff.files.map((p) => byPath.get(p) && <FileDiff key={p} f={byPath.get(p)} />)}
+            </div>
+          ))}
+          {model.unowned?.length > 0 && (
+            <div id="plan-code:unowned" className="code-group unowned">
+              <div className="cg-head" title="No component on the board owns these files">
+                <b>Not on board</b>
+              </div>
+              {model.unowned.map((f) => <FileDiff key={f.path} f={byPath.get(f.path) ?? f} />)}
+            </div>
+          )}
+        </section>
+      )}
+
       {tasks.length > 0 && (
         <section>
           <h3>Steps</h3>
@@ -419,18 +758,97 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, canCh
 export default function App() {
   const [api, setApi] = useState(null);
   const [whyApi, setWhyApi] = useState(null);
+  const [timelineApi, setTimelineApi] = useState(null);
   const sessionRef = useRef(null);
   const [, setVersion] = useState(0);
   const [phase, setPhase] = useState(null);
   const [decisions, setDecisions] = useState([]);
   const [theme, setTheme] = useState("light");
   const [linked, setLinked] = useState(() => new Set());
+  const [ownSel, setOwnSel] = useState(false); // only the board's own drawing is selected: no style panel
   const [speed, setSpeed] = useState(1);
   const [draft, setDraft] = useState("");
   const [repo, setRepo] = useState("");
   const [agent, setAgent] = useState(null); // { live, model, effort, defaultRepo } from the dev server
   const [recordings, setRecordings] = useState([]);
   const [tab, setTab] = useState("activity"); // "activity" | "plan"
+  // Skim: only the sentences that carry weight. Remembered per browser.
+  const [skim, setSkim] = useState(() => {
+    try {
+      return localStorage.getItem("wb-skim") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSkim = () =>
+    setSkim((v) => {
+      try {
+        localStorage.setItem("wb-skim", v ? "0" : "1");
+      } catch {
+        /* private window: just this page */
+      }
+      return !v;
+    });
+  // How components are drawn: pictograms or C4 boxes. Remembered per browser.
+  const [drawStyle, setDrawStyle] = useState(() => {
+    try {
+      return localStorage.getItem("wb-style") === "c4" ? "c4" : "pictures";
+    } catch {
+      return "pictures";
+    }
+  });
+  const styleRef = useRef(drawStyle);
+  const chooseStyle = (v) => {
+    styleRef.current = v;
+    setDrawStyle(v);
+    sessionRef.current?.board.setStyle(v);
+    try {
+      localStorage.setItem("wb-style", v);
+    } catch {
+      /* private window: just this page */
+    }
+  };
+  // Narrow the board to one layer or one flow ({ layer } | { flow } | null); the rest fades.
+  const [focus, setFocus] = useState(null);
+  const chooseFocus = (f) => {
+    setFocus(f);
+    sessionRef.current?.board.setFocus(f);
+  };
+  // Export what the board shows: Mermaid (the container view, or the flow as a sequence
+  // diagram) for a README or PR, or an SVG/PNG with a title.
+  const [exported, setExported] = useState(null);
+  const exportView = async (kind) => {
+    const s = sessionRef.current;
+    if (!s) return;
+    const b = s.board, m = b.model;
+    const flow = focus?.flow && m.flows[focus.flow];
+    const layer = focus?.layer && LAYERS.find((l) => l.key === focus.layer);
+    const view = flow ? `Flow: ${flow.name}` : layer ? `${layer.label} layer` : drawStyle === "c4" ? "Container view" : "Architecture";
+    const title = [m.project, view].filter(Boolean).join(" · ");
+    const file = title.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "board";
+    try {
+      if (kind === "mermaid") {
+        const only = layer && new Set(Object.values(m.nodes).filter((n) => [layer.key, null].includes(layerOf(n))).map((n) => n.id));
+        await navigator.clipboard.writeText(`\`\`\`mermaid\n${flow ? toSequence(m, flow) : toMermaid(m, { only })}\`\`\`\n`);
+      } else {
+        const opts = {
+          elements: b.exportElements(title),
+          appState: { ...b.api.getAppState(), exportBackground: true, viewBackgroundColor: "#ffffff", exportWithDarkMode: false, exportScale: 2 },
+          files: b.api.getFiles(),
+          exportPadding: 32,
+        };
+        const blob = kind === "svg" ? new Blob([(await exportToSvg(opts)).outerHTML], { type: "image/svg+xml" }) : await exportToBlob({ ...opts, mimeType: "image/png", getDimensions: (w, h) => ({ width: w * 2, height: h * 2, scale: 2 }) });
+        const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `${file}.${kind}` });
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }
+      setExported("ok");
+    } catch (e) {
+      console.warn("Export failed", e); // no clipboard access, or the browser refused the download
+      setExported("failed");
+    }
+    setTimeout(() => setExported(null), 1800);
+  };
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [selLids, setSelLids] = useState(() => new Set()); // board selection, as logical ids
@@ -441,13 +859,14 @@ export default function App() {
   const stick = useRef(true);
 
   useEffect(() => {
-    if (!api || !whyApi) return;
+    if (!api || !whyApi || !timelineApi) return;
     // Fresh session: clear UI state that belonged to the previous one (e.g. after a hot reload).
     setPhase(null);
     setDecisions([]);
     setLinked(new Set());
     setSpeed(1);
-    const board = new Board(api, { whyApi, onPhase: setPhase });
+    setFocus(null);
+    const board = new Board(api, { whyApi, timelineApi, onPhase: setPhase, style: styleRef.current });
     const s = new Session({ board, onChange: () => setVersion((v) => v + 1) });
     sessionRef.current = s;
     if (import.meta.env.DEV) window.__wb = s;
@@ -472,7 +891,7 @@ export default function App() {
       window.removeEventListener("pagehide", onHide);
       s.dispose();
     };
-  }, [api, whyApi]);
+  }, [api, whyApi, timelineApi]);
 
   // Keep the transcript pinned to the bottom while streaming, unless the user scrolled up.
   useEffect(() => {
@@ -489,6 +908,7 @@ export default function App() {
       diffTimer.current = setTimeout(runDiff, 400);
       return;
     }
+    s.board.settlePick(); // an alternative dropped on its diamond
     const all = s.board.diff();
     const keys = new Set(all.map((d) => d.key));
     for (const k of sentKeys.current) if (!keys.has(k)) sentKeys.current.delete(k);
@@ -508,6 +928,26 @@ export default function App() {
     const target = tabRef.current === "plan" ? lids[0] && `plan-${lids[0]}` : ids.at(-1);
     if (target) document.getElementById(target)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, []);
+  // From the Timeline: open the Activity tab at your message, or at the command that ran the tests.
+  const focusInActivity = useCallback((id) => {
+    tabRef.current = "activity";
+    setTab("activity");
+    stick.current = false; // don't snap back to the bottom
+    setLinked(new Set([id]));
+    setTimeout(() => document.getElementById(id.startsWith("m-") ? `msg-${id}` : id)?.scrollIntoView({ block: "center", behavior: "smooth" }), 30);
+  }, []);
+  // From the review card: a sentence in Activity, the diff, or a card in the Plan tab.
+  const goReview = (lid) => {
+    if (!lid) return;
+    const [k, v] = lid.split(/:(.*)/s);
+    if (k === "sentence") return focusInActivity(v);
+    if (k === "code") {
+      tabRef.current = "plan";
+      setTab("plan");
+      return setTimeout(() => document.getElementById(v ? `plan-code:${v}` : "plan-code")?.scrollIntoView({ block: "start", behavior: "smooth" }), 30);
+    }
+    focusInPlan([lid]);
+  };
   // From the header or the Why canvas: open the Plan tab at it.
   const focusInPlan = useCallback(
     (lids) => {
@@ -533,6 +973,10 @@ export default function App() {
       if (sel !== lastSel.current) {
         lastSel.current = sel;
         showLinked(s.board.logicalIdsFor(sel ? sel.split(",") : []));
+        // Restyling what the board draws does nothing (it's redrawn), so its style panel would only cover the board.
+        setOwnSel(!!sel && sel.split(",").every((id) => s.board.known.has(id)));
+        // A selected decision fans out its alternatives: drag one onto it to pick it.
+        if (s.mode !== "replay") s.board.onSelect(sel ? sel.split(",") : [], appState);
       }
 
       // Throttled: the agent changes the scene constantly, so a pure debounce would never fire.
@@ -552,6 +996,40 @@ export default function App() {
   }, [st.thinking]);
 
   const messages = s?.transcript.messages ?? [];
+  const receipts = s?.receipts() ?? new Map();
+  // Questions and assumptions it only mentioned in prose (a paragraph that also drew one on the board is covered).
+  const passing = [];
+  const said = new Map(); // sentence id -> text
+  for (const m of messages) {
+    if (m.role !== "agent") continue;
+    for (const it of m.items) if (it.type === "s") said.set(it.id, it.text);
+    let para = [];
+    const flush = () => {
+      if (!para.some((it) => [...it.ids].some((l) => l.startsWith("question:"))))
+        for (const it of para) if (it.asks || it.assumes) passing.push({ id: it.id, text: it.text, kind: it.asks ? "asks" : "assumes" });
+      para = [];
+    };
+    for (const it of m.items) {
+      if (it.type === "s" && !it.live) para.push(it);
+      else if (it.type !== "s") flush();
+    }
+    flush();
+  }
+  const openQuestions = Object.values(s?.board.model.questions ?? {}).filter((q) => q.state === "open").length;
+  // Once the run is over: what needs a look.
+  const finishedRun = !!s && messages.length > 0 && (s.mode === "replay" ? !s.state.replaying : s.mode === "agent" ? !!s.result && !s.state.busy : s.board.model.phase === "complete" && !s.state.busy);
+  const review =
+    finishedRun &&
+    buildReview({
+      model: s.board.model,
+      claims: [...receipts].map(([id, r]) => ({ id, text: said.get(id) ?? "", ...r })),
+      passing,
+      changes: s.changes ? [...s.changes.values()] : null,
+      commits: s.commits,
+      lastTest: (s.board.tl?.tests ?? []).filter((k) => k.ok != null).at(-1) ?? null,
+      denied: messages.filter((m) => m.role === "you" && m.kind === "permission" && m.decision === "deny").map((m) => m.detail),
+    });
+  const contradicted = [...receipts.values()].filter((r) => r.verdict === "bad").length;
   const project = s?.board.model.project;
   const agentMode = s?.mode === "agent";
   const replayMode = s?.mode === "replay";
@@ -564,6 +1042,12 @@ export default function App() {
   useEffect(() => {
     if (reviewing) setTab("plan");
   }, [reviewing]);
+  // A finished run shows its review card, at the end of the activity.
+  useEffect(() => {
+    if (!finishedRun) return;
+    setTab("activity");
+    stick.current = true;
+  }, [finishedRun]);
   // A fresh start goes back to the activity view.
   useEffect(() => {
     if (messages.length === 0) setTab("activity");
@@ -575,6 +1059,12 @@ export default function App() {
     caretToEnd.current = true;
     setDraft(`About D${d.n} (${d.chose}${d.over.length ? ` over ${d.over.join(", ")}` : ""}): `);
   };
+  // Correct an assumption, or reply to something it asked in passing, the same way.
+  const prefill = (text) => {
+    caretToEnd.current = true;
+    setDraft(text);
+  };
+  const clip = (t, n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
   useEffect(() => {
     if (!caretToEnd.current) return;
     caretToEnd.current = false;
@@ -631,8 +1121,11 @@ export default function App() {
     setDraft(brief);
     document.getElementById("ask")?.focus();
   };
-  // The board's tabs: Architecture (editable) and Why (drawn from the decisions; its words are in the Plan tab).
+  // The board's tabs: Architecture (editable), Why (drawn from the decisions; its words are in the Plan tab)
+  // and Timeline (how the decisions moved over the run).
   const boardView = s?.board.view ?? "board";
+  const tl = s?.board.tl;
+  const hasTimeline = !!tl?.segments.length;
   const model = s?.board.model;
   const nodeCount = model ? Object.keys(model.nodes).length : 0;
   const allDecisions = model ? Object.values(model.decisions) : [];
@@ -644,6 +1137,8 @@ export default function App() {
       s.board.fitWhy();
       if (allDecisions.length && messages.length) setTab("plan");
     }
+    // It may have grown while hidden; refit unless you've framed it yourself (⛶ fits it again).
+    if (view === "timeline" && s.board.tlFollow) s.board.fitTimeline();
     setVersion((v) => v + 1);
   };
   // A click (not a drag) on the Why canvas opens what's under it in the Plan tab.
@@ -654,6 +1149,27 @@ export default function App() {
     if (!s || !whyApi || !d || Math.hypot(e.clientX - d[0], e.clientY - d[1]) > 5) return;
     const { x, y } = viewportCoordsToSceneCoords({ clientX: e.clientX, clientY: e.clientY }, whyApi.getAppState());
     focusInPlan(s.board.whyHit(x, y));
+  };
+  // The Timeline: a click in a replay jumps the board to that moment; otherwise a decision's
+  // mark opens its card, your mark your message, a test run its command. Panning or zooming
+  // it stops it refitting itself as the run grows.
+  const tlDown = useRef(null);
+  const tlClick = (e) => {
+    const d = tlDown.current;
+    tlDown.current = null;
+    if (!s || !timelineApi || !d) return;
+    if (Math.hypot(e.clientX - d[0], e.clientY - d[1]) > 5) {
+      s.board.tlFollow = false;
+      return;
+    }
+    const { x, y } = viewportCoordsToSceneCoords({ clientX: e.clientX, clientY: e.clientY }, timelineApi.getAppState());
+    const hit = s.board.timelineHit(x, y);
+    if (!hit) return;
+    if (replayMode && hit.t != null) return s.seekReplay(hit.t);
+    if (hit.msg) return focusInActivity(hit.msg);
+    const act = hit.tool && messages.flatMap((m) => m.items).find((it) => it.type === "act" && it.toolUseIds.includes(hit.tool));
+    if (act) return focusInActivity(act.id);
+    focusInPlan(hit.lids);
   };
   const sendEdits = () => {
     if (!s || !decisions.length) return;
@@ -763,13 +1279,28 @@ export default function App() {
           <div className="tabs" role="tablist" aria-label="Panel view">
             <button role="tab" aria-selected={tab === "activity"} className="tab" onClick={() => setTab("activity")}>
               Activity
+              {contradicted > 0 && (
+                <span className="tab-count bad" title={`${contradicted} thing${contradicted === 1 ? "" : "s"} the agent said that the record contradicts`}>
+                  ✗ {contradicted}
+                </span>
+              )}
             </button>
             <button role="tab" aria-selected={tab === "plan"} className="tab" onClick={() => setTab("plan")}>
               Plan
               {Object.keys(s?.board.model.decisions ?? {}).length > 0 && (
                 <span className="tab-count" title="Decisions">◇ {Object.keys(s.board.model.decisions).length}</span>
               )}
+              {openQuestions > 0 && (
+                <span className="tab-count ask" title={`${openQuestions} open question${openQuestions === 1 ? "" : "s"} or assumption${openQuestions === 1 ? "" : "s"} for you`}>
+                  ? {openQuestions}
+                </span>
+              )}
             </button>
+            {tab === "activity" && (
+              <button className={`skim ${skim ? "on" : ""}`} aria-pressed={skim} onClick={toggleSkim} title="Skim: hide the narration, keep what drew on the board, made a claim, asked you something or assumed something">
+                Skim
+              </button>
+            )}
           </div>
         )}
 
@@ -789,7 +1320,26 @@ export default function App() {
               onHover={(ids) => s.setHover(ids)}
               onFocus={(ids) => s.board.scrollTo(ids)}
               onChallenge={challenge}
+              onPick={(d, i) => {
+                showView("board");
+                s.board.pickAlternative(d.id, i);
+              }}
+              onShowFlow={(id) => {
+                showView("board");
+                chooseFocus({ flow: id });
+              }}
               canChallenge={!replayMode}
+              changes={s.board.changes}
+              commits={s.commits}
+              passing={passing}
+              onAnswer={(q, text) => {
+                s.answerQuestion(q, text);
+                stick.current = true;
+              }}
+              onConfirm={(q) => s.confirmAssumption(q)}
+              onCorrect={(q) => prefill(`About A${q.n} (${q.text}): `)}
+              onReply={(p) => prefill(`About “${clip(p.text, 70)}”: `)}
+              onShow={(id) => focusInActivity(id)}
             />
           )}
           {messages.length === 0 &&
@@ -847,9 +1397,11 @@ export default function App() {
                 linked={linked}
                 onHover={(ids) => s?.setHover(ids)}
                 onFocus={(ids) => s?.board.scrollTo(ids)}
+                receipts={receipts}
+                skim={skim}
               />
             ) : (
-              <div key={m.id} className="msg you">
+              <div key={m.id} id={`msg-${m.id}`} className={["msg you", linked.has(m.id) && "linked"].filter(Boolean).join(" ")}>
                 <div className="who">You</div>
                 {m.kind === "chat" ? (
                   <p>{m.text}</p>
@@ -878,6 +1430,7 @@ export default function App() {
               </div>
             ),
           )}
+          {tab === "activity" && review && <ReviewCard rows={review} onGo={goReview} />}
         </div>
 
         <footer className="composer">
@@ -931,10 +1484,7 @@ export default function App() {
               {decisions.length > 0 ? (
                 <EditList decisions={decisions} />
               ) : (
-                <p>
-                  Change anything on the board first: double-click a name to rename it, delete a component, or draw an arrow. You can
-                  also ask for changes below. Nothing gets built until you approve.
-                </p>
+                <p>Edit the board (rename, connect, delete, or select a ◇ to pick another option) or type below. Nothing is built until you approve.</p>
               )}
               <div className="gate-actions">
                 {decisions.length > 0 && (
@@ -953,13 +1503,13 @@ export default function App() {
                 Your changes <span className="count">{decisions.length}</span>
               </div>
               <EditList decisions={decisions} />
-              <button className="primary" onClick={sendEdits}>
-                Send to agent{st.busy ? " when it finishes" : ""}
+              <button className="primary" onClick={sendEdits} title={st.busy ? "Sent when the agent finishes this step" : "Send to the agent"}>
+                Submit{st.busy ? " ⏳" : ""}
               </button>
             </div>
           ) : awaitingTask ? null : (
             <p className="hint">
-              <b>Steer from the board.</b> Double-click a name to rename it, draw an arrow between two components, or delete one.
+              <b>Steer from the board:</b> rename, connect, delete, or select a ◇ to pick another option. Then Submit.
               {agentMode && s?.runId && s?.result && (
                 <span className="after-run">
                   <button className="linkish" onClick={() => replay(s.runId)}>
@@ -1005,14 +1555,97 @@ export default function App() {
               </span>
             )}
           </button>
+          <button role="tab" aria-selected={boardView === "timeline"} onClick={() => showView("timeline")} title="How the decisions moved over the run: what changed, when, and because of what">
+            <span className="tl-icon" aria-hidden="true" />
+            Timeline
+            {hasTimeline && <span className="ct-count" title="How long the run took">{fmt(tl.duration)}</span>}
+            {tl?.changes > 0 && (
+              <span className="ct-changes" title={`${tl.changes} decision change${tl.changes === 1 ? "" : "s"}`}>
+                ◆{tl.changes}
+              </span>
+            )}
+          </button>
+          {boardView === "board" && (
+            <span className="style-toggle" role="group" aria-label="Drawing style">
+              <button aria-pressed={drawStyle === "pictures"} onClick={() => chooseStyle("pictures")} title="Pictograms">
+                Pictures
+              </button>
+              <button aria-pressed={drawStyle === "c4"} onClick={() => chooseStyle("c4")} title="C4 model: containers and how they connect">
+                C4
+              </button>
+            </span>
+          )}
+          {boardView === "board" && nodeCount > 0 && (
+            <select
+              className="focus-pick"
+              value={focus?.layer ? `layer:${focus.layer}` : focus?.flow ? `flow:${focus.flow}` : ""}
+              onChange={(e) => {
+                const [k, v] = e.target.value.split(":");
+                chooseFocus(k ? { [k]: v } : null);
+              }}
+              aria-label="Show"
+              title="Show one layer, or one flow's steps in order"
+            >
+              <option value="">All</option>
+              <optgroup label="Layers">
+                {LAYERS.filter((l) => Object.values(model.nodes).some((n) => layerOf(n) === l.key)).map((l) => (
+                  <option key={l.key} value={`layer:${l.key}`}>
+                    {l.label}
+                  </option>
+                ))}
+              </optgroup>
+              {Object.keys(model.flows).length > 0 && (
+                <optgroup label="Flows">
+                  {Object.values(model.flows).map((f) => (
+                    <option key={f.id} value={`flow:${f.id}`}>
+                      {f.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          )}
+          {boardView === "board" && nodeCount > 0 && (
+            <details className="export-menu">
+              <summary title="Export what the board shows">{exported === "ok" ? "✓ Exported" : exported === "failed" ? "✗ Export failed" : "Export"}</summary>
+              <div className="export-items">
+                <button onClick={() => exportView("mermaid")} title={focus?.flow ? "Copy as a Mermaid sequence diagram" : "Copy as a Mermaid diagram in C4 notation (GitHub renders it)"}>
+                  Copy Mermaid
+                </button>
+                <button onClick={() => exportView("svg")}>Download SVG</button>
+                <button onClick={() => exportView("png")}>Download PNG</button>
+              </div>
+            </details>
+          )}
           <span className="ct-hint">
-            {boardView === "why" ? "Evidence → decision → what it shapes → proof. Click a row to read it." : "Edit it to steer: rename, connect, delete, or draw a box."}
+            {boardView === "why"
+              ? "Evidence → decision → what it shapes → proof. Click a row to read it."
+              : boardView === "timeline"
+                ? `How the decisions moved. ${replayMode ? "Click a moment to jump there." : "Click a mark to read it."}`
+                : "Edit to steer: rename, connect, delete, draw. Select a ◇ to pick another option."}
           </span>
         </div>
         <div className="canvases">
-          <div className={`canvas ${boardView === "board" ? "on" : ""}`} role="tabpanel" aria-label="Architecture">
+          <div className={`canvas ${boardView === "board" ? "on" : ""} ${ownSel ? "own-sel" : ""}`} role="tabpanel" aria-label="Architecture">
             <Excalidraw excalidrawAPI={setApi} initialData={INITIAL_DATA} onChange={onChange} UIOptions={UI_OPTIONS} />
+            {decisions.length > 0 && !replayMode && (
+              <button className="board-submit primary" onClick={sendEdits} title={st.busy ? "Sent when the agent finishes this step" : "Send your board changes to the agent"}>
+                {Object.entries(AREAS).map(([a, { icon, label }]) => {
+                  const n = decisions.filter((d) => areaOf(d) === a).length;
+                  return n > 0 && <span key={a} className="bs-area" title={label}>{icon}{n}</span>;
+                })}
+                Submit{st.busy ? " ⏳" : ""}
+              </button>
+            )}
             {model && !nodeCount && <p className="canvas-empty">The architecture appears here as the agent plans: each component, what it connects to, and its decisions.</p>}
+            {focus?.flow && model?.flows[focus.flow] && (
+              <FlowSteps
+                flow={model.flows[focus.flow]}
+                model={model}
+                onHover={(ids) => s.setHover(ids)}
+                onClose={() => chooseFocus(null)}
+              />
+            )}
           </div>
           <div
             className={`canvas ${boardView === "why" ? "on" : ""}`}
@@ -1024,6 +1657,19 @@ export default function App() {
             <Excalidraw excalidrawAPI={setWhyApi} initialData={INITIAL_DATA} UIOptions={WHY_UI_OPTIONS} viewModeEnabled theme={theme} />
             {model && !allDecisions.length && (
               <p className="canvas-empty">Each technical decision appears here as a chain: the evidence behind it, what it shapes, and the check that proves it.</p>
+            )}
+          </div>
+          <div
+            className={`canvas ${boardView === "timeline" ? "on" : ""}`}
+            role="tabpanel"
+            aria-label="Timeline"
+            onPointerDownCapture={(e) => (tlDown.current = [e.clientX, e.clientY])}
+            onPointerUpCapture={tlClick}
+            onWheelCapture={() => s && (s.board.tlFollow = false)}
+          >
+            <Excalidraw excalidrawAPI={setTimelineApi} initialData={INITIAL_DATA} UIOptions={WHY_UI_OPTIONS} viewModeEnabled theme={theme} />
+            {model && !hasTimeline && (
+              <p className="canvas-empty">The run appears here over time: what you did, each test run, and every decision as a lane, from proposed to proven.</p>
             )}
           </div>
         </div>

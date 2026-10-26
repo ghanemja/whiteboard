@@ -4,10 +4,15 @@ import { Player } from "./player";
 import { Transcript } from "./transcript";
 import { buildChatReply, buildEditsReply } from "../agent/replies";
 import { controlRun, followRun, loadRecording, startRun } from "../agent/live";
+import { BUILD_SCRIPT, DEMO_CHANGES, PLAN_SCRIPT } from "../agent/script";
+import { areaOf, describeEdit, gist } from "./timeline";
+import { receipt } from "./claims";
 
 // Replays keep the run's rhythm but don't sit through long waits (thinking, or someone deciding).
 const REPLAY_MAX_GAP = 1500;
-import { BUILD_SCRIPT, PLAN_SCRIPT } from "../agent/script";
+const TIMELINE_EVERY = 200; // ms between Timeline redraws while events stream in
+// Board edits as sent to the agent: without their dedupe key, with what they change.
+const wire = (decisions) => decisions.map(({ key, ...d }) => ({ ...d, area: areaOf(d) }));
 
 // Wires an agent to both surfaces: its words go to the transcript, its board ops
 // go to the board, and each op is tied to the sentence it belongs to so the two
@@ -19,6 +24,10 @@ import { BUILD_SCRIPT, PLAN_SCRIPT } from "../agent/script";
 //
 // stage "planning" -> the agent plans and then waits for approval; edits and chat revise the plan.
 // stage "building" -> after approval: implement, verify, ship.
+//
+// Every mode also keeps the run as timed events ({ t, type, … }, the shape the server
+// streams and records) for the Timeline: a live run's stream, a replay's recording, or,
+// for the demo, events it synthesizes on a clock that runs at the playback speed.
 export class Session {
   constructor({ board, onChange }) {
     this.board = board;
@@ -31,12 +40,15 @@ export class Session {
     this.raf = 0;
     this.caption = "";
     this.hideTimer = null;
+    this.tlTimer = null;
+    this.resetTimeline();
     this.resetAgent();
 
     this.transcript = new Transcript({
       onOpen: (s) => this.live.set(s.id, s.ids),
       onClose: (s) => this.linger(s.id),
       onChange: () => this.notify(),
+      clock: () => this.now(),
     });
 
     // Demo: inline <board/> tags in typed-out text.
@@ -73,8 +85,116 @@ export class Session {
     this.repo = this.repo ?? "";
   }
 
+  resetTimeline() {
+    this.events = []; // the run so far, as timed events (agent, demo)
+    this.replayT = 0; // a replay's position in its recording (ms)
+    this.clock = null; // the demo's clock: { t, at }
+    this.demoBusy = false;
+    this.sentMsgs = []; // your messages waiting for the server to echo them as `user` events
+    this.steerText = null; // what you asked this turn, for changes in recordings that don't say why
+    this.failedSinceSteer = new Set(); // decisions whose check failed after that
+    this.lastT = 0; // the latest live event's t
+    this.changes = null; // the repo's actual changes this run, from git: path -> { path, add, del, patch }
+    this.commits = 0; // commits made during the run
+    this.demoRuns = 0;
+  }
+
+  // The repo's changes: a live run's `changes` events (a patch is only resent when it changed).
+  setChanges(files, commits = this.commits) {
+    const prev = this.changes ?? new Map();
+    this.changes = new Map(files.map((f) => [f.path, { ...f, patch: f.patch ?? prev.get(f.path)?.patch ?? "" }]));
+    this.commits = commits;
+    this.board.setChanges([...this.changes.values()]);
+  }
+
+  // Where the run is now (ms since it started), whatever the mode.
+  now() {
+    if (this.replay) return this.replayT;
+    return this.mode === "demo" ? this.demoNow() : this.lastT;
+  }
+
+  // What the run's record says about each sentence's claims (claims.js): sentence id -> receipt.
+  // Test claims are checked against the runs before the sentence; file claims against git.
+  receipts() {
+    const acts = this.transcript.messages.flatMap((m) => m.items).filter((it) => it.type === "act");
+    const base = {
+      changes: this.changes ? [...this.changes.values()] : null,
+      edited: acts.filter((a) => a.kind === "edit" || a.kind === "write").flatMap((a) => a.labels),
+      commands: acts.filter((a) => a.kind === "command").flatMap((a) => a.labels),
+    };
+    const runs = (this.board.tl?.tests ?? []).filter((k) => k.ok != null);
+    const out = new Map();
+    for (const m of this.transcript.messages)
+      for (const it of m.items) if (it.type === "s" && it.claims?.length) out.set(it.id, receipt(it.claims, { ...base, tests: runs.filter((k) => k.t <= it.t) }));
+    return out;
+  }
+
+  // ---- the Timeline ----
+  get timelineEvents() {
+    const r = this.replay;
+    return r ? (r.timeline ??= [{ t: 0, type: "start", text: this.brief }, ...r.events]) : this.events;
+  }
+
+  // Redraw soon: events can arrive a character at a time.
+  timelineChanged() {
+    if (!this.tlTimer) this.tlTimer = setTimeout(() => this.drawTimeline(), TIMELINE_EVERY);
+  }
+
+  drawTimeline() {
+    clearTimeout(this.tlTimer);
+    this.tlTimer = null;
+    // A replay shows the whole recording, with the now line where the board is.
+    this.board.redrawTimeline(this.timelineEvents, this.replay ? { now: this.replayT } : {});
+    this.notify();
+  }
+
+  // The demo's own clock runs at the playback speed, so 4× draws like 1×.
+  demoNow() {
+    if (!this.clock) return 0;
+    const now = performance.now();
+    this.clock.t += (now - this.clock.at) * this.player.speed;
+    this.clock.at = now;
+    return Math.round(this.clock.t);
+  }
+
+  // The demo's own events.
+  demoEvent(e) {
+    if (this.mode !== "demo" || !this.clock) return;
+    this.events.push({ ...e, t: this.demoNow() });
+    this.timelineChanged();
+  }
+
+  // The demo has no repo and runs no commands, so its script carries what a live run's record would:
+  //   <board op="diff" id="api"/>                   the files that step changed (DEMO_CHANGES)
+  //   <board op="run" cmd="pytest -q" pass="42" fail="0" ok="true"/>   a test run and its result
+  demoOp(a) {
+    if (a.op === "diff") {
+      const files = new Map(this.changes ?? []);
+      for (const f of DEMO_CHANGES[a.id] ?? []) files.set(f.path, f);
+      this.setChanges([...files.values()]);
+      this.sync();
+      return true;
+    }
+    if (a.op === "run") {
+      const toolUseId = `demo-run-${++this.demoRuns}`;
+      const pass = +a.pass, fail = +a.fail;
+      const ok = a.ok != null ? a.ok === "true" : fail === 0;
+      const result = { toolUseId, ok, summary: `${pass} passed${fail ? `, ${fail} failed` : ""}`, tests: { pass, fail } };
+      this.demoEvent({ type: "activity", kind: "command", label: a.cmd, toolUseId });
+      this.transcript.activity({ kind: "command", label: a.cmd, toolUseId });
+      this.demoEvent({ type: "activity-result", ...result });
+      this.transcript.activityResult(result);
+      this.caption = `Running ${a.cmd}`;
+      this.sync();
+      return true;
+    }
+    return false;
+  }
+
   // ---- shared: applying ops and highlighting ----
   applyOp(attrs, { fromAgent = false } = {}) {
+    if (!fromAgent && this.demoOp(attrs)) return;
+    if (!fromAgent) this.demoEvent({ type: "op", op: attrs });
     this.caption = describeOp(attrs, this.board.model); // before apply: removals lose the name
     if (attrs.op === "phase") {
       this.transcript.phase(attrs.name);
@@ -112,6 +232,12 @@ export class Session {
   }
 
   stateChanged() {
+    // The demo's turns: its plan waits for approval (a gate), its build ends (done).
+    if (this.mode === "demo" && this.clock) {
+      const busy = this.player.busy;
+      if (this.demoBusy && !busy) this.demoEvent({ type: this.awaitingApproval ? "gate" : "done" });
+      this.demoBusy = busy;
+    }
     // Park the agent's cursor shortly after it stops working.
     clearTimeout(this.hideTimer);
     if (!this.state.busy) {
@@ -134,10 +260,12 @@ export class Session {
     this.live.clear();
     this.hover = [];
     this.stage = null;
+    this.resetTimeline();
     this.transcript.clear();
     this.board.reset();
     await this.board.init();
     if (g !== this.gen) return false;
+    this.drawTimeline();
     this.board.fit(true);
     return true;
   }
@@ -147,6 +275,9 @@ export class Session {
     if (!fresh && !(await this.reset())) return;
     this.mode = "demo";
     this.stage = "planning";
+    this.events = [];
+    this.clock = { t: 0, at: performance.now() };
+    this.demoEvent({ type: "start" });
     this.player.enqueue({ script: PLAN_SCRIPT });
   }
 
@@ -158,7 +289,9 @@ export class Session {
     this.stage = "planning";
     this.brief = brief;
     this.repo = repo;
-    this.transcript.addUserMessage({ kind: "chat", text: brief });
+    const m = this.transcript.addUserMessage({ kind: "chat", text: brief });
+    this.events = [{ t: 0, type: "start", text: brief, msg: m.id }];
+    this.drawTimeline();
     this.beginTurn();
     try {
       const { id } = await startRun({ repo, brief });
@@ -200,6 +333,7 @@ export class Session {
       while (this.replay.i < this.replay.events.length) this.onAgentEvent(this.replay.events[this.replay.i++]);
       this.instant = false;
       this.finishReplay();
+      this.drawTimeline();
       this.board.fit(true);
     } else {
       this.beginTurn();
@@ -217,6 +351,38 @@ export class Session {
     if (!next) return this.finishReplay();
     const gap = Math.min(REPLAY_MAX_GAP, Math.max(0, (next.t ?? 0) - (e.t ?? 0)));
     r.timer = setTimeout(() => this.replayStep(), gap / this.player.speed);
+  }
+
+  // Jump a replay to t (ms into the recording) and pause there: back means re-applying from
+  // the start (recordings are small), forward applies what's in between. Instantly, either way.
+  async seekReplay(t) {
+    const r = this.replay;
+    if (!r) return;
+    clearTimeout(r.timer);
+    r.paused = true;
+    if (t < this.replayT) {
+      const g = ++this.gen;
+      const view = this.board.view;
+      this.live.clear();
+      this.hover = [];
+      this.transcript.clear();
+      this.board.reset();
+      this.board.view = view; // stay on the Timeline
+      this.board.onPhase?.(null);
+      await this.board.init();
+      if (g !== this.gen || r !== this.replay) return;
+      Object.assign(this, { stage: "planning", gate: null, permission: null, agentBusy: false, result: null, caption: "", steerText: null, replayT: 0, changes: null, commits: 0 });
+      this.transcript.addUserMessage({ kind: "chat", text: this.brief });
+      r.i = 0;
+    }
+    r.done = false;
+    this.instant = true;
+    while (r.i < r.events.length && (r.events[r.i].t ?? 0) <= t) this.onAgentEvent(r.events[r.i++]);
+    this.instant = false;
+    this.replayT = t;
+    if (r.i >= r.events.length) this.finishReplay();
+    else this.stateChanged();
+    this.drawTimeline();
   }
 
   finishReplay() {
@@ -253,6 +419,15 @@ export class Session {
   }
 
   onAgentEvent(e) {
+    if (this.mode === "agent") {
+      this.lastT = e.t ?? this.lastT;
+      // Your messages come back from the server as `user` events; tie each to its bubble.
+      this.events.push(e.type === "user" ? { ...e, msg: this.sentMsgs.shift() ?? null } : e);
+      this.timelineChanged();
+    } else if (this.mode === "replay") {
+      this.replayT = e.t ?? this.replayT;
+      this.timelineChanged();
+    }
     switch (e.type) {
       case "stage":
         this.stage = e.stage;
@@ -264,10 +439,18 @@ export class Session {
         this.ensureMessage();
         this.transcript.text(e.text);
         break;
-      case "op":
+      case "op": {
         this.ensureMessage();
-        this.applyOp(e.op, { fromAgent: true });
+        // Recordings from before the server named causes: a choice that changes after you
+        // asked for something this turn changed because of it, unless its check failed since
+        // (as the Timeline reads it).
+        let op = e.op;
+        if (op?.op === "decision" && op.proof === "fail") this.failedSinceSteer.add(op.id);
+        const prev = op?.op === "decision" && !op.cause && this.steerText && !this.failedSinceSteer.has(op.id) && this.board.model.decisions[op.id];
+        if (prev && op.chose && op.chose !== prev.chose) op = { ...op, cause: "you", cause_text: this.steerText };
+        this.applyOp(op, { fromAgent: true });
         break;
+      }
       case "activity":
         this.ensureMessage();
         this.caption = `${{ read: "Reading", search: "Searching", edit: "Editing", write: "Writing", command: "Running" }[e.kind] ?? "Using"} ${e.label}`;
@@ -278,6 +461,10 @@ export class Session {
         }
         break;
       case "user": {
+        if (["chat", "revise", "edits"].includes(e.kind) || (e.kind === "approve" && e.edits?.length)) {
+          this.steerText = gist(e.text || e.edits.map(describeEdit).join("; "));
+          this.failedSinceSteer = new Set();
+        }
         // The user's side of the run. Live, the panel already shows it; a replay rebuilds it.
         if (this.mode !== "replay") break;
         this.transcript.endMessage(); // what the agent says next goes below this, as it did live
@@ -295,9 +482,13 @@ export class Session {
       case "activity-result":
         this.transcript.activityResult(e);
         break;
+      case "changes":
+        this.setChanges(e.files ?? [], e.commits ?? 0);
+        break;
       case "gate":
         this.gate = e.requestId;
         this.agentBusy = false;
+        this.steerText = null;
         this.transcript.endMessage();
         break;
       case "permission":
@@ -313,6 +504,7 @@ export class Session {
         break;
       case "done":
         this.agentBusy = false;
+        this.steerText = null;
         this.result = e;
         this.transcript.endMessage();
         if (!e.ok) this.transcript.addNotice(`The agent stopped early (${e.message ?? "error"}).`);
@@ -355,7 +547,7 @@ export class Session {
     this.permission = null;
     // Keep the answer in the conversation, where it happened.
     this.transcript.endMessage();
-    this.transcript.addUserMessage({ kind: "permission", decision, detail });
+    this.sentMsgs.push(this.transcript.addUserMessage({ kind: "permission", decision, detail }).id);
     this.beginTurn();
     this.send({ type: "permission", requestId, decision });
   }
@@ -383,11 +575,13 @@ export class Session {
     this.stage = "building";
     this.board.setReviewTag(false);
     this.board.acceptDecisions();
-    this.transcript.addUserMessage({ kind: "approve", decisions });
+    const m = this.transcript.addUserMessage({ kind: "approve", decisions });
+    this.demoEvent({ type: "user", kind: "approve", edits: wire(decisions), msg: m.id });
     if (this.mode === "agent") {
+      this.sentMsgs.push(m.id);
       this.gate = null;
       this.beginTurn();
-      this.send({ type: "approve", edits: decisions.map(({ key, ...d }) => d) });
+      this.send({ type: "approve", edits: wire(decisions) });
     } else {
       if (decisions.length) this.player.enqueue({ build: () => buildEditsReply(decisions, this.board.model) });
       this.player.enqueue({ script: BUILD_SCRIPT });
@@ -395,9 +589,11 @@ export class Session {
   }
 
   sendEdits(decisions) {
-    this.transcript.addUserMessage({ kind: "edits", decisions });
+    const m = this.transcript.addUserMessage({ kind: "edits", decisions });
+    this.demoEvent({ type: "user", kind: this.awaitingApproval ? "revise" : "edits", edits: wire(decisions), msg: m.id });
     if (this.mode === "agent") {
-      const edits = decisions.map(({ key, ...d }) => d);
+      this.sentMsgs.push(m.id);
+      const edits = wire(decisions);
       const gated = !!this.gate;
       this.gate = null;
       this.beginTurn();
@@ -409,14 +605,29 @@ export class Session {
   }
 
   sendChat(text) {
-    this.transcript.addUserMessage({ kind: "chat", text });
+    const m = this.transcript.addUserMessage({ kind: "chat", text });
+    this.demoEvent({ type: "user", kind: "chat", text, msg: m.id });
     if (this.mode === "agent") {
+      this.sentMsgs.push(m.id);
       this.gate = null;
       this.beginTurn();
       this.send({ type: "chat", text });
     } else {
       this.player.enqueue({ build: () => buildChatReply(text) });
     }
+  }
+
+  // ---- its questions and assumptions ----
+  // An answer goes to the agent as a message ("About Q1 (…): …"); at the plan gate that revises the plan.
+  answerQuestion(q, text) {
+    this.board.apply({ op: "question", id: q.id, state: "answered", answer: text });
+    this.sendChat(`About Q${q.n} (${q.text}): ${text}`);
+  }
+
+  // A confirmed assumption needs no turn of its own: the agent sees it in the board state it gets next.
+  confirmAssumption(q) {
+    this.board.apply({ op: "assumption", id: q.id, state: "confirmed" });
+    this.sync();
   }
 
   // ---- highlights ----
@@ -462,6 +673,7 @@ export class Session {
     this.follow?.abort();
     this.player.stop();
     clearTimeout(this.hideTimer);
+    clearTimeout(this.tlTimer);
     cancelAnimationFrame(this.raf);
   }
 }
