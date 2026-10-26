@@ -2,9 +2,11 @@
 
 A real coding agent works in a repo while an Excalidraw board shows what it's doing: its plan, the parts of the system it's touching, and how far along it is. You steer it by editing the board.
 
+**New here?** Read the [step-by-step tutorial](docs/TUTORIAL.md) (no API key needed), or open the app and press **Take the tour**.
+
 ![The demo: the agent plans on the board, you pick another option for a decision (D3 → Qdrant), approve, it builds and ships; then the review card and the Timeline](screenshots/demo.gif)
 
-The board is pictures, not prose. Components are hand-drawn pictograms (browser window, server rack, database cylinder, cloud, queue, clipboard, person) with a short name; status is color plus a corner badge (… building, ✓ verified, ✗ failed, ★ live). Above the board, the project's name and goal sit beside the four phases, drawn as milestones on a road (Plan details → Build → Verify → Ship) with a dot per task: hover one to read it, click to open it in Plan details. Below that, the board has a tab per canvas: **Architecture** (what's being built; edit it to steer), **Why** (the reasoning behind it) and **Timeline** (how that reasoning moved over the run). Words stay in the side panel.
+The board is pictures, not prose. Components are hand-drawn pictograms (browser window, server rack, database cylinder, cloud, queue, clipboard, person) with a short name; status is color plus a corner badge (… building, ✓ verified, ✗ failed, ★ live). Above the board, the project's name and goal sit beside the four phases, drawn as milestones on a road (Plan → Build → Verify → Ship) with a dot per task: hover one to read it, click to open it in Plan details. Below that, the board has a tab per canvas: **Architecture** (what's being built; edit it to steer), **Why** (the reasoning behind it) and **Timeline** (how that reasoning moved over the run). Words stay in the side panel.
 
 ## Take the tour
 
@@ -18,7 +20,7 @@ The app walks a newcomer through a run without hiding anything. **Hide tips** tu
 
 ![The plan gate with tips: the coach card says step 2 of 4, sticky notes with hand-drawn arrows point at a decision and a part, an orange circle rings an open question, and the Edit the plan toolbar and color key frame the board](screenshots/first-time-help/2-plan-gate-tips-on-the-board.png)
 
-- **Coach.** A yellow card at the top of the panel says which step you're on (Describe → Plan details → Build → Check) and what to do now, in a sentence or two.
+- **Coach.** A yellow card at the top of the panel says which step you're on (Describe → Plan → Build → Check) and what to do now, in a sentence or two.
 - **Tips on the board.** The first time a plan waits for you, sticky notes with hand-drawn arrows point at a decision ("Click a ◇ to see its other options") and a part ("Double-click a name to rename it"), and an orange circle rings its first open question. Click one to dismiss them. They're never exported or sent to the agent.
 - **Edit the plan.** A toolbar with words above the board: Select, Rename, Add a part, Connect, Remove, Add a note, Stickers. Each picks the matching Excalidraw tool and says what to do next; the gestures (double-click, Delete, drawing) still work. Excalidraw's full toolbar is behind **Drawing tools**.
 - **Click to explain.** Select a part, a ◇, an arrow or a question and a card says what it is in plain words (what a service is, its status, routes, files, decisions, connections), with its actions as buttons: Rename, Remove, Ask about it, See the code; for a decision, **Use this** on each option, Ask why and Reject it; for a question, its answers.
