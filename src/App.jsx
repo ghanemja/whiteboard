@@ -1238,7 +1238,7 @@ export default function App() {
   const modeLabel = replayMode ? "Replay" : agentMode || awaitingTask ? "Agent" : "Demo";
   const modeTitle = agent?.live
     ? `Claude Agent SDK · ${agent.provider ?? "Anthropic API"} · ${agent.model} · effort ${agent.effort}`
-    : "Scripted demo. Set ANTHROPIC_API_KEY (or another provider: README, Models and providers) in .env.local and restart the dev server to run a real agent.";
+    : "Scripted demo. To run a real agent, set AGENT_KEY (Anthropic) or AGENT_URL (any other model) in .env.local and restart the dev server.";
 
   return (
     <div className="app" data-theme={theme}>

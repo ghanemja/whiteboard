@@ -2,7 +2,7 @@
 // session, another agent) reads the plan there, diagrams included. Run with `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { provider, Run } from "../server/runs.js";
+import { agentEnv, provider, Run } from "../server/runs.js";
 
 // A Run's mirror of the board without an agent behind it: ops in, decision log out.
 function mirror() {
@@ -65,11 +65,34 @@ test("which provider the agent runs on, from the variables Claude Code reads", (
   assert.equal(provider({ ANTHROPIC_API_KEY: "sk-ant-x" }), "Anthropic API");
   assert.equal(provider({ ANTHROPIC_BASE_URL: "https://api.anthropic.com", ANTHROPIC_API_KEY: "sk-ant-x" }), "Anthropic API");
   assert.equal(provider({ ANTHROPIC_BASE_URL: "http://localhost:11434", ANTHROPIC_AUTH_TOKEN: "ollama" }), "Ollama (localhost:11434)");
-  assert.equal(provider({ ANTHROPIC_BASE_URL: "http://localhost:4000", ANTHROPIC_AUTH_TOKEN: "sk-litellm" }), "Gateway (localhost:4000)");
+  assert.equal(provider({ ANTHROPIC_BASE_URL: "http://localhost:4000", ANTHROPIC_AUTH_TOKEN: "sk-litellm" }), "localhost:4000");
   assert.equal(provider({ ANTHROPIC_BASE_URL: "http://localhost:4000" }), null); // a gateway needs a credential
   assert.equal(provider({ CLAUDE_CODE_USE_BEDROCK: "1" }), "Amazon Bedrock");
   assert.equal(provider({ CLAUDE_CODE_USE_MANTLE: "true" }), "Amazon Bedrock");
   assert.equal(provider({ CLAUDE_CODE_USE_VERTEX: "1" }), "Google Vertex AI");
   assert.equal(provider({ CLAUDE_CODE_USE_FOUNDRY: "1" }), "Microsoft Foundry");
   assert.equal(provider({ CLAUDE_CODE_USE_BEDROCK: "0", ANTHROPIC_API_KEY: "sk-ant-x" }), "Anthropic API");
+});
+
+test("three settings: AGENT_URL (left out for Anthropic), AGENT_KEY (left out when local), AGENT_MODEL", () => {
+  // Anthropic's API: just a key.
+  assert.equal(provider({ AGENT_KEY: "sk-ant-x" }), "Anthropic API");
+  assert.equal(agentEnv({ AGENT_KEY: "sk-ant-x" }).ANTHROPIC_API_KEY, "sk-ant-x");
+  assert.equal(provider({ AGENT_URL: "https://api.anthropic.com", AGENT_KEY: "sk-ant-x" }), "Anthropic API");
+  // A local server: a URL and a model, no key.
+  const local = agentEnv({ AGENT_URL: "http://localhost:11434", AGENT_MODEL: "qwen3-coder", ANTHROPIC_API_KEY: "sk-ant-old" });
+  assert.equal(local.ANTHROPIC_BASE_URL, "http://localhost:11434");
+  assert.equal(local.ANTHROPIC_AUTH_TOKEN, "none");
+  assert.equal(local.ANTHROPIC_API_KEY, ""); // empty, so the SDK doesn't sign in to Anthropic instead
+  assert.equal(local.ANTHROPIC_MODEL, "qwen3-coder");
+  assert.equal(local.ANTHROPIC_DEFAULT_HAIKU_MODEL, "qwen3-coder"); // background work on the same model
+  assert.equal(provider({ AGENT_URL: "http://localhost:11434", AGENT_MODEL: "qwen3-coder" }), "Ollama (localhost:11434)");
+  // A hosted endpoint: URL, key and model.
+  const hosted = agentEnv({ AGENT_URL: "https://openrouter.ai/api", AGENT_KEY: "sk-or-x", AGENT_MODEL: "moonshotai/kimi-k2", ANTHROPIC_DEFAULT_HAIKU_MODEL: "kept" });
+  assert.equal(hosted.ANTHROPIC_AUTH_TOKEN, "sk-or-x");
+  assert.equal(hosted.ANTHROPIC_DEFAULT_HAIKU_MODEL, "kept"); // a tier you set yourself stays
+  assert.equal(hosted.ANTHROPIC_DEFAULT_OPUS_MODEL, "moonshotai/kimi-k2");
+  assert.equal(provider({ AGENT_URL: "https://openrouter.ai/api", AGENT_KEY: "sk-or-x" }), "openrouter.ai");
+  // Nothing new set: the environment passes through as it was.
+  assert.deepEqual(agentEnv({ PATH: "/bin", ANTHROPIC_API_KEY: "sk-ant-x" }), { PATH: "/bin", ANTHROPIC_API_KEY: "sk-ant-x" });
 });

@@ -32,19 +32,41 @@ export function stopAllRuns() {
 }
 
 const settings = () => ({
-  model: process.env.ANTHROPIC_MODEL || "claude-opus-5-5",
+  model: process.env.AGENT_MODEL || process.env.ANTHROPIC_MODEL || "claude-opus-5-5",
   effort: process.env.AGENT_EFFORT || "low",
 });
 
-// Where the agent's model runs, from the same variables Claude Code reads (README: "Models and
-// providers"). null: nothing is configured, so the browser plays the scripted demo.
-export function provider(env = process.env) {
+// The agent's environment, from the three settings people set (README: "Models"):
+//   AGENT_URL    where the model is: any Anthropic-format endpoint (Ollama, LiteLLM, OpenRouter…);
+//                left out for Anthropic's own API
+//   AGENT_KEY    its key; left out for a local server
+//   AGENT_MODEL  the model's name there
+// written into the variables the Claude Agent SDK reads. Without them, Claude Code's own variables
+// (ANTHROPIC_*, CLAUDE_CODE_USE_BEDROCK…) work as they do for Claude Code.
+export function agentEnv(env = process.env) {
+  const out = { ...env };
+  const [url, key, model] = ["AGENT_URL", "AGENT_KEY", "AGENT_MODEL"].map((k) => env[k]?.trim() || "");
+  if (url && !/(^|\.)anthropic\.com$/.test(hostOf(url))) {
+    out.ANTHROPIC_BASE_URL = url;
+    out.ANTHROPIC_AUTH_TOKEN = key || "none"; // a local server ignores it, but the SDK wants one
+    out.ANTHROPIC_API_KEY = ""; // set, but empty: otherwise the SDK may sign in to Anthropic instead
+    // Background work goes to the same model: an endpoint like this knows no Claude model names.
+    if (model) for (const tier of ["FABLE", "OPUS", "SONNET", "HAIKU"]) out[`ANTHROPIC_DEFAULT_${tier}_MODEL`] ||= model;
+  } else if (key) out.ANTHROPIC_API_KEY = key;
+  if (model) out.ANTHROPIC_MODEL = model;
+  return out;
+}
+
+// Where the agent's model runs, for the top bar. null: nothing is configured, so the browser
+// plays the scripted demo.
+export function provider(raw = process.env) {
+  const env = agentEnv(raw);
   const on = (v) => ["1", "true"].includes(String(env[v] ?? "").toLowerCase());
   if (on("CLAUDE_CODE_USE_BEDROCK") || on("CLAUDE_CODE_USE_MANTLE")) return "Amazon Bedrock";
   if (on("CLAUDE_CODE_USE_VERTEX")) return "Google Vertex AI";
   if (on("CLAUDE_CODE_USE_FOUNDRY")) return "Microsoft Foundry";
   if (env.ANTHROPIC_BASE_URL && !/(^|\.)anthropic\.com$/.test(hostOf(env.ANTHROPIC_BASE_URL)) && (env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY))
-    return hostOf(env.ANTHROPIC_BASE_URL).endsWith(":11434") ? `Ollama (${hostOf(env.ANTHROPIC_BASE_URL)})` : `Gateway (${hostOf(env.ANTHROPIC_BASE_URL)})`;
+    return hostOf(env.ANTHROPIC_BASE_URL).endsWith(":11434") ? `Ollama (${hostOf(env.ANTHROPIC_BASE_URL)})` : hostOf(env.ANTHROPIC_BASE_URL);
   if (env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN) return "Anthropic API";
   return null;
 }
@@ -616,6 +638,7 @@ export class Run {
         systemPrompt: { type: "preset", preset: "claude_code", append: BOARD_INSTRUCTIONS },
         // Repo settings and CLAUDE.md only; keep the user's global hooks and settings out of this agent.
         settingSources: ["project"],
+        env: agentEnv(process.env),
         mcpServers: { board },
         canUseTool: this.canUseTool,
         includePartialMessages: true,
