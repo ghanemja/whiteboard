@@ -6,6 +6,12 @@ A real coding agent works in a repo while an Excalidraw board shows what it's do
 
 The board is pictures, not prose. Components are hand-drawn pictograms (browser window, server rack, database cylinder, cloud, queue, clipboard, person) with a short name; status is color plus a corner badge (… building, ✓ verified, ✗ failed, ★ live). Above the board, the project's name and goal sit beside the four phases, drawn as milestones on a road (Plan details → Build → Verify → Ship) with a dot per task: hover one to read it, click to open it in Plan details. Below that, the board has a tab per canvas: **Architecture** (what's being built; edit it to steer), **Why** (the reasoning behind it) and **Timeline** (how that reasoning moved over the run). Words stay in the side panel.
 
+## Take the tour
+
+New here? Press **Take the tour** (on the start screen, as **Tour** beside the coach's Hide tips, or the flag button by **?**). The scripted demo plays as a lesson: no API key, nothing touches your files. It stops at each step until you've tried it, then carries on: click a ◇ decision, pick another option with **Use this** (or drag a sticker onto a part), answer its question, **Approve with changes**, hover a log line while it builds, answer a command prompt (**Allow once**, **Allow all** or **Deny**, and *Why am I asked?*), open **Why** when a check fails and the decision changes, find the claim that isn't true (the ✗ row in the review, or the red pen), and read the **Timeline**. Twelve steps; Back, Skip step (it does the step for you) and Exit tour are on the card. A first visit offers it once.
+
+![The tour at step 4: the yellow tour card says what to do and why, orange rings point at Use this on the decision's card and at the Stickers button](screenshots/tour/04-use-this.png)
+
 ## First-time help
 
 The app walks a newcomer through a run without hiding anything. **Hide tips** turns the coach and the board tips off (remembered); the **?** button brings them back.
@@ -191,13 +197,15 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `src/engine/claims.js` | Receipts: finds checkable claims in the agent's sentences (and questions or assumptions said in passing) and checks them against the run's record |
 | `src/engine/review.js` | The end-of-run review card: what needs a look, and where; and the red-pen marks for the board |
 | `src/engine/stickers.js` | The steering stickers: what a dropped sticker lands on, and the edit it makes |
+| `src/engine/tour.js` | The guided tour as pure functions: the steps, when each is done, where it points, when the demo waits for you |
 | `src/PhaseHeader.jsx` | The journey above the tabs: title, goal, milestones and task dots, drawn with roughjs (Excalidraw's renderer) |
 | `src/engine/transcript.js` | Sentences and activity rows, each linked to the board items it touched |
 | `src/engine/parser.js`, `player.js`, `src/agent/script.js`, `replies.js` | The scripted demo (inline `<board/>` tags typed out at reading pace) |
 | `scripts/make-sandbox.mjs` | Creates the sample repo |
-| `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, stickers and the red pen, the views and their Mermaid exports, the decision log's diagrams, and git change tracking on a throwaway repo |
+| `scripts/tour-check.cjs` | Takes the tour end to end in headless Chromium (Playwright) with screenshots, then checks the plain demo is unchanged |
+| `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, stickers and the red pen, the tour's steps, the views and their Mermaid exports, the decision log's diagrams, and git change tracking on a throwaway repo |
 
-Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node` (with `layer`), `edge`, `flow`, `table`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner.
+Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node` (with `layer`), `edge`, `flow`, `table`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner, and `ask` (a command prompt) and `tour` (a checkpoint) that only do something during the tour.
 
 ## License
 

@@ -41,6 +41,11 @@ export class Session {
     this.caption = "";
     this.hideTimer = null;
     this.tlTimer = null;
+    // The guided tour (tour.js) runs the demo as a lesson: App sets `tour` and `onHold`, which says
+    // whether to pause at a checkpoint in the script (`held`) until you've done the step.
+    this.tour = false;
+    this.onHold = null;
+    this.held = null;
     this.resetTimeline();
     this.resetAgent();
 
@@ -98,6 +103,9 @@ export class Session {
     this.commits = 0; // commits made during the run
     this.demoRuns = 0;
     this.stickerTurn = false; // a turn answering sent stickers has started (stateChanged)
+    this.held = null;
+    this.denied = new Set(); // demo commands you denied: their runs don't happen
+    this.allowAll = false;
   }
 
   // The repo's changes: a live run's `changes` events (a patch is only resent when it changed).
@@ -168,7 +176,26 @@ export class Session {
   // The demo has no repo and runs no commands, so its script carries what a live run's record would:
   //   <board op="diff" id="api"/>                   the files that step changed (DEMO_CHANGES)
   //   <board op="run" cmd="pytest -q" pass="42" fail="0" ok="true"/>   a test run and its result
+  // and two that only do something in the tour (plain demo plays straight through them):
+  //   <board op="tour" at="build"/>                 a checkpoint: pause here while the tour waits for you
+  //   <board op="ask" cmd="pytest -q" why="…"/>     a command prompt, like a live run's (Allow / Deny)
   demoOp(a) {
+    if (a.op === "tour") {
+      if (this.tour && this.onHold?.(a.at)) {
+        this.held = a.at;
+        this.player.pause();
+      }
+      return true;
+    }
+    if (a.op === "ask") {
+      if (!this.tour || this.allowAll) return true;
+      this.permission = { requestId: `demo-ask-${this.demoRuns + 1}`, tool: "Bash", detail: a.cmd, description: a.why };
+      this.demoEvent({ type: "permission", requestId: this.permission.requestId, tool: "Bash", detail: a.cmd });
+      this.caption = "";
+      this.player.pause();
+      this.sync();
+      return true;
+    }
     if (a.op === "diff") {
       const files = new Map(this.changes ?? []);
       for (const f of DEMO_CHANGES[a.id] ?? []) files.set(f.path, f);
@@ -177,6 +204,7 @@ export class Session {
       return true;
     }
     if (a.op === "run") {
+      if (this.denied.has(a.cmd)) return true; // you said no: it doesn't run
       const toolUseId = `demo-run-${++this.demoRuns}`;
       const pass = +a.pass, fail = +a.fail;
       const ok = a.ok != null ? a.ok === "true" : fail === 0;
@@ -557,7 +585,18 @@ export class Session {
     this.permission = null;
     // Keep the answer in the conversation, where it happened.
     this.transcript.endMessage();
-    this.sentMsgs.push(this.transcript.addUserMessage({ kind: "permission", decision, detail }).id);
+    const m = this.transcript.addUserMessage({ kind: "permission", decision, detail });
+    if (this.mode === "demo") {
+      // The tour's scripted prompt: carry on (a denied command just doesn't run).
+      this.demoEvent({ type: "user", kind: "permission", decision, detail, msg: m.id });
+      if (decision === "deny") this.denied.add(detail);
+      if (decision === "allow-all") this.allowAll = true;
+      this.transcript.startMessage("agent");
+      if (decision === "deny") this.transcript.text(`You said no, so I won't run ${detail}. `);
+      this.player.resume();
+      return this.stateChanged();
+    }
+    this.sentMsgs.push(m.id);
     this.beginTurn();
     this.send({ type: "permission", requestId, decision });
   }
@@ -640,6 +679,13 @@ export class Session {
   confirmAssumption(q) {
     this.board.apply({ op: "assumption", id: q.id, state: "confirmed" });
     this.sync();
+  }
+
+  // Let the demo carry on from a tour checkpoint.
+  release() {
+    if (!this.held) return;
+    this.held = null;
+    if (!this.permission) this.player.resume();
   }
 
   // ---- highlights ----

@@ -6,6 +6,7 @@ import { Session } from "./engine/session";
 import { AREAS, areaOf, fmt, STICKER_WORD } from "./engine/timeline";
 import { LAYERS, layerOf, tagCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "./engine/views";
 import { buildReview, penMarks } from "./engine/review";
+import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour, stepOf, targets as tourTargets, tourLength, waiting as tourWaiting } from "./engine/tour";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 
 // Tasks that fit the sample repo (sandbox/linkshort, created by `npm run sandbox`).
@@ -63,6 +64,7 @@ const ICONS = {
   stop: <rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" />,
   restart: <path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3M3.5 2.5v2.7h2.7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />,
   fit: <path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />,
+  tour: <path d="M4 14V2.5M4 3h7.5l-1.8 2.7L11.5 8.5H4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />,
   tips: (
     <g fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="8" cy="8" r="6.2" />
@@ -387,7 +389,7 @@ function ReviewCard({ rows, onGo }) {
       <p className="rv-note">What the agent said, checked against git and the test output. Start with ✗ and ?.</p>
       <ul>
         {rows.map((r) => (
-          <li key={r.key} className={`rv rv-${r.tone}`}>
+          <li key={r.key} className={`rv rv-${r.tone}`} data-tour={r.tone === "bad" ? "untrue" : undefined}>
             <span className="rv-icon" aria-hidden="true">{r.icon}</span>
             <span className="rv-body">
               <span>{r.text}</span>
@@ -839,7 +841,7 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
 // The coach: which of the four steps you're on and what to do now, in a sentence or two.
 // Hide tips folds it away (remembered per browser); the ? in the title bar brings it back.
 const STEPS = ["Describe", "Plan", "Build", "Check"];
-function Coach({ c, onHide }) {
+function Coach({ c, onHide, onTour }) {
   return (
     <div className="coach" role="region" aria-label="What to do now">
       <div className="coach-top">
@@ -854,9 +856,16 @@ function Coach({ c, onHide }) {
         ) : (
           <span className="coach-label">{c.label}</span>
         )}
-        <button className="linkish coach-hide" onClick={onHide} title="Hide the tips (the ? button above brings them back)">
-          Hide tips
-        </button>
+        <span className="coach-links">
+          {onTour && (
+            <button className="linkish coach-hide" onClick={onTour} title="Take the tour: a guided run of the demo that waits while you try each step">
+              Tour
+            </button>
+          )}
+          <button className="linkish coach-hide" onClick={onHide} title="Hide the tips (the ? button above brings them back)">
+            Hide tips
+          </button>
+        </span>
       </div>
       <b className="coach-title">{c.title}</b>
       <p>{c.text}</p>
@@ -865,6 +874,92 @@ function Coach({ c, onHide }) {
           {c.action.label}
         </button>
       )}
+    </div>
+  );
+}
+
+// The guided tour's card: the same yellow note as the coach, with a step count and a way out.
+// A step that waits for the run (it's still planning, say) says so instead of offering Next.
+function TourCard({ step, n, total, wait, manual, onBack, onNext, onSkip, onExit, finish }) {
+  return (
+    <div className="coach tour" role="region" aria-label="Tour">
+      <div className="coach-top">
+        <span className="coach-label">
+          Tour · step {n} of {total}
+        </span>
+        <button className="linkish coach-hide" onClick={onExit} title="Leave the tour: the demo carries on as usual">
+          Exit tour
+        </button>
+      </div>
+      <div className="tour-bar" aria-hidden="true">
+        <i style={{ width: `${(n / total) * 100}%` }} />
+      </div>
+      <b className="coach-title">{step.title}</b>
+      <p>{step.text}</p>
+      {wait && (
+        <p className="tour-wait" role="status">
+          <span className="dot" /> {wait}
+        </p>
+      )}
+      <div className="tour-actions">
+        <button className="linkish" onClick={onBack} disabled={n === 1}>
+          ← Back
+        </button>
+        {finish ? (
+          <span className="tour-finish">{finish}</span>
+        ) : step.next || manual ? (
+          <button className="primary" onClick={onNext}>
+            Next →
+          </button>
+        ) : (
+          <button className="linkish" onClick={onSkip} title="Do it for me and go on">
+            Skip step
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Rings round what the tour points at on the page (a tab, a button, a card), with a label.
+// Positioned over everything and click-through, re-measured as the layout moves.
+function TourRings({ targets }) {
+  const [boxes, setBoxes] = useState([]);
+  const key = targets.map((t) => t.sel).join("|");
+  useEffect(() => {
+    const measure = () => {
+      const next = targets
+        .map((t) => {
+          const el = [...document.querySelectorAll(t.sel)].find((e) => e.offsetParent !== null);
+          const r = el?.getBoundingClientRect();
+          if (!r || r.width <= 0) return null;
+          // Kept on screen: a panel that starts at the window's edge still gets its whole ring.
+          const x = Math.max(r.left, 8), y = Math.max(r.top, 8);
+          const w = Math.min(r.right, window.innerWidth - 8) - x, h = Math.min(r.bottom, window.innerHeight - 8) - y;
+          return { label: t.label, x, y, w, h };
+        })
+        .filter(Boolean);
+      setBoxes((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+    };
+    measure();
+    const t = setInterval(measure, 250);
+    window.addEventListener("resize", measure);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("resize", measure);
+    };
+  }, [key]);
+  return (
+    <div className="tour-rings" aria-hidden="true">
+      {boxes.map((b, i) => {
+        const pad = 5;
+        const below = b.y < 40 && b.h < window.innerHeight / 2; // a tall ring keeps its tag inside, at the top
+        return (
+          <div key={i} className="tour-ring" style={{ left: b.x - pad, top: b.y - pad, width: b.w + pad * 2, height: b.h + pad * 2 }}>
+            {b.label && <span className={`tour-tag ${below ? "below" : b.y < 40 ? "inside" : ""}`}>{b.label}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -975,7 +1070,7 @@ function Explain({ lid, model, live, onClose, onRename, onRemove, onAsk, onChall
           <>
             <div className="ex-k">Instead of</div>
             {d.over.slice(0, 3).map((o, i) => (
-              <button key={o} className="ex-use" onClick={() => onPick(d, i)}>
+              <button key={o} className="ex-use" onClick={() => onPick(d, i)} data-tour={i === 0 ? "use-this" : undefined}>
                 <span>⇄ {o}</span>
                 <span className="ex-go">Use this</span>
               </button>
@@ -1057,7 +1152,7 @@ function Explain({ lid, model, live, onClose, onRename, onRemove, onAsk, onChall
 const KEY = [["planned", "New"], ["built", "Exists"], ["building", "Being built"], ["verified", "Tested ✓"], ["failed", "Failed ✗"], ["live", "Shipped ★"]];
 function BoardKey() {
   return (
-    <div className="board-key" aria-label="Key">
+    <div className="board-key" aria-label="Key" data-tour="key">
       <b>Key</b>
       {KEY.map(([k, label]) => (
         <span key={k}>
@@ -1134,6 +1229,27 @@ export default function App() {
     setTips(v);
     remember("wb-tips", v);
   };
+  // The guided tour (engine/tour.js): its step, and whether to offer it (once, on a first visit).
+  const [tour, setTour] = useState(null);
+  const tourRef = useRef(null);
+  tourRef.current = tour;
+  const [tourOffer, setTourOffer] = useState(() => {
+    try {
+      return !localStorage.getItem("wb-tour");
+    } catch {
+      return false;
+    }
+  });
+  const markTour = (v) => {
+    setTourOffer(false);
+    try {
+      localStorage.setItem("wb-tour", v);
+    } catch {
+      /* private window: just this page */
+    }
+  };
+  const reviewOpens = useRef(0); // review rows and red-pen marks opened (the tour waits for one)
+  const lineHovers = useRef(0); // Chat & log sentences hovered to light up the board (and this one)
   const [tools, setTools] = useState(() => remembered("wb-tools", false));
   const toggleTools = () =>
     setTools((v) => {
@@ -1321,6 +1437,7 @@ export default function App() {
   // From the review card: a sentence in Activity, the diff, or a card in the Plan tab.
   const goReview = (lid) => {
     if (!lid) return;
+    reviewOpens.current++;
     const [k, v] = lid.split(/:(.*)/s);
     if (k === "sentence") return focusInActivity(v);
     if (k === "code") {
@@ -1506,6 +1623,7 @@ export default function App() {
   // Replay: back to the start screen. Demo: replay.
   const restart = async () => {
     if (!s) return;
+    if (tour) exitTour();
     if (replayMode) {
       clearUi();
       await s.reset();
@@ -1590,6 +1708,8 @@ export default function App() {
     if (!s) return;
     if (replayMode) s.toggleReplay();
     else if (agentMode && st.busy) s.stop();
+    else if (s.permission) return; // the tour's command prompt: answer it below
+    else if (s.held) s.release();
     else if (st.paused) s.player.resume();
     else if (st.busy) s.player.pause();
     else if (s.awaitingApproval) approve();
@@ -1619,6 +1739,7 @@ export default function App() {
     else if (s.gate) status = "Here the agent waited for your approval";
     else status = s.caption ? `${s.caption}…` : "Replaying…";
   } else if (permission) status = "Waiting for your OK";
+  else if (s?.held) status = "Paused: the tour waits for you";
   else if (st.paused) status = "Paused";
   else if (st.thinking) status = st.thinkingFor >= 2 ? `Working… ${st.thinkingFor}s` : "Working…";
   else if (st.busy) status = s.caption ? `${s.caption}…` : "Working…";
@@ -1717,6 +1838,127 @@ export default function App() {
     useTool("selection", "Click a part, an arrow or a ◇ first, then Remove. (The Delete key works too.)");
   };
 
+  // ---- the guided tour: the demo as a lesson that waits for you at each step ----
+  // What the tour's steps check (tour.js): the run's state and what you've done so far.
+  const tourCtx = s && {
+    started: messages.length > 0,
+    stage: s.stage,
+    phase: model.phase,
+    gate: reviewing,
+    selected: boardSel,
+    explainUse: boardView === "board" && !!selected?.startsWith("decision:") && model.decisions[selected.slice(9)]?.over.length > 0,
+    edits: decisions.length,
+    answered: Object.values(model.questions).filter((q) => q.kind === "question" && q.state === "answered").length,
+    permission: !!permission,
+    permissions: messages.filter((m) => m.role === "you" && m.kind === "permission").length,
+    hovers: lineHovers.current,
+    view: boardView,
+    tab,
+    testCaused: allDecisions.some((d) => d.cause?.who === "test"),
+    finished: !!review,
+    reviewOpens: reviewOpens.current,
+    firstDecision: allDecisions.filter((d) => d.state !== "rejected").sort((a, b) => a.n - b.n)[0]?.id ?? null,
+    firstQuestion: Object.values(model.questions).find((q) => q.kind === "question" && q.state === "open")?.id ?? null,
+    building: Object.values(model.nodes).find((n) => n.status === "building")?.id ?? null,
+  };
+  const tourCtxRef = useRef(null);
+  tourCtxRef.current = tourCtx;
+  const tourStep = stepOf(tour);
+  const tourAt = tour && tourTargets(tour, tourCtx);
+  const setSpeedTo = (v) => {
+    setSpeed(v);
+    if (s) s.player.speed = v;
+  };
+  // Start from an empty board: the first step shows the three areas, the second starts the demo.
+  const takeTour = async () => {
+    if (!s) return;
+    markTour("taken");
+    clearUi();
+    setDraft("");
+    await s.reset();
+    if (s.mode === "replay") s.mode = agent?.live ? "agent" : "demo";
+    setPhase(null);
+    setTour(startTour(tourCtxRef.current));
+  };
+  const exitTour = () => {
+    markTour("done");
+    setTour(null);
+  };
+  // Skip step does the step for you (where there's something to do), then moves on.
+  const skipTour = () => {
+    if (!s || !tour) return;
+    const m = s.board.model;
+    switch (tourStep.skip) {
+      case "pick": {
+        const d = m.decisions[tourCtx.firstDecision];
+        if (reviewing && d?.over.length) {
+          showView("board");
+          s.board.pickAlternative(d.id, 0);
+        }
+        break;
+      }
+      case "answer": {
+        const q = m.questions[tourCtx.firstQuestion];
+        if (reviewing && q) s.answerQuestion(q, q.options[0] ?? "50 MB");
+        break;
+      }
+      case "approve":
+        if (reviewing) approve();
+        break;
+      case "allow":
+        if (s.permission) s.answerPermission("allow");
+        break;
+    }
+    setTour(tourNext(tour, tourCtx));
+  };
+  // The finish line: your own task (live mode), the saved runs, or just stay on this board.
+  const leaveTour = async (to) => {
+    exitTour();
+    if (!s || to === "stay") return;
+    clearUi();
+    await s.reset();
+    s.mode = agent?.live ? "agent" : "demo";
+    setPhase(null);
+    if (to === "task") setTimeout(() => document.getElementById("ask")?.focus(), 50);
+  };
+  useEffect(() => {
+    if (!s) return;
+    s.tour = !!tour;
+    s.onHold = (at) => holds(tourRef.current, at, tourCtxRef.current);
+    if (tour) {
+      const t2 = advance(tour, tourCtx);
+      if (t2 !== tour) setTour(t2);
+    }
+    // Leaving the step a checkpoint waits for (done, skipped, or the tour's over) lets the demo go on.
+    if (s.held && !holds(tour, s.held, tourCtx)) s.release();
+  });
+  // A step's action, the first time it's reached: the plan step starts the demo at 2×.
+  const prevTour = useRef(null);
+  useEffect(() => {
+    const prev = prevTour.current;
+    prevTour.current = tour;
+    if (!isFresh(prev, tour)) return;
+    if (stepOf(tour).enter === "demo") {
+      runDemo();
+      setSpeedTo(2);
+    }
+    if (stepOf(tour).clearSelection) s?.board.api.updateScene({ appState: { selectedElementIds: {} } });
+  }, [tour]);
+  // Its notes and circles on the board (the coach's own tips stay off while it runs).
+  const tourTips = useRef("");
+  useEffect(() => {
+    const b = s?.board;
+    if (!b) return;
+    const want = tour && boardView === "board" && !readOnlyDiagram ? tourAt.board : [];
+    const sig = want.length ? `${s.gen}|${JSON.stringify(want)}` : "";
+    if (sig === tourTips.current) return;
+    tourTips.current = sig;
+    if (want.length) {
+      b.showTips(want);
+      if (b.tips) b.fit(true);
+    } else if (b.tips) b.hideTips();
+  });
+
   // The coach's tips on the board itself, the first time a plan waits for you: sticky notes with
   // arrows to a decision and a part, and a circle round its first open question.
   const tipsShown = useRef(false);
@@ -1724,6 +1966,10 @@ export default function App() {
   useEffect(() => {
     const b = s?.board;
     if (!b) return;
+    if (tour) {
+      tipsShown.current = true; // the tour points at things itself
+      return;
+    }
     const want = tips && reviewing && editable;
     if (want && !tipsShown.current) {
       tipsShown.current = true;
@@ -1756,7 +2002,8 @@ export default function App() {
 
   return (
     <div className="app" data-theme={theme}>
-      <aside className="agent">
+      {tourAt && <TourRings targets={tourAt.dom} />}
+      <aside className="agent" data-tour="panel">
         <header className="top">
           <div className="titlebar">
             <div className="brand">
@@ -1783,6 +2030,11 @@ export default function App() {
               <button className="icon" onClick={() => s?.board.fit(true)} title="Fit board to screen" aria-label="Fit board to screen">
                 <Icon name="fit" />
               </button>
+              {!tips && !tour && (
+                <button className="icon" onClick={takeTour} title="Take the tour: a guided run of the demo" aria-label="Take the tour">
+                  <Icon name="tour" />
+                </button>
+              )}
               {!tips && (
                 <button className="icon" onClick={() => showTipsPref(true)} title="Show tips: what to do at each step" aria-label="Show tips">
                   <Icon name="tips" />
@@ -1797,12 +2049,59 @@ export default function App() {
               <span className="caption">{status}</span>
             </div>
           )}
-          {tips && coach && <Coach c={coach} onHide={() => showTipsPref(false)} />}
+          {tour ? (
+            <TourCard
+              step={tourStep}
+              n={tour.i + 1}
+              total={tourLength}
+              wait={tourWaiting(tourStep, tourCtx)}
+              manual={tour.manual}
+              onBack={() => setTour(tourBack(tour, tourCtx))}
+              onNext={() => setTour(tourNext(tour, tourCtx))}
+              onSkip={skipTour}
+              onExit={exitTour}
+              finish={
+                tourStep.finish && (
+                  <>
+                    {agent?.live && (
+                      <button className="secondary" onClick={() => leaveTour("task")}>
+                        Start your own task
+                      </button>
+                    )}
+                    <button className="secondary" onClick={() => leaveTour("start")}>
+                      See saved runs
+                    </button>
+                    <button className="primary" onClick={() => leaveTour("stay")}>
+                      Finish
+                    </button>
+                  </>
+                )
+              }
+            />
+          ) : tourOffer && s ? (
+            <div className="coach tour-offer" role="region" aria-label="Take the tour">
+              <div className="coach-top">
+                <span className="coach-label">New here?</span>
+              </div>
+              <b className="coach-title">Take the tour: a whole run in a few minutes</b>
+              <p>The demo plays as a lesson. It stops at each step until you've tried it: pick an option, answer a question, allow a command, check its work. No API key needed.</p>
+              <div className="tour-actions">
+                <button className="linkish" onClick={() => markTour("declined")}>
+                  No thanks
+                </button>
+                <button className="primary" onClick={takeTour}>
+                  Take the tour
+                </button>
+              </div>
+            </div>
+          ) : (
+            tips && coach && <Coach c={coach} onHide={() => showTipsPref(false)} onTour={takeTour} />
+          )}
         </header>
 
         {messages.length > 0 && (
           <div className="tabs" role="tablist" aria-label="Panel view">
-            <button role="tab" aria-selected={tab === "activity"} className="tab" onClick={() => setTab("activity")} title="What the agent said and did, and what you sent it">
+            <button role="tab" aria-selected={tab === "activity"} className="tab" data-tour="log-tab" onClick={() => setTab("activity")} title="What the agent said and did, and what you sent it">
               Chat &amp; log
               {contradicted > 0 && (
                 <span className="tab-count bad" title={`${contradicted} thing${contradicted === 1 ? "" : "s"} the agent said that git or the test output contradicts`}>
@@ -1810,7 +2109,7 @@ export default function App() {
                 </span>
               )}
             </button>
-            <button role="tab" aria-selected={tab === "plan"} className="tab" onClick={() => setTab("plan")} title="The plan in words: its goal, parts, decisions, questions and code changes">
+            <button role="tab" aria-selected={tab === "plan"} className="tab" data-tour="plan-tab" onClick={() => setTab("plan")} title="The plan in words: its goal, parts, decisions, questions and code changes">
               Plan details
               {openQuestions > 0 ? (
                 <span className="tab-count ask" title={`${openQuestions} open question${openQuestions === 1 ? "" : "s"} or assumption${openQuestions === 1 ? "" : "s"} for you`}>
@@ -1896,15 +2195,32 @@ export default function App() {
                     </div>
                   </>
                 )}
-                <button className="linkish" onClick={runDemo}>
-                  Or watch the scripted demo
-                </button>
+                <div className="start-demo">
+                  {!tour && (
+                    <button className="secondary" onClick={takeTour} title="A guided run of the demo: it waits while you try each step">
+                      Take the tour
+                    </button>
+                  )}
+                  <button className="linkish" onClick={runDemo}>
+                    Or watch the scripted demo
+                  </button>
+                </div>
                 <SavedRuns recordings={recordings} onReplay={(id) => replay(id)} onOpen={(id) => replay(id, { instant: true })} />
               </div>
             ) : (
               <div className="empty">
                 <p className="hand">The board fills in as the agent works.</p>
                 <p>Watch it plan, build, verify and ship a small app. Hover any sentence afterwards to see what it changed.</p>
+                {!tour && (
+                  <div className="start-demo">
+                    <button className="secondary" onClick={takeTour} title="A guided run of the demo: it waits while you try each step">
+                      Take the tour
+                    </button>
+                    <button className="linkish" onClick={runDemo}>
+                      Watch the demo
+                    </button>
+                  </div>
+                )}
                 {agent && !agent.live && (
                   <p className="note">
                     This is the scripted demo. To run a real agent on a repo, set <code>ANTHROPIC_API_KEY</code> and restart{" "}
@@ -1925,7 +2241,10 @@ export default function App() {
                 m={m}
                 phase={phase}
                 linked={linked}
-                onHover={(ids) => s?.setHover(ids)}
+                onHover={(ids) => {
+                  if (ids.length) lineHovers.current++;
+                  s?.setHover(ids);
+                }}
                 onFocus={(ids) => s?.board.scrollTo(ids)}
                 receipts={receipts}
                 skim={skim}
@@ -1987,7 +2306,7 @@ export default function App() {
               </div>
             </div>
           ) : permission ? (
-            <div className="permit" role="alertdialog" aria-label="Permission request">
+            <div className="permit" role="alertdialog" aria-label="Permission request" data-tour="permit">
               <div className="gh">{permission.tool === "Bash" ? "Can it run this command?" : `Can it use ${permission.tool}?`}</div>
               <pre className="cmd">{permission.detail}</pre>
               {permission.description && <p>What it's for: {permission.description}</p>}
@@ -2032,7 +2351,7 @@ export default function App() {
                     Revise plan
                   </button>
                 )}
-                <button className="primary" onClick={approve}>
+                <button className="primary" onClick={approve} data-tour="approve">
                   {decisions.length > 0 ? "Approve with changes" : "Approve plan & build"}
                 </button>
               </div>
@@ -2098,7 +2417,7 @@ export default function App() {
             <span className="ct-sub">what it builds</span>
             {nodeCount > 0 && <span className="ct-count">{nodeCount}</span>}
           </button>
-          <button role="tab" aria-selected={boardView === "why"} onClick={() => showView("why")} title="Each decision: its evidence, what it shapes, and the check that proves it">
+          <button role="tab" aria-selected={boardView === "why"} data-tour="why-tab" onClick={() => showView("why")} title="Each decision: its evidence, what it shapes, and the check that proves it">
             <span className="vs-diamond" aria-hidden="true" />
             Why
             <span className="ct-sub">the reasons</span>
@@ -2110,7 +2429,7 @@ export default function App() {
               </span>
             )}
           </button>
-          <button role="tab" aria-selected={boardView === "timeline"} onClick={() => showView("timeline")} title="How the decisions moved over the run: what changed, when, and because of what">
+          <button role="tab" aria-selected={boardView === "timeline"} data-tour="timeline-tab" onClick={() => showView("timeline")} title="How the decisions moved over the run: what changed, when, and because of what">
             <span className="tl-icon" aria-hidden="true" />
             Timeline
             <span className="ct-sub">what changed when</span>
@@ -2224,7 +2543,7 @@ export default function App() {
               <ToolIcon name="note" />
               Add a note
             </button>
-            <button onClick={openStickers} title="Stickers to drag onto a part or a ◇: Why?, Not needed, Keep this">
+            <button onClick={openStickers} data-tour="stickers" title="Stickers to drag onto a part or a ◇: Why?, Not needed, Keep this">
               <ToolIcon name="stickers" />
               Stickers
             </button>
@@ -2234,7 +2553,7 @@ export default function App() {
             </button>
           </div>
         )}
-        <div className="canvases">
+        <div className="canvases" data-tour="board">
           <div
             className={`canvas arch ${boardView === "board" && !readOnlyDiagram ? "on" : ""} ${ownSel ? "own-sel" : ""} ${tools ? "tools-on" : "tools-off"}`}
             role="tabpanel"
