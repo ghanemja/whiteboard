@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Excalidraw, exportToBlob, exportToSvg, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
-import { Board, PHASES } from "./engine/board";
+import { Excalidraw, exportToBlob, exportToSvg, sceneCoordsToViewportCoords, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
+import { Board, PHASES, STATUS } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
 import { AREAS, areaOf, fmt } from "./engine/timeline";
@@ -56,7 +56,29 @@ const ICONS = {
   stop: <rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" />,
   restart: <path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3M3.5 2.5v2.7h2.7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />,
   fit: <path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />,
+  tips: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="6.2" />
+      <path d="M6.3 6.2a1.8 1.8 0 1 1 3 1.4c-.8.5-1.3.9-1.3 1.7" />
+      <circle cx="8" cy="11.6" r=".5" fill="currentColor" />
+    </g>
+  ),
 };
+// The Edit the plan toolbar's pictures.
+const TOOL_ICONS = {
+  select: <path d="M3.5 2.5l9 4.5-4 1.2-1.6 4.3z" />,
+  rename: <path d="M10.5 2.5l3 3L5 14H2v-3z" />,
+  add: <path d="M3.5 2.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM8 5.5v5M5.5 8h5" />,
+  connect: <path d="M2 8h11M9.5 4.5L13 8l-3.5 3.5" />,
+  remove: <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />,
+  note: <path d="M3 2.5h10v7.5l-3.5 3.5H3zM9.5 13.5V10H13" />,
+  tools: <path d="M2.5 13.5l3-1 7.5-7.5-2-2L3.5 10.5zM9.5 4.5l2 2M2.5 2.5h3M2.5 2.5v3" />,
+};
+const ToolIcon = ({ name }) => (
+  <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    {TOOL_ICONS[name]}
+  </svg>
+);
 const Icon = ({ name }) => (
   <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
     {ICONS[name]}
@@ -165,13 +187,14 @@ function Activity({ a, linked, onHover, onFocus }) {
 
 // A sentence's receipt: what the run's record says about its claims (src/engine/claims.js).
 const RC = { ok: "✓", unknown: "?", bad: "✗" };
+const RC_WORD = { ok: "checked", unknown: "can't tell", bad: "not true" };
 const RC_SAID = { ok: "Backed by the record", unknown: "Nothing in the record says either way", bad: "The record contradicts this" };
 function Receipt({ r }) {
   const bad = r.claims.filter((c) => c.verdict === "bad");
   return (
-    <span className={`rcpt rc-${r.verdict}`} title={`${RC_SAID[r.verdict]}:\n${r.claims.map((c) => `${RC[c.verdict]} “${c.text}”: ${c.why}`).join("\n")}`}>
-      {RC[r.verdict]}
-      {bad.length > 0 && <span className="rcpt-why">{bad.map((c) => c.short ?? c.why).join(", ")}</span>}
+    <span className={`rcpt rc-${r.verdict}`} title={`${RC_SAID[r.verdict]} (git and the test output):\n${r.claims.map((c) => `${RC[c.verdict]} “${c.text}”: ${c.why}`).join("\n")}`}>
+      {RC[r.verdict]} {RC_WORD[r.verdict]}
+      {bad.length > 0 && <span className="rcpt-why">: {bad.map((c) => c.short ?? c.why).join(", ")}</span>}
     </span>
   );
 }
@@ -349,10 +372,11 @@ function ReviewCard({ rows, onGo }) {
         <span className="hand">Review</span>
         {todo > 0 && (
           <span className="rv-count" title={`${todo} to check before you trust this run`}>
-            {todo}
+            {todo} to look at
           </span>
         )}
       </div>
+      <p className="rv-note">What the agent said, checked against git and the test output. Start with ✗ and ?.</p>
       <ul>
         {rows.map((r) => (
           <li key={r.key} className={`rv rv-${r.tone}`}>
@@ -625,6 +649,14 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
       {decisions.length > 0 && (
         <section>
           <h3>Decisions <span className="h3-note">the reasoning chain</span></h3>
+          <details className="whats">
+            <summary>What's a decision?</summary>
+            <p>
+              A technical choice the agent made, like which route to add or where data is kept. Pick another option under <b>Over</b>,
+              press <b>Ask why</b>, or delete its ◇ on the board to reject it, and the plan changes to match. Its <b>Check</b> is how
+              we'll know it was right: usually a test.
+            </p>
+          </details>
           {decisions.map((d) => (
             <div key={d.id} {...link(`decision:${d.id}`)} className={["plan-card", "decision", `ds-${d.state}`, selected.has(`decision:${d.id}`) && "linked"].filter(Boolean).join(" ")}>
               <div className="pc-head">
@@ -729,12 +761,13 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
               {canChallenge && d.state !== "rejected" && (
                 <button
                   className="linkish challenge"
+                  title="Challenge it: starts a message about this decision for you to finish"
                   onClick={(ev) => {
                     ev.stopPropagation();
                     onChallenge(d);
                   }}
                 >
-                  Challenge this
+                  Ask why
                 </button>
               )}
             </div>
@@ -795,6 +828,247 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
   );
 }
 
+// The coach: which of the four steps you're on and what to do now, in a sentence or two.
+// Hide tips folds it away (remembered per browser); the ? in the title bar brings it back.
+const STEPS = ["Describe", "Plan", "Build", "Check"];
+function Coach({ c, onHide }) {
+  return (
+    <div className="coach" role="region" aria-label="What to do now">
+      <div className="coach-top">
+        {c.n ? (
+          <ol className="coach-steps" aria-label={`Step ${c.n} of ${STEPS.length}`}>
+            {STEPS.map((name, i) => (
+              <li key={name} className={i + 1 < c.n ? "done" : i + 1 === c.n ? "now" : ""} aria-current={i + 1 === c.n ? "step" : undefined}>
+                {name}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <span className="coach-label">{c.label}</span>
+        )}
+        <button className="linkish coach-hide" onClick={onHide} title="Hide the tips (the ? button above brings them back)">
+          Hide tips
+        </button>
+      </div>
+      <b className="coach-title">{c.title}</b>
+      <p>{c.text}</p>
+      {c.action && (
+        <button className="secondary coach-act" onClick={c.action.run}>
+          {c.action.label}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Click to explain: the one thing selected on the board, in plain words, and what you can do
+// to it. The board stays pictures; the words are on this card beside it.
+const STATUS_WORD = { planned: "New: not built yet", building: "Being built now", built: "Exists", verified: "Tested ✓", failed: "A test failed ✗", live: "Shipped ★" };
+const KIND_HELP = {
+  client: "What people use: a web page or an app.",
+  service: "A program that answers requests from the other parts.",
+  data: "Where data is kept: a database, a file or a cache.",
+  external: "A service someone else runs, reached over the network.",
+  queue: "A waiting line for jobs, so slow work runs in the background.",
+  test: "Tests that check the code does what it should.",
+  user: "A person using the system.",
+};
+const DSTATE_WORD = { proposed: "Proposed: not approved yet", accepted: "Approved", changed: "Changed", rejected: "Rejected" };
+const PROOF_WORD = { pass: "Proven by a test ✓", fail: "Failed its check ✗" };
+function Explain({ lid, model, live, onClose, onRename, onRemove, onAsk, onChallenge, onPick, onOpen, onCode, onAnswer, onConfirm, onCorrect }) {
+  const [k, id] = lid.split(/:(.*)/s);
+  const name = (n) => model.nodes[n]?.name ?? n;
+  const n = k === "node" && model.nodes[id];
+  const d = k === "decision" && model.decisions[id];
+  const e = k === "edge" && model.edges[id];
+  const q = k === "question" && model.questions[id];
+  if (!n && !d && !e && !q) return null;
+  const row = (label, value) => value && (
+    <>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </>
+  );
+  let body;
+  if (n) {
+    const links = Object.values(model.edges).filter((x) => x.from === id || x.to === id);
+    const decs = Object.values(model.decisions).filter((x) => x.affects.includes(id) && x.state !== "rejected");
+    body = (
+      <>
+        <div className="ex-kicker">You selected a part</div>
+        <h3>{n.name}</h3>
+        <div className="ex-chips">
+          <span className="ex-status" style={{ "--st": STATUS[n.status]?.stroke }}>{STATUS_WORD[n.status] ?? n.status}</span>
+          <span className="chip">{KIND_WORD[n.kind] ?? n.kind}</span>
+        </div>
+        <p className="ex-help">{KIND_HELP[n.kind]}</p>
+        <dl className="ex-dl">
+          {row("Exposes", n.api?.length > 0 && <code>{n.api.join("\n")}</code>)}
+          {row("Uses", n.libs?.length > 0 && n.libs.join(", "))}
+          {row(
+            "Files",
+            n.paths?.length > 0 && (
+              <>
+                <code>{n.paths.join("\n")}</code>
+                {n.diff && (
+                  <span className="ex-diff">
+                    <b className="add">+{n.diff.add}</b> <b className="del">−{n.diff.del}</b>
+                  </span>
+                )}
+              </>
+            ),
+          )}
+          {row(
+            "Decisions",
+            decs.length > 0 &&
+              decs.map((x) => (
+                <button key={x.id} className="chip ex-chip" onClick={() => onOpen(`decision:${x.id}`)}>
+                  ◇ D{x.n} {x.title}
+                </button>
+              )),
+          )}
+          {row(
+            "Connects",
+            links.length > 0 &&
+              links.map((x) => (
+                <div key={`${x.from}>${x.to}`}>
+                  {x.from === id ? `→ ${name(x.to)}` : `← ${name(x.from)}`}
+                  {x.via && <span className="ex-faint"> ({tagCase(x.via)})</span>}
+                </div>
+              )),
+          )}
+        </dl>
+        {live && (
+          <div className="ex-actions">
+            <button className="secondary" onClick={() => onRename(id)}>Rename</button>
+            <button className="secondary" onClick={onRemove}>Remove</button>
+            <button className="secondary" onClick={() => onAsk(`About ${n.name}: `)}>Ask about it</button>
+            {n.diff && <button className="secondary" onClick={() => onCode(id)}>See the code</button>}
+          </div>
+        )}
+      </>
+    );
+  } else if (d) {
+    const canSwap = live && d.state !== "rejected" && d.over.length > 0;
+    body = (
+      <>
+        <div className="ex-kicker">You selected a decision</div>
+        <h3>
+          <span className="ex-d">◇ D{d.n}</span> {d.title}
+        </h3>
+        <div className="ex-chips">
+          <span className="chip">{DSTATE_WORD[d.state] ?? cap(d.state)}</span>
+          <span className={`chip ex-proof pf-${d.proof ?? "pending"}`}>{PROOF_WORD[d.proof] ?? "Not tested yet"}</span>
+        </div>
+        <p className="ex-help">A technical choice the agent made. Keep it, swap it for another option, or ask why: the plan changes to match.</p>
+        <div className="ex-k">It chose</div>
+        <p className="ex-chose">{d.chose}</p>
+        {canSwap ? (
+          <>
+            <div className="ex-k">Instead of</div>
+            {d.over.slice(0, 3).map((o, i) => (
+              <button key={o} className="ex-use" onClick={() => onPick(d, i)}>
+                <span>⇄ {o}</span>
+                <span className="ex-go">Use this</span>
+              </button>
+            ))}
+            <p className="ex-faint">Or type your own in the blank “+ your own” option on the board.</p>
+          </>
+        ) : (
+          d.over.length > 0 && (
+            <>
+              <div className="ex-k">Instead of</div>
+              <p>{d.over.join(" · ")}</p>
+            </>
+          )
+        )}
+        {d.why && (
+          <>
+            <div className="ex-k">Why</div>
+            <p>{d.why}</p>
+          </>
+        )}
+        {d.verify && (
+          <>
+            <div className="ex-k">We'll know it's right when</div>
+            <p>{d.verify}</p>
+          </>
+        )}
+        <div className="ex-actions">
+          {live && <button className="secondary" onClick={() => onChallenge(d)}>Ask why</button>}
+          {live && d.state !== "rejected" && <button className="secondary" onClick={onRemove}>Reject it</button>}
+          <button className="secondary" onClick={() => onOpen(lid)}>Full card</button>
+        </div>
+      </>
+    );
+  } else if (e) {
+    body = (
+      <>
+        <div className="ex-kicker">You selected a connection</div>
+        <h3>
+          {name(e.from)} → {name(e.to)}
+        </h3>
+        <p className="ex-help">How two parts talk: the first one calls the second, or sends it data.</p>
+        <dl className="ex-dl">
+          {row("How", e.via && tagCase(e.via))}
+          {row("Calls", e.api && <code>{e.api}</code>)}
+        </dl>
+        {live && (
+          <div className="ex-actions">
+            <button className="secondary" onClick={onRemove}>Disconnect</button>
+            <button className="secondary" onClick={() => onAsk(`About ${name(e.from)} → ${name(e.to)}: `)}>Ask about it</button>
+          </div>
+        )}
+      </>
+    );
+  } else {
+    const dLabel = (a) => (model.decisions[a] ? `D${model.decisions[a].n}` : name(a));
+    body = (
+      <>
+        <div className="ex-kicker">{q.kind === "question" ? "A question for you" : "Something it assumes"}</div>
+        <p className="ex-help">
+          {q.kind === "question"
+            ? "The agent needs your answer to finish the plan. Pick an option or type your own."
+            : "It's working from this. Confirm it if it's right, or correct it."}
+        </p>
+        <QuestionCard q={q} dLabel={dLabel} canAnswer={live} onAnswer={onAnswer} onConfirm={onConfirm} onCorrect={onCorrect} link={() => ({})} />
+      </>
+    );
+  }
+  return (
+    <div className="explain" role="dialog" aria-label="About what you selected">
+      <button className="ex-close" onClick={onClose} aria-label="Close" title="Close">
+        ×
+      </button>
+      {body}
+    </div>
+  );
+}
+
+// What the colors mean, under the Pictures board (C4 and data flow draw their own key).
+const KEY = [["planned", "New"], ["built", "Exists"], ["building", "Being built"], ["verified", "Tested ✓"], ["failed", "Failed ✗"], ["live", "Shipped ★"]];
+function BoardKey() {
+  return (
+    <div className="board-key" aria-label="Key">
+      <b>Key</b>
+      {KEY.map(([k, label]) => (
+        <span key={k}>
+          <i className="sw" style={{ borderColor: STATUS[k].stroke, background: STATUS[k].fill }} />
+          {label}
+        </span>
+      ))}
+      <span>
+        <i className="sw sw-dia" />
+        Decision, dashed until you approve
+      </span>
+      <span>
+        <i className="sw" style={{ borderColor: "#f08c00", background: "#fff4e6" }} />
+        Question for you
+      </span>
+    </div>
+  );
+}
+
 export default function App() {
   const [api, setApi] = useState(null);
   const [whyApi, setWhyApi] = useState(null);
@@ -830,6 +1104,41 @@ export default function App() {
       }
       return !v;
     });
+  // Tips (the coach card and the notes it sticks on the board) and Excalidraw's own drawing
+  // tools: on and hidden by default, so a first run shows only what it needs. Remembered per browser.
+  const remembered = (key, fallback) => {
+    try {
+      const v = localStorage.getItem(key);
+      return v == null ? fallback : v === "1";
+    } catch {
+      return fallback;
+    }
+  };
+  const remember = (key, v) => {
+    try {
+      localStorage.setItem(key, v ? "1" : "0");
+    } catch {
+      /* private window: just this page */
+    }
+  };
+  const [tips, setTips] = useState(() => remembered("wb-tips", true));
+  const showTipsPref = (v) => {
+    setTips(v);
+    remember("wb-tips", v);
+  };
+  const [tools, setTools] = useState(() => remembered("wb-tools", false));
+  const toggleTools = () =>
+    setTools((v) => {
+      remember("wb-tools", !v);
+      return !v;
+    });
+  const [toolHint, setToolHint] = useState(null); // what to do next with the tool just picked
+  useEffect(() => {
+    if (!toolHint) return;
+    const t = setTimeout(() => setToolHint(null), 9000);
+    return () => clearTimeout(t);
+  }, [toolHint]);
+  const [boardSel, setBoardSel] = useState([]); // what's selected on the Architecture board, as logical ids
   // Which diagram the board shows. Pictures, C4 and Data flow redraw the editable board in place
   // (steering works in all three); Database (ER) and Sequence are read-only, on their own canvas.
   // Remembered per browser.
@@ -958,7 +1267,7 @@ export default function App() {
   // Keep the transcript pinned to the bottom while streaming, unless the user scrolled up.
   useEffect(() => {
     const el = scroller.current;
-    if (el && stick.current && tabRef.current === "activity") el.scrollTop = el.scrollHeight;
+    if (el && stick.current && tabRef.current === "activity" && sessionRef.current?.transcript.messages.length) el.scrollTop = el.scrollHeight;
   });
 
   const runDiff = useCallback(() => {
@@ -1034,7 +1343,9 @@ export default function App() {
         .join(",");
       if (sel !== lastSel.current) {
         lastSel.current = sel;
-        showLinked(s.board.logicalIdsFor(sel ? sel.split(",") : []));
+        const lids = s.board.logicalIdsFor(sel ? sel.split(",") : []);
+        showLinked(lids);
+        setBoardSel(lids);
         // Restyling what the board draws does nothing (it's redrawn), so its style panel would only cover the board.
         setOwnSel(!!sel && sel.split(",").every((id) => s.board.known.has(id)));
         // A selected decision fans out its alternatives: drag one onto it to pick it.
@@ -1291,6 +1602,115 @@ export default function App() {
   else if (phase === "complete") status = "Shipped. Edit the board to steer the next round.";
   else if (s && messages.length) status = "Idle";
 
+  // The coach: where you are in Describe → Plan → Build → Check, and what to do now.
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const coach = !s
+    ? null
+    : replayMode
+      ? {
+          label: "Replay",
+          title: st.replaying ? "You're watching a saved run" : "This saved run is over",
+          text: "Nothing here reaches an agent. On the Timeline tab, click any moment to jump there. Done goes back to the start.",
+        }
+      : awaitingTask
+        ? {
+            n: 1,
+            title: "Tell the agent what to build",
+            text: "Pick an example, or describe your own task in the box at the bottom. It reads the code and draws a plan on the right, then waits for your OK. Nothing in your repo changes before that.",
+            action: { label: "Watch a demo first", run: runDemo },
+          }
+        : !messages.length
+          ? { n: 1, title: "Watch a demo run", text: "A scripted run is about to play on the board. It never touches your files." }
+          : permission
+            ? {
+                n: 3,
+                title: "It wants to run a command",
+                text: "Read it at the bottom, then Allow or Deny. It asks before every command; editing files inside the repo doesn't ask, because you approved the plan.",
+              }
+            : reviewing
+              ? {
+                  n: 2,
+                  title: "Check the plan",
+                  text: `The drawing on the right is its plan. Nothing is built until you approve.${openQuestions ? ` It left ${plural(openQuestions, "question")} for you in Plan details.` : ""} Click a ◇ to see other options, or change the drawing with Edit the plan.`,
+                }
+              : finishedRun || phase === "complete"
+                ? {
+                    n: 4,
+                    title: "Check its work",
+                    text: "The Review card compares what it said with git and the test output. Start with anything marked ✗ or ?. For another round, edit the board or type below.",
+                  }
+                : decisions.length
+                  ? {
+                      n: !phase || phase === "planning" ? 2 : 3,
+                      title: `${plural(decisions.length, "change")} ready to send`,
+                      text: st.busy ? "Press Submit: they go to the agent after its current step." : "Press Submit to send them to the agent.",
+                    }
+                  : !phase || phase === "planning"
+                    ? { n: 2, title: "It's planning", text: "It reads the code and draws its plan on the board. When the plan is ready, it stops and waits for you." }
+                    : {
+                        n: 3,
+                        title: phase === "verification" ? "It's testing its work" : "It's building",
+                        text: "It edits files by itself. Orange parts are being changed now, green ones passed their tests. Changes you make on the board go after its current step.",
+                      };
+
+  // Edit the plan: each button picks the matching Excalidraw tool and says what to do with it.
+  const editable = messages.length > 0 && !replayMode && boardView === "board" && !readOnlyDiagram;
+  const useTool = (type, hint) => {
+    s?.board.api.setActiveTool({ type });
+    setToolHint(hint);
+  };
+  // Rename = double-click the name for you, so you can type straight away.
+  const renameOnBoard = (nodeId) => {
+    const b = s?.board;
+    const n = b?.model.nodes[nodeId];
+    const label = n && b.api.getSceneElements().find((e) => e.id === `${n.elId}:label`);
+    const canvas = document.querySelector(".canvas.arch canvas.interactive");
+    if (!label || !canvas) return false;
+    b.api.setActiveTool({ type: "selection" });
+    const { x, y } = sceneCoordsToViewportCoords({ sceneX: label.x + label.width / 2, sceneY: label.y + label.height / 2 }, b.api.getAppState());
+    // A part is a group: a double-click on a selected group first steps into it, the next edits the text.
+    const dbl = () => canvas.dispatchEvent(new MouseEvent("dblclick", { clientX: x, clientY: y, bubbles: true }));
+    dbl();
+    setTimeout(() => !b.api.getAppState().editingTextElement && dbl(), 60);
+    setToolHint("Type the new name, then click an empty spot.");
+    return true;
+  };
+  const selected = boardSel.length === 1 ? boardSel[0] : null;
+  const toolRename = () => {
+    if (selected?.startsWith("node:") && renameOnBoard(selected.slice(5))) return;
+    useTool("selection", "Double-click a part's name, type the new one, then click an empty spot.");
+  };
+  const toolRemove = () => {
+    if (s?.board.deleteSelected()) return setToolHint(null);
+    useTool("selection", "Click a part, an arrow or a ◇ first, then Remove. (The Delete key works too.)");
+  };
+
+  // The coach's tips on the board itself, the first time a plan waits for you: sticky notes with
+  // arrows to a decision and a part, and a circle round its first open question.
+  const tipsShown = useRef(false);
+  if (!messages.length) tipsShown.current = false;
+  useEffect(() => {
+    const b = s?.board;
+    if (!b) return;
+    const want = tips && reviewing && editable;
+    if (want && !tipsShown.current) {
+      tipsShown.current = true;
+      const m = b.model;
+      const d = Object.values(m.decisions).filter((x) => x.state !== "rejected").sort((x, y) => x.n - y.n)[0];
+      const nodes = Object.values(m.nodes);
+      const n = nodes.find((x) => !d?.affects.includes(x.id)) ?? nodes[0];
+      const q = Object.values(m.questions).find((x) => x.state === "open");
+      b.showTips(
+        [
+          d && { lid: `decision:${d.id}`, text: "Click a ◇ to see its other options" },
+          n && { lid: `node:${n.id}`, text: "Double-click a name to rename it" },
+          q && { lid: `question:${q.id}`, circle: true },
+        ].filter(Boolean),
+      );
+      if (b.tips) b.fit(true);
+    } else if (!want && b.tips) b.hideTips();
+  });
+
   const playIcon = replayMode
     ? st.replaying && !st.paused ? "pause" : "play"
     : agentMode && st.busy ? "stop" : st.busy && !st.paused ? "pause" : "play";
@@ -1331,40 +1751,54 @@ export default function App() {
               <button className="icon" onClick={() => s?.board.fit(true)} title="Fit board to screen" aria-label="Fit board to screen">
                 <Icon name="fit" />
               </button>
+              {!tips && (
+                <button className="icon" onClick={() => showTipsPref(true)} title="Show tips: what to do at each step" aria-label="Show tips">
+                  <Icon name="tips" />
+                </button>
+              )}
             </div>
           </div>
-          <div className={`status ${st.playing && !permission ? "on" : ""}`} aria-live="polite">
-            <span className="dot" />
-            <span className="caption">{status}</span>
-          </div>
+          {/* The coach says what the status line would while the run waits on you; while it works, the status line says what it's doing. */}
+          {!(tips && coach && !replayMode && !st.busy && !st.thinking && !st.paused) && (
+            <div className={`status ${st.playing && !permission ? "on" : ""}`} aria-live="polite">
+              <span className="dot" />
+              <span className="caption">{status}</span>
+            </div>
+          )}
+          {tips && coach && <Coach c={coach} onHide={() => showTipsPref(false)} />}
         </header>
 
         {messages.length > 0 && (
           <div className="tabs" role="tablist" aria-label="Panel view">
-            <button role="tab" aria-selected={tab === "activity"} className="tab" onClick={() => setTab("activity")}>
-              Activity
+            <button role="tab" aria-selected={tab === "activity"} className="tab" onClick={() => setTab("activity")} title="What the agent said and did, and what you sent it">
+              Chat &amp; log
               {contradicted > 0 && (
-                <span className="tab-count bad" title={`${contradicted} thing${contradicted === 1 ? "" : "s"} the agent said that the record contradicts`}>
-                  ✗ {contradicted}
+                <span className="tab-count bad" title={`${contradicted} thing${contradicted === 1 ? "" : "s"} the agent said that git or the test output contradicts`}>
+                  ✗ {contradicted} not true
                 </span>
               )}
             </button>
-            <button role="tab" aria-selected={tab === "plan"} className="tab" onClick={() => setTab("plan")}>
-              Plan
-              {Object.keys(s?.board.model.decisions ?? {}).length > 0 && (
-                <span className="tab-count" title="Decisions">◇ {Object.keys(s.board.model.decisions).length}</span>
-              )}
-              {openQuestions > 0 && (
+            <button role="tab" aria-selected={tab === "plan"} className="tab" onClick={() => setTab("plan")} title="The plan in words: its goal, parts, decisions, questions and code changes">
+              Plan details
+              {openQuestions > 0 ? (
                 <span className="tab-count ask" title={`${openQuestions} open question${openQuestions === 1 ? "" : "s"} or assumption${openQuestions === 1 ? "" : "s"} for you`}>
-                  ? {openQuestions}
+                  ? {openQuestions} for you
                 </span>
+              ) : (
+                Object.keys(s?.board.model.decisions ?? {}).length > 0 && (
+                  <span className="tab-count" title="Technical choices the agent made">
+                    ◇ {plural(Object.keys(s.board.model.decisions).length, "decision")}
+                  </span>
+                )
               )}
             </button>
-            {tab === "activity" && (
-              <button className={`skim ${skim ? "on" : ""}`} aria-pressed={skim} onClick={toggleSkim} title="Skim: hide the narration, keep what drew on the board, made a claim, asked you something or assumed something">
-                Skim
-              </button>
-            )}
+          </div>
+        )}
+        {tab === "activity" && messages.length > 0 && (
+          <div className="skim-row">
+            <button className={`skim ${skim ? "on" : ""}`} aria-pressed={skim} onClick={toggleSkim} title="Hide the narration: keep what drew on the board, made a claim, asked you something or assumed something">
+              {skim ? "✓ " : ""}Highlights only
+            </button>
           </div>
         )}
 
@@ -1522,9 +1956,16 @@ export default function App() {
             </div>
           ) : permission ? (
             <div className="permit" role="alertdialog" aria-label="Permission request">
-              <div className="gh">{permission.tool === "Bash" ? "Run this command?" : `Use ${permission.tool}?`}</div>
+              <div className="gh">{permission.tool === "Bash" ? "Can it run this command?" : `Can it use ${permission.tool}?`}</div>
               <pre className="cmd">{permission.detail}</pre>
-              {permission.description && <p>{permission.description}</p>}
+              {permission.description && <p>What it's for: {permission.description}</p>}
+              <details className="whats">
+                <summary>Why am I asked?</summary>
+                <p>
+                  It asks before every command, because a command can do anything your terminal can. Editing files inside the repo doesn't ask:
+                  you allowed that when you approved the plan. Not sure? Deny, and it will find another way or tell you why it needs it.
+                </p>
+              </details>
               <div className="gate-actions">
                 <button className="secondary" onClick={() => s.answerPermission("deny")}>
                   Deny
@@ -1535,7 +1976,7 @@ export default function App() {
                   </button>
                 )}
                 <button className="primary" onClick={() => s.answerPermission("allow")}>
-                  Allow
+                  Allow once
                 </button>
               </div>
             </div>
@@ -1543,12 +1984,15 @@ export default function App() {
             <div className="gate" role="region" aria-label="Plan review">
               <div className="gh">
                 <span className="pause" aria-hidden="true">⏸</span>
-                Plan ready for review
+                The plan is ready
               </div>
               {decisions.length > 0 ? (
-                <EditList decisions={decisions} />
+                <>
+                  <EditList decisions={decisions} />
+                  <p>Revise plan: it redraws the plan with your changes and asks again. Approve with changes: it builds with them.</p>
+                </>
               ) : (
-                <p>Edit the board (rename, connect, delete, or select a ◇ to pick another option) or type below. Nothing is built until you approve.</p>
+                <p>Change anything first (on the board, or in Plan details), or approve to start building. Nothing is built until you approve.</p>
               )}
               <div className="gate-actions">
                 {decisions.length > 0 && (
@@ -1573,7 +2017,7 @@ export default function App() {
             </div>
           ) : awaitingTask ? null : (
             <p className="hint">
-              <b>Steer from the board:</b> rename, connect, delete, or select a ◇ to pick another option. Then Submit.
+              <b>Steer from the board:</b> use Edit the plan above it, or click a ◇ to pick another option. Then Submit.
               {agentMode && s?.runId && s?.result && (
                 <span className="after-run">
                   <button className="linkish" onClick={() => replay(s.runId)}>
@@ -1585,6 +2029,19 @@ export default function App() {
                 </span>
               )}
             </p>
+          )}
+          {reviewing && !draft && allDecisions.length > 0 && (
+            <div className="suggest" aria-label="Questions you could ask">
+              {allDecisions
+                .filter((d) => d.state !== "rejected")
+                .sort((a, b) => a.n - b.n)
+                .slice(0, 2)
+                .map((d) => (
+                  <button key={d.id} onClick={() => challenge(d)} title={`Starts a message about D${d.n}: ${d.chose}`}>
+                    Ask why: D{d.n} {clip(d.title, 30)}
+                  </button>
+                ))}
+            </div>
           )}
           <form className="ask" onSubmit={sendChat} hidden={replayMode}>
             <input
@@ -1606,11 +2063,13 @@ export default function App() {
           <button role="tab" aria-selected={boardView === "board"} onClick={() => showView("board")} title="The components and how they connect. Edit it to steer the agent.">
             <span className="ct-icon" aria-hidden="true" />
             Architecture
+            <span className="ct-sub">what it builds</span>
             {nodeCount > 0 && <span className="ct-count">{nodeCount}</span>}
           </button>
           <button role="tab" aria-selected={boardView === "why"} onClick={() => showView("why")} title="Each decision: its evidence, what it shapes, and the check that proves it">
             <span className="vs-diamond" aria-hidden="true" />
             Why
+            <span className="ct-sub">the reasons</span>
             {allDecisions.length > 0 && <span className="ct-count" title="Decisions">{allDecisions.length}</span>}
             {(proofCount("pass") > 0 || proofCount("fail") > 0) && (
               <span className="ct-proofs" title={`${proofCount("pass")} proven, ${proofCount("fail")} failed, ${proofCount(null)} not checked yet`}>
@@ -1622,6 +2081,7 @@ export default function App() {
           <button role="tab" aria-selected={boardView === "timeline"} onClick={() => showView("timeline")} title="How the decisions moved over the run: what changed, when, and because of what">
             <span className="tl-icon" aria-hidden="true" />
             Timeline
+            <span className="ct-sub">what changed when</span>
             {hasTimeline && <span className="ct-count" title="How long the run took">{fmt(tl.duration)}</span>}
             {tl?.changes > 0 && (
               <span className="ct-changes" title={`${tl.changes} decision change${tl.changes === 1 ? "" : "s"}`}>
@@ -1630,55 +2090,66 @@ export default function App() {
             )}
           </button>
           {boardView === "board" && (
-            <select className="diagram-pick" value={diagram} onChange={(e) => chooseDiagram(e.target.value)} aria-label="Diagram" title="How to draw the system">
-              {DIAGRAMS.map((d) => (
-                <option key={d.key} value={d.key} title={d.title}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          )}
-          {boardView === "board" && nodeCount > 0 && diagram !== "er" && (
-            <select
-              className="focus-pick"
-              value={focus?.layer ? `layer:${focus.layer}` : focus?.flow ? `flow:${focus.flow}` : ""}
-              onChange={(e) => {
-                const [k, v] = e.target.value.split(":");
-                chooseFocus(k ? { [k]: v } : null);
-              }}
-              aria-label="Show"
-              title="Show one layer, or one flow's steps in order"
-            >
-              {diagram !== "sequence" && <option value="">All</option>}
-              {diagram !== "sequence" && (
-                <optgroup label="Layers">
-                  {LAYERS.filter((l) => Object.values(model.nodes).some((n) => layerOf(n) === l.key)).map((l) => (
-                    <option key={l.key} value={`layer:${l.key}`}>
-                      {l.label}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {Object.keys(model.flows).length > 0 && (
-                <optgroup label="Flows">
-                  {Object.values(model.flows).map((f) => (
-                    <option key={f.id} value={`flow:${f.id}`}>
-                      {f.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          )}
-          {boardView === "board" && nodeCount > 0 && (
-            <details className="export-menu">
-              <summary title="Export what the board shows">{exported === "ok" ? "✓ Exported" : exported === "failed" ? "✗ Export failed" : "Export"}</summary>
-              <div className="export-items">
-                <button onClick={() => exportView("mermaid")} title="Copy as a Mermaid diagram (GitHub renders it)">
-                  Copy Mermaid
-                </button>
-                <button onClick={() => exportView("svg")}>Download SVG</button>
-                <button onClick={() => exportView("png")}>Download PNG</button>
+            // View: how to draw it (Diagram), what to show (one layer or flow), and Export, in one place.
+            <details className="export-menu view-menu">
+              <summary title="How to draw the board, what to show, and export it">
+                {exported === "ok" ? "✓ Exported" : exported === "failed" ? "✗ Export failed" : `View: ${DIAGRAMS.find((d) => d.key === diagram)?.label}${focus ? " · filtered" : ""}`}
+              </summary>
+              <div className="export-items view-items">
+                <label>
+                  <span>Diagram</span>
+                  <select className="diagram-pick" value={diagram} onChange={(e) => chooseDiagram(e.target.value)} title="How to draw the system">
+                    {DIAGRAMS.map((d) => (
+                      <option key={d.key} value={d.key} title={d.title}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {nodeCount > 0 && diagram !== "er" && (
+                  <label>
+                    <span>Show only</span>
+                    <select
+                      className="focus-pick"
+                      value={focus?.layer ? `layer:${focus.layer}` : focus?.flow ? `flow:${focus.flow}` : ""}
+                      onChange={(e) => {
+                        const [k, v] = e.target.value.split(":");
+                        chooseFocus(k ? { [k]: v } : null);
+                      }}
+                      title="Show one layer, or one flow's steps in order"
+                    >
+                      {diagram !== "sequence" && <option value="">Everything</option>}
+                      {diagram !== "sequence" && (
+                        <optgroup label="Layers">
+                          {LAYERS.filter((l) => Object.values(model.nodes).some((n) => layerOf(n) === l.key)).map((l) => (
+                            <option key={l.key} value={`layer:${l.key}`}>
+                              {l.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {Object.keys(model.flows).length > 0 && (
+                        <optgroup label="Flows">
+                          {Object.values(model.flows).map((f) => (
+                            <option key={f.id} value={`flow:${f.id}`}>
+                              {f.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </label>
+                )}
+                {nodeCount > 0 && (
+                  <>
+                    <span className="vi-head">Export</span>
+                    <button onClick={() => exportView("mermaid")} title="Copy as a Mermaid diagram (GitHub renders it)">
+                      Copy Mermaid
+                    </button>
+                    <button onClick={() => exportView("svg")}>Download SVG</button>
+                    <button onClick={() => exportView("png")}>Download PNG</button>
+                  </>
+                )}
               </div>
             </details>
           )}
@@ -1690,13 +2161,77 @@ export default function App() {
                 : diagram === "er"
                   ? "The tables each data store holds: keys, columns and relations. Read-only."
                   : diagram === "sequence"
-                    ? "One flow, step by step. Pick another under Show. Read-only."
-                    : "Edit to steer: rename, connect, delete, draw. Select a ◇ to pick another option."}
+                    ? "One flow, step by step. Pick another under View, Show only. Read-only."
+                    : "Click any part or ◇ to learn what it is."}
           </span>
         </div>
+        {editable && (
+          <div className="edit-bar" role="toolbar" aria-label="Edit the plan">
+            <span className="eb-label">Edit the plan:</span>
+            <button onClick={() => useTool("selection", null)} title="Select, move and double-click things on the board">
+              <ToolIcon name="select" />
+              Select
+            </button>
+            <button onClick={toolRename} title="Rename the selected part (or double-click any name)">
+              <ToolIcon name="rename" />
+              Rename
+            </button>
+            <button onClick={() => useTool("rectangle", "Draw a box on the board, then type its name.")} title="Ask for a new part: draw a box and name it">
+              <ToolIcon name="add" />
+              Add a part
+            </button>
+            <button onClick={() => useTool("arrow", "Drag from one part to another.")} title="Ask for a new connection: draw an arrow between two parts">
+              <ToolIcon name="connect" />
+              Connect
+            </button>
+            <button onClick={toolRemove} title="Remove the selected part or connection, or reject the selected ◇ decision">
+              <ToolIcon name="remove" />
+              Remove
+            </button>
+            <button onClick={() => useTool("text", "Click an empty spot and type a note, like “English PDFs only”.")} title="Add a note that narrows what it builds">
+              <ToolIcon name="note" />
+              Add a note
+            </button>
+            <button className={`eb-tools ${tools ? "on" : ""}`} aria-pressed={tools} onClick={toggleTools} title="Show or hide Excalidraw's full drawing tools">
+              <ToolIcon name="tools" />
+              Drawing tools
+            </button>
+          </div>
+        )}
         <div className="canvases">
-          <div className={`canvas ${boardView === "board" && !readOnlyDiagram ? "on" : ""} ${ownSel ? "own-sel" : ""}`} role="tabpanel" aria-label="Architecture">
+          <div
+            className={`canvas arch ${boardView === "board" && !readOnlyDiagram ? "on" : ""} ${ownSel ? "own-sel" : ""} ${tools ? "tools-on" : "tools-off"}`}
+            role="tabpanel"
+            aria-label="Architecture"
+          >
             <Excalidraw excalidrawAPI={setApi} initialData={INITIAL_DATA} onChange={onChange} UIOptions={UI_OPTIONS} />
+            {toolHint && editable && (
+              <p className="tool-hint" role="status">
+                {toolHint}
+              </p>
+            )}
+            {selected && boardView === "board" && !readOnlyDiagram && model && (
+              <Explain
+                key={selected}
+                lid={selected}
+                model={model}
+                live={!replayMode}
+                onClose={() => s.board.api.updateScene({ appState: { selectedElementIds: {} } })}
+                onRename={(id) => renameOnBoard(id)}
+                onRemove={toolRemove}
+                onAsk={prefill}
+                onChallenge={challenge}
+                onPick={(d, i) => s.board.pickAlternative(d.id, i)}
+                onOpen={(lid) => focusInPlan([lid])}
+                onCode={(id) => goReview(`code:${id}`)}
+                onAnswer={(q, text) => {
+                  s.answerQuestion(q, text);
+                  stick.current = true;
+                }}
+                onConfirm={(q) => s.confirmAssumption(q)}
+                onCorrect={(q) => prefill(`About A${q.n} (${q.text}): `)}
+              />
+            )}
             {decisions.length > 0 && !replayMode && (
               <button className="board-submit primary" onClick={sendEdits} title={st.busy ? "Sent when the agent finishes this step" : "Send your board changes to the agent"}>
                 {Object.entries(AREAS).map(([a, { icon, label }]) => {
@@ -1751,6 +2286,7 @@ export default function App() {
             )}
           </div>
         </div>
+        {boardView === "board" && diagram === "pictures" && nodeCount > 0 && <BoardKey />}
       </main>
     </div>
   );

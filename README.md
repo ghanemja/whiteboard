@@ -4,11 +4,23 @@ A real coding agent works in a repo while an Excalidraw board shows what it's do
 
 ![The demo: the agent plans on the board, you pick another option for a decision (D3 → Qdrant), approve, it builds and ships; then the review card and the Timeline](screenshots/demo.gif)
 
-The board is pictures, not prose. Components are hand-drawn pictograms (browser window, server rack, database cylinder, cloud, queue, clipboard, person) with a short name; status is color plus a corner badge (… building, ✓ verified, ✗ failed, ★ live). Above the board, the project's name and goal sit beside the four phases, drawn as milestones on a road (Plan → Build → Verify → Ship) with a dot per task: hover one to read it, click to open it in the Plan tab. Below that, the board has a tab per canvas: **Architecture** (what's being built; edit it to steer), **Why** (the reasoning behind it) and **Timeline** (how that reasoning moved over the run). Words stay in the side panel.
+The board is pictures, not prose. Components are hand-drawn pictograms (browser window, server rack, database cylinder, cloud, queue, clipboard, person) with a short name; status is color plus a corner badge (… building, ✓ verified, ✗ failed, ★ live). Above the board, the project's name and goal sit beside the four phases, drawn as milestones on a road (Plan details → Build → Verify → Ship) with a dot per task: hover one to read it, click to open it in Plan details. Below that, the board has a tab per canvas: **Architecture** (what's being built; edit it to steer), **Why** (the reasoning behind it) and **Timeline** (how that reasoning moved over the run). Words stay in the side panel.
+
+## First-time help
+
+The app walks a newcomer through a run without hiding anything. **Hide tips** turns the coach and the board tips off (remembered); the **?** button brings them back.
+
+![The plan gate with tips: the coach card says step 2 of 4, sticky notes with hand-drawn arrows point at a decision and a part, an orange circle rings an open question, and the Edit the plan toolbar and color key frame the board](screenshots/first-time-help/2-plan-gate-tips-on-the-board.png)
+
+- **Coach.** A yellow card at the top of the panel says which step you're on (Describe → Plan details → Build → Check) and what to do now, in a sentence or two.
+- **Tips on the board.** The first time a plan waits for you, sticky notes with hand-drawn arrows point at a decision ("Click a ◇ to see its other options") and a part ("Double-click a name to rename it"), and an orange circle rings its first open question. Click one to dismiss them. They're never exported or sent to the agent.
+- **Edit the plan.** A toolbar with words above the board: Select, Rename, Add a part, Connect, Remove, Add a note. Each picks the matching Excalidraw tool and says what to do next; the gestures (double-click, Delete, drawing) still work. Excalidraw's full toolbar is behind **Drawing tools**.
+- **Click to explain.** Select a part, a ◇, an arrow or a question and a card says what it is in plain words (what a service is, its status, routes, files, decisions, connections), with its actions as buttons: Rename, Remove, Ask about it, See the code; for a decision, **Use this** on each option, Ask why and Reject it; for a question, its answers.
+- **Plain words.** Symbols come with a word: receipts read "✓ checked", "✗ not true", "? can't tell"; the panel's tabs are **Chat & log** and **Plan details**, with counts like "2 for you"; each board tab says what it's for; a key under the Pictures board says what the colors mean; a command prompt says what the command is for and why you're asked; at the plan gate, suggested questions ("Ask why: D1 …") start a message.
 
 ## Views and exports
 
-Above the board:
+The **View** menu above the board holds:
 
 - **Diagram** picks the notation (remembered):
 
@@ -21,10 +33,10 @@ Above the board:
   | Sequence | One flow as a UML sequence diagram: lifelines, numbered messages, replies dashed | Read-only |
 
   The editable ones redraw the same board, so steering works in all three. C4, Data flow, Database and Sequence use the official look: square boxes, 1 px lines, a plain typeface and a Key. Status is color everywhere.
-- **Show** narrows the board to one **layer** (Frontend, Backend, Data, ML, External) or one **flow**: the path a request takes, its steps numbered on the arrows and listed in a card; everything else fades. In Sequence it picks the flow.
+- **Show only** narrows the board to one **layer** (Frontend, Backend, Data, ML, External) or one **flow**: the path a request takes, its steps numbered on the arrows and listed in a card; everything else fades. In Sequence it picks the flow.
 - **Export** what the board shows: **Copy Mermaid** (each diagram has its Mermaid form: flowcharts, `erDiagram`, `sequenceDiagram`; GitHub renders them in a README or PR), **SVG** or **PNG** with a title.
 
-The agent supplies what these need: flows (`flow` op), tables (`table` op), each component's layer. The Plan tab lists the flows and the data model too, and names are kept in sentence case.
+The agent supplies what these need: flows (`flow` op), tables (`table` op), each component's layer. The Plan details lists the flows and the data model too, and names are kept in sentence case.
 
 ## Setup
 
@@ -73,7 +85,7 @@ Restart `npm run dev` after changing them; the top bar shows where the agent is 
 
 1. **Plan.** The agent starts in plan mode: it can read the repo but not change it. It draws the components the task involves (existing ones blue, new ones grey) and their connections, then asks to exit plan mode. That request waits for you: the board shows ⏸ on the Plan milestone.
 2. **Review.** Edit the board (see [Steering from the board](#steering-from-the-board)) or type a request. **Revise plan** (or **Submit** on the board) sends your changes back so the agent re-plans; **Approve with changes** folds them in and goes on to build; **Approve plan & build** goes straight on.
-3. **Build and verify.** The agent edits files (allowed automatically inside the repo) and the component that owns each file turns orange. It asks before every shell command: **Allow**, **Allow all** for the rest of the run, or **Deny**. Components turn green when verified, purple ★ when done.
+3. **Build and verify.** The agent edits files (allowed automatically inside the repo) and the component that owns each file turns orange. It asks before every shell command: **Allow once**, **Allow all** for the rest of the run, or **Deny**. Components turn green when verified, purple ★ when done.
 4. **Afterwards** the session stays open: board edits and messages become new turns. Stop the agent with ■, start over with ↺. Closing the tab stops it, and an idle agent stops after 15 minutes.
 
 ## Steering from the board
@@ -86,7 +98,7 @@ Edit the board; each change is sorted by what you touched:
 | ◇ | Decision | select a diamond → its alternatives fan out → drag one onto it (or type your own in the blank one); delete a diamond to reject it |
 | ✐ | Scope | drop a text note ("English PDFs only") |
 
-Queued changes show in the panel by area, and **Submit** (panel, or floating on the board with ▢ ◇ ✐ counts) sends them. While the agent works they go after its current step. The agent gets each edit with its area; the decision log lists them the same way. In the Plan tab, clicking an alternative under **Over** picks it too. A picked option sits beside its diamond in blue until the agent applies it; delete it to undo.
+Queued changes show in the panel by area, and **Submit** (panel, or floating on the board with ▢ ◇ ✐ counts) sends them. While the agent works they go after its current step. The agent gets each edit with its area; the decision log lists them the same way. In Plan details, clicking an alternative under **Over** picks it too. A picked option sits beside its diamond in blue until the agent applies it; delete it to undo.
 
 ## The reasoning behind the plan
 
@@ -97,11 +109,11 @@ The board shows what is being built; the **Plan** tab shows why.
 - **Connections:** how two parts talk (HTTP, queue, SQL, call…) and the exact API on that edge. On the board, the protocol is a short tag on the arrow.
 - **Decisions:** the few technical choices that shaped the plan. Each says what was chosen, the real alternatives it beat, why (the deciding reason and the cost accepted), evidence from the repo, which components it affects and which earlier decisions it builds on. On the board each is a numbered diamond (D1, D2…) on the component it affects most, with dotted ties to the others: dashed while proposed, solid once you approve, blue when changed, grey when rejected.
 
-To push back, **Challenge this** on a decision starts a message ("About D1 …") for you to finish; on the board, pick another of its options or delete the diamond to reject it. When the agent changes a decision, because you challenged it or because verification proved it wrong, the card keeps the old choice struck through under **Before** and says what caused the change under **Because**. Selecting a component on the board scrolls the Plan tab to it.
+To push back, **Ask why** on a decision starts a message ("About D1 …") for you to finish; on the board, pick another of its options or delete the diamond to reject it. When the agent changes a decision, because you challenged it or because verification proved it wrong, the card keeps the old choice struck through under **Before** and says what caused the change under **Because**. Selecting a component on the board scrolls Plan details to it.
 
 Every decision also names its **check**: how we'll know it was right, usually a test by name. Its result is drawn on the diamond: ✓ proven, ✗ failed. The agent reports proofs after running the tests, and the server compares them with the test runner's own output (node --test, Jest/Vitest, pytest -v, go test -v). Where the output disagrees, the output wins and the agent is told. Later test runs keep re-checking, so a regression crosses a diamond again. A decision whose choice changes goes back to unchecked.
 
-The **Why** tab draws each decision as a chain: evidence (files from the repo, facts, your request, a failed check) → the decision → the components it shapes → its proof. Dashed purple links show which decisions build on which. It's drawn from the decisions, so it's read-only: pan and zoom it, and click a row to open that decision in the Plan tab. The tab itself counts the decisions and how many are proven (✓) or failed (✗).
+The **Why** tab draws each decision as a chain: evidence (files from the repo, facts, your request, a failed check) → the decision → the components it shapes → its proof. Dashed purple links show which decisions build on which. It's drawn from the decisions, so it's read-only: pan and zoom it, and click a row to open that decision in Plan details. The tab itself counts the decisions and how many are proven (✓) or failed (✗).
 
 The **Timeline** tab answers "what changed, when, and because of what?" across the run, left to right with mm:ss ticks:
 
@@ -110,16 +122,16 @@ The **Timeline** tab answers "what changed, when, and because of what?" across t
 - **One lane per decision:** a dashed diamond when it's proposed and a dashed lane while the plan isn't approved; the lane turns solid when you approve (a faint line drops from your approval to the decisions it made solid). A blue diamond marks a change, with an arrow from what caused it: from your message, or from the ✗ of the check that failed. When one message changes several decisions, the arrow goes to the one you asked about and dashed arcs ripple from it to the rest. A ✓ or ✗ is its check's result; a dotted tie leads up to the test run that ticked it. A grey diamond ends the lane when it's rejected.
 - **Phases** (bottom): Plan, Build, Verify and Ship as segments in the milestone colors, with a flag when it shipped.
 
-Waits longer than 15 seconds (reading the plan, a permission you hadn't answered yet) are drawn short, with a break on the axis that says how long they were, so a long pause doesn't flatten the rest. An orange line marks now. During a live run the Timeline grows as events arrive and keeps the whole run in view, unless you've panned or zoomed it (⛶ fits it again). Click a decision's mark to open its card in the Plan tab, one of your marks to see that message, or a test run to see its command. The tab shows the run's length and how many times a decision changed (◆).
+Waits longer than 15 seconds (reading the plan, a permission you hadn't answered yet) are drawn short, with a break on the axis that says how long they were, so a long pause doesn't flatten the rest. An orange line marks now. During a live run the Timeline grows as events arrive and keeps the whole run in view, unless you've panned or zoomed it (⛶ fits it again). Click a decision's mark to open its card in Plan details, one of your marks to see that message, or a test run to see its command. The tab shows the run's length and how many times a decision changed (◆).
 
 ## Checking what it says
 
 Don't take the agent's word for it. Glyphs and counts, details on hover:
 
-- **Receipts.** After a checkable claim: ✓ backed, ✗ contradicted (with the one wrong thing, e.g. "✗ README.md"), ? no evidence. Test claims vs the runner's counts, file claims vs git, "I ran X" vs the commands run. ✗ comes only from the runner or git. Activity tab: ✗ n.
-- **What it changed.** Git, not the agent's summary: the working tree vs how the run found it (untracked included, your index untouched). Components show +/− blocks; Plan → **Code** has every diff by component, plus files **not on board**.
-- **Questions and assumptions.** "?" and "≈" sticky notes. Plan → **For you**: pick an option or type (↵), confirm ✓ or correct ✎. Ones only said in prose: **In passing**.
-- **Skim.** Activity → Skim: keeps sentences that drew, claimed, asked or assumed; the rest fold to "⋯ n".
+- **Receipts.** After a checkable claim: ✓ checked, ✗ not true (with the one wrong thing, e.g. "✗ not true: README.md"), ? can't tell. Test claims vs the runner's counts, file claims vs git, "I ran X" vs the commands run. ✗ comes only from the runner or git. Chat & log tab: ✗ n not true.
+- **What it changed.** Git, not the agent's summary: the working tree vs how the run found it (untracked included, your index untouched). Components show +/− blocks; Plan details → **Code** has every diff by component, plus files **not on board**.
+- **Questions and assumptions.** "?" and "≈" sticky notes. Plan details → **For you**: pick an option or type (↵), confirm ✓ or correct ✎. Ones only said in prose: **In passing**.
+- **Highlights only.** Chat & log → Highlights only: keeps sentences that drew, claimed, asked or assumed; the rest fold to "⋯ n".
 - **Review.** When a run ends: failed/unchecked checks, false or unverified claims, open questions, changed and unowned files, commits, last test run, denied commands. Each chip links to its card, sentence or diff.
 
 The demo shows all five, including a false claim (a README it never touched) and a question buried in its summary.

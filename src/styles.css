@@ -1067,9 +1067,18 @@ button.primary {
   color: var(--red);
 }
 /* Skim: hide the narration. */
-.tabs .skim {
-  align-self: center;
-  margin-left: auto;
+.skim-row {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 5px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.tab,
+.tab-count {
+  white-space: nowrap;
+}
+.skim-row .skim {
   padding: 3px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1079,7 +1088,7 @@ button.primary {
   font-weight: 700;
   cursor: pointer;
 }
-.tabs .skim.on {
+.skim-row .skim.on {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent);
@@ -2094,4 +2103,443 @@ button:focus-visible {
   .s {
     transition: none;
   }
+}
+
+/* ---- hand-holding: the coach, plain words, Edit the plan, click to explain ---- */
+/* The coach: which step you're on and what to do now. Yellow like the board's sticky notes. */
+.coach {
+  margin: 10px 0 2px;
+  padding: 10px 12px 12px;
+  border: 1px solid #f2c94c;
+  border-radius: 12px;
+  background: #fff3bf;
+  color: #1b1b1f;
+}
+.app[data-theme="dark"] .coach {
+  border-color: rgba(255, 212, 59, 0.45);
+  background: rgba(255, 212, 59, 0.12);
+  color: var(--ink);
+}
+.coach-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.coach-steps {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.coach-steps li {
+  counter-increment: step;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #6b5a1e;
+}
+.coach-steps li::before {
+  content: counter(step) " ";
+}
+.coach-steps li.done::before {
+  content: "✓ ";
+}
+.coach-steps li.now {
+  background: #1b1b1f;
+  color: #fff;
+}
+.app[data-theme="dark"] .coach-steps li {
+  color: var(--soft);
+}
+.app[data-theme="dark"] .coach-steps li.now {
+  background: var(--ink);
+  color: #1b1b1f;
+}
+.coach-label {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.coach .coach-hide {
+  font-size: 12px;
+  color: #6b5a1e;
+}
+.app[data-theme="dark"] .coach .coach-hide {
+  color: var(--soft);
+}
+.coach-title {
+  display: block;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.coach p {
+  margin: 3px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.coach button.coach-act {
+  margin-top: 8px;
+  padding: 6px 12px;
+}
+
+/* Board tabs say what each one is for. */
+.ct-sub {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--faint);
+}
+@media (max-width: 1280px) {
+  .ct-sub {
+    display: none;
+  }
+}
+
+/* View: Diagram, Show only and Export in one menu. */
+.view-items {
+  min-width: 220px;
+  gap: 2px;
+}
+.view-items label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--soft);
+}
+.view-items select.diagram-pick,
+.view-items select.focus-pick {
+  margin: 0;
+  width: 100%;
+  font-size: 13px;
+}
+.vi-head {
+  padding: 8px 8px 2px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--soft);
+}
+
+/* Edit the plan: Excalidraw's tools under plain names. Its own toolbar is behind "Drawing tools". */
+.edit-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.eb-label {
+  margin-right: 4px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--soft);
+}
+.edit-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.edit-bar button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.edit-bar .eb-tools {
+  margin-left: auto;
+}
+.edit-bar .eb-tools.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.canvas.tools-off .App-toolbar-container,
+.canvas.tools-off .HintViewer {
+  display: none !important;
+}
+/* What to do with the tool you picked: a sticky note at the top of the board. */
+.tool-hint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 4;
+  transform: translateX(-50%) rotate(-0.6deg);
+  max-width: min(440px, calc(100% - 140px));
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid #f2c94c;
+  border-radius: 6px;
+  background: #fff3bf;
+  color: #1b1b1f;
+  font-family: var(--hand);
+  font-size: 15px;
+  line-height: 1.35;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.12);
+  pointer-events: none;
+}
+.canvas.tools-on .tool-hint {
+  top: 70px;
+}
+
+/* Click to explain: the selection in plain words, with what you can do to it. */
+.explain {
+  position: absolute;
+  top: 66px;
+  right: 14px;
+  z-index: 4;
+  width: min(310px, calc(100% - 28px));
+  max-height: calc(100% - 126px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 8px 26px rgb(0 0 0 / 0.14);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.explain h3 {
+  margin: 2px 26px 6px 0;
+  font-family: var(--hand);
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+.explain p {
+  margin: 0 0 8px;
+}
+.ex-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--soft);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ex-close:hover {
+  background: var(--panel-2);
+}
+.ex-kicker,
+.ex-k {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--soft);
+}
+.ex-k {
+  margin-top: 4px;
+}
+.ex-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.ex-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border: 1.5px solid var(--st, var(--line));
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ex-proof.pf-pass {
+  color: var(--green);
+}
+.ex-proof.pf-fail {
+  color: var(--red);
+}
+.ex-help {
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.ex-chose {
+  font-weight: 700;
+}
+.ex-d {
+  color: #7048e8;
+}
+.ex-dl {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 5px 8px;
+  margin: 0 0 8px;
+}
+.ex-dl dt {
+  color: var(--soft);
+  font-weight: 700;
+}
+.ex-dl dd {
+  margin: 0;
+  min-width: 0;
+}
+.ex-dl code {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11.5px;
+}
+.ex-diff .add {
+  color: var(--green);
+}
+.ex-diff .del {
+  color: var(--red);
+}
+.ex-chip {
+  margin: 0 4px 4px 0;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.ex-faint {
+  color: var(--faint);
+  font-size: 12px;
+}
+.ex-use {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 5px;
+  padding: 7px 9px;
+  border: 1.5px dashed #7048e8;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.ex-use:hover {
+  background: var(--accent-soft);
+}
+.ex-go {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11.5px;
+}
+.ex-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.ex-actions button.secondary {
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+/* The key under the Pictures board. */
+.board-key {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 7px 16px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--soft);
+}
+.board-key b {
+  color: var(--ink);
+}
+.board-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.board-key .sw {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid;
+  border-radius: 3px;
+}
+.board-key .sw-dia {
+  width: 9px;
+  height: 9px;
+  border: 1.5px dashed #7048e8;
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+/* Questions you could ask at the plan gate. */
+.suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.suggest button {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.suggest button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* "What's a decision?", "Why am I asked?": a short answer one click away. */
+.whats {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+}
+.whats summary {
+  display: inline;
+  color: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
+}
+.whats p {
+  margin: 5px 0 0;
+  color: var(--soft);
+  line-height: 1.5;
+}
+.rv-note {
+  margin: -2px 0 8px;
+  font-size: 12px;
+  color: var(--soft);
 }

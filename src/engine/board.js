@@ -84,6 +84,8 @@ const QSTYLE = {
   assumption: { stroke: "#7048e8", fill: "#f3f0ff", glyph: "≈" },
 };
 const QSTATES = ["open", "answered", "confirmed", "corrected"];
+// The coach's tips: yellow sticky notes and an orange ring (showTips).
+const TIP = { stroke: "#f08c00", fill: "#fff3bf", ring: "#e8590c" };
 const WHY = "why:"; // element id prefix of the Why view
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 // Two elements' boxes touch (within m px).
@@ -247,6 +249,7 @@ export class Board {
     this.tl = null; // the Timeline as last drawn (buildTimeline), for clicks and highlights
     this.changes = []; // the repo's actual changed files (git), attributed to components by their paths
     this.alt = null; // a decision's alternatives shown as ghosts: { did, ids, options, labels }
+    this.tips = null; // ids of the coach's sticky notes on the board (showTips), not part of the plan
     this.whyRows = 0; // decisions drawn on the Why canvas, to refit it when one is added
     this.hideCursor();
   }
@@ -256,10 +259,12 @@ export class Board {
     return [...this.api.getSceneElementsIncludingDeleted()];
   }
   // Decision diamonds stay above the components they sit on (a component redrawn later would
-  // cover its diamond and take its clicks), and a decision's option pills above those.
+  // cover its diamond and take its clicks), a decision's option pills above those, and the
+  // coach's tips above everything.
   // A layer or flow filter fades what it leaves out, whatever was just drawn.
   commit(elements) {
-    const layer = (e) => (e.id.startsWith("alt-") || e.containerId?.startsWith("alt-") ? 2 : e.groupIds?.[0]?.startsWith("g:dec-") || e.id.startsWith("flow:") ? 1 : 0);
+    const on = (e, p) => e.id.startsWith(p) || e.containerId?.startsWith(p);
+    const layer = (e) => (on(e, "tip-") ? 3 : on(e, "alt-") ? 2 : e.groupIds?.[0]?.startsWith("g:dec-") || e.id.startsWith("flow:") ? 1 : 0);
     const ls = elements.map(layer);
     if (ls.some((l, i) => i && l < ls[i - 1])) elements = elements.map((e, i) => [ls[i], i, e]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , e]) => e);
     this.api.updateScene({ elements: this.faded(elements), captureUpdate: CaptureUpdateAction.NEVER });
@@ -925,6 +930,7 @@ export class Board {
   // unless you're moving or typing in one, or there's a pick waiting to be sent.
   onSelect(ids, st = {}) {
     if (st.editingTextElement || st.selectedElementsAreBeingDragged) return;
+    if (this.tips && ids.some((id) => this.tips.includes(id))) return this.hideTips(); // clicking a tip dismisses them
     const did = this.logicalIdsFor(ids).find((l) => l.startsWith("decision:"))?.slice("decision:".length);
     if (did) return this.showAlternatives(did);
     if (!this.alt) return;
@@ -1492,10 +1498,73 @@ export class Board {
   // What to export: the board as it shows (faded where a filter leaves things out), without
   // the highlighter or a decision's open option pills.
   exportElements(title) {
-    const els = this.api.getSceneElements().filter((e) => !e.id.startsWith(MARK) && e.id !== "frame" && !(this.alt && (this.alt.ids.includes(e.id) || this.alt.ids.includes(e.containerId))));
+    const els = this.api.getSceneElements().filter((e) => !e.id.startsWith(MARK) && e.id !== "frame" && !(this.alt && (this.alt.ids.includes(e.id) || this.alt.ids.includes(e.containerId))) && !this.tips?.includes(e.id));
     if (!title || !els.length) return els;
     const [x1, y1] = getCommonBounds(els);
     return [...els, ...this.convert([{ type: "text", id: "export:title", x: x1, y: y1 - 46, text: title, fontSize: 22, strokeColor: INK, fontFamily: SANS }])];
+  }
+
+  // ---- the coach's tips: sticky notes with hand-drawn arrows, pointing at the board ----
+  // tips: [{ lid, text }] puts a note above the board with an arrow down to that thing;
+  // [{ lid, circle: true }] rings it, the way a teacher circles what to look at. They're the
+  // board's own drawing (remembered, so diff() skips them), never exported, and they go when
+  // you click one, approve, or hide tips.
+  showTips(tips) {
+    this.hideTips();
+    const els = this.scene();
+    const live = els.filter((e) => !e.isDeleted && !e.id.startsWith(MARK) && e.id !== "frame");
+    const targets = tips
+      .map((t) => ({ ...t, el: live.find((e) => e.id === this.elementFor(t.lid)) }))
+      .filter((t) => t.el)
+      .sort((a, b) => a.el.x - b.el.x);
+    if (!targets.length) return;
+    const [, top] = getCommonBounds(live);
+    const W = 200, H = 62;
+    const out = [];
+    let right = -Infinity; // notes sit in a row above the board, left to right, never overlapping
+    targets.forEach((t, i) => {
+      const [x1, y1, x2, y2] = getCommonBounds([t.el]);
+      const id = `tip-${i}`;
+      if (t.circle) {
+        out.push({ type: "ellipse", id, x: x1 - 18, y: y1 - 16, width: x2 - x1 + 36, height: y2 - y1 + 32, strokeColor: TIP.ring, backgroundColor: "transparent", strokeWidth: 2.5, roughness: 2 });
+        return;
+      }
+      const x = Math.max((x1 + x2) / 2 - W / 2, right + 24), y = top - H - 74;
+      right = x + W;
+      out.push({
+        type: "rectangle", id, x, y, width: W, height: H, strokeColor: TIP.stroke, backgroundColor: TIP.fill, fillStyle: "solid",
+        strokeWidth: 1, roughness: 1, roundness: { type: 3 }, label: { text: t.text, fontSize: 15, strokeColor: INK },
+      });
+      const sx = x + W / 2, sy = y + H + 6, dx = (x1 + x2) / 2 - sx, dy = y1 - 8 - sy;
+      out.push({
+        type: "arrow", id: `${id}-a`, x: sx, y: sy, points: [[0, 0], [dx * 0.35 + 22, dy * 0.5], [dx, dy]],
+        strokeColor: TIP.stroke, strokeWidth: 2, roughness: 2, roundness: { type: 2 }, endArrowhead: "arrow",
+      });
+    });
+    const conv = this.remember(this.convert(out));
+    for (const e of conv) e.seed = seedOf(e.id);
+    this.tips = conv.map((e) => e.id);
+    this.commit([...els, ...conv]);
+  }
+
+  hideTips() {
+    if (!this.tips) return;
+    const els = this.scene();
+    this.kill(els, new Set(this.tips));
+    this.tips = null;
+    this.commit(els);
+  }
+
+  // The Remove button: delete what's selected as the Delete key would (so it can be undone);
+  // diff() then reads it like any other edit. False when nothing is selected.
+  deleteSelected() {
+    const st = this.api.getAppState();
+    const ids = new Set(Object.keys(st.selectedElementIds ?? {}).filter((k) => st.selectedElementIds[k]));
+    if (!ids.size) return false;
+    const els = this.scene();
+    this.kill(els, ids);
+    this.api.updateScene({ elements: els, appState: { selectedElementIds: {} }, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+    return true;
   }
 
   // Sticky notes are the one place words belong on the board: they're the user's own.
