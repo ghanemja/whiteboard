@@ -21,30 +21,37 @@ The app walks a newcomer through a run without hiding anything. **Hide tips** tu
 ![The plan gate with tips: the coach card says step 2 of 4, sticky notes with hand-drawn arrows point at a decision and a part, an orange circle rings an open question, and the Edit the plan toolbar and color key frame the board](screenshots/first-time-help/2-plan-gate-tips-on-the-board.png)
 
 - **Coach.** A yellow card at the top of the panel says which step you're on (Describe → Plan → Build → Check) and what to do now, in a sentence or two.
-- **Tips on the board.** The first time a plan waits for you, sticky notes with hand-drawn arrows point at a decision ("Click a ◇ to see its other options") and a part ("Double-click a name to rename it"), and an orange circle rings its first open question. Click one to dismiss them. They're never exported or sent to the agent.
-- **Edit the plan.** A toolbar with words above the board: Select, Rename, Add a part, Connect, Remove, Add a note, Stickers. Each picks the matching Excalidraw tool and says what to do next; the gestures (double-click, Delete, drawing) still work. Excalidraw's full toolbar is behind **Drawing tools**.
+- **Tips on the board.** The first time a plan waits for you, sticky notes with hand-drawn arrows point at a decision ("Click a ◇ to see its other options") and a part ("Click a part to learn what it is"), and an orange circle rings its first open question. Click one to dismiss them. They're never exported or sent to the agent.
+- **Glass.** The board sits behind glass (a faint sheen, like a fishbowl): you can look and click anything to learn what it is, but drags, deletes and typing don't reach it. **Pull down to edit** slides the glass away and shows Edit the plan; **Submit** sends your changes and puts the glass back (**Glass back up** does without sending). Use this, Rename and Remove on a card pull it down for you.
+- **Edit the plan.** With the glass down, a toolbar with words above the board: Select, Rename, Add a part, Connect, Remove, Add a note, Stickers. Each picks the matching Excalidraw tool and says what to do next; the gestures (double-click, Delete, drawing) still work. Excalidraw's full toolbar is behind **Drawing tools**.
 - **Click to explain.** Select a part, a ◇, an arrow or a question and a card says what it is in plain words (what a service is, its status, routes, files, decisions, connections), with its actions as buttons: Rename, Remove, Ask about it, See the code; for a decision, **Use this** on each option, Ask why and Reject it; for a question, its answers.
 - **Plain words.** Symbols come with a word: receipts read "✓ checked", "✗ not true", "? can't tell"; the panel's tabs are **Chat & log** and **Plan details**, with counts like "2 for you"; each board tab says what it's for; a key under the Pictures board says what the colors mean; a command prompt says what the command is for and why you're asked; at the plan gate, suggested questions ("Ask why: D1 …") start a message.
 
 ## Views and exports
 
-The **View** menu above the board holds:
+The bar above the board shows the same plan other ways:
 
-- **Diagram** picks the notation (remembered):
+- **Draw as** picks the notation (remembered):
 
-  | Diagram | What it shows | Editable |
+  | Draw as | What it shows | Editable |
   | --- | --- | --- |
   | Pictures | Pictograms: what each part is at a glance | Yes |
   | C4 | [C4](https://c4model.com) container boxes: `[Container: FastAPI 0.115]`, `[Database: …]`, `[External system]` | Yes |
   | Data flow | A data flow diagram (Gane-Sarson): numbered processes, data stores (DS1…), external entities with a shadow, and the data each link carries | Yes |
-  | Database (ER) | Each data store's tables: columns and types, PK/FK/UK keys, crow's-foot relations | Read-only |
+  | Database | Each data store's tables (an ER diagram): columns and types, PK/FK/UK keys, crow's-foot relations | Read-only |
   | Sequence | One flow as a UML sequence diagram: lifelines, numbered messages, replies dashed | Read-only |
 
   The editable ones redraw the same board, so steering works in all three. C4, Data flow, Database and Sequence use the official look: square boxes, 1 px lines, a plain typeface and a Key. Status is color everywhere.
-- **Show only** narrows the board to one **layer** (Frontend, Backend, Data, ML, External) or one **flow**: the path a request takes, its steps numbered on the arrows and listed in a card; everything else fades. In Sequence it picks the flow.
-- **Export** what the board shows: **Copy Mermaid** (each diagram has its Mermaid form: flowcharts, `erDiagram`, `sequenceDiagram`; GitHub renders them in a README or PR), **SVG** or **PNG** with a title.
+- **Zoom into** opens one **layer** (Frontend, Backend, Data, ML, External) on the board's own map: each of its components becomes a frame holding its parts (pages, routes, jobs, pipeline steps, tables with their columns), with arrows for what each hands on; components of other layers stay closed, as grey boxes in their places. **ML** gathers the model pipeline even where its steps live inside backend components (chunk → embed → index, retrieve → prompt → answer). **Look inside** on a part's card opens its layer. Read-only; **Whole system** goes back.
 
-The agent supplies what these need: flows (`flow` op), tables (`table` op), each component's layer. The Plan details lists the flows and the data model too, and names are kept in sentence case.
+![Zoom into ML: the RAG pipeline across the worker, the vector index, the API server and Claude](screenshots/zoom/2-ml-layer.png)
+
+**Flows & export**, beside the board tabs:
+
+- **Show a flow**: the path a request takes, its steps numbered on the arrows and listed in a card. In Sequence it picks the flow.
+- **Export** what the board shows: **Copy Mermaid** (each view has its Mermaid form: flowcharts, `erDiagram`, `sequenceDiagram`, and a flowchart with a subgraph per component for a layer; GitHub renders them in a README or PR), **SVG** or **PNG** with a title.
+
+The agent supplies what these need: flows (`flow` op), tables (`table` op), each component's layer, and the parts inside components (`part` op: name, kind, its layer when it differs, and what it hands on). A component with no parts shows what it exposes (its `api`) and its tables. The Plan details lists the flows and the data model too, and names are kept in sentence case.
 
 ## Setup
 
@@ -194,8 +201,8 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `src/engine/board.js` | Owns the three Excalidraw canvases: the Architecture pictograms and decision diamonds, the Why chains, the Timeline, highlighter marks, and `diff()` of your edits |
 | `src/engine/timeline.js` | The Timeline as pure functions: `buildTimeline(events)` (lanes, marks, causes, the time axis with compressed waits), `timeToX`, `drawTimeline` (Excalidraw skeletons) |
 | `src/engine/palette.js` | Phases and the colors the canvases share |
-| `src/engine/views.js` | The views of one model, shared with the server: C4 labels, layers, flows, data-flow roles and numbering, table columns, sentence case, and every Mermaid export |
-| `src/engine/diagrams.js` | The read-only diagrams as Excalidraw skeletons: the data model (ER) and a flow as a sequence diagram |
+| `src/engine/views.js` | The views of one model, shared with the server: C4 labels, layers and what's inside them (parts, links), flows, data-flow roles and numbering, table columns, sentence case, and every Mermaid export |
+| `src/engine/diagrams.js` | The read-only diagrams as Excalidraw skeletons: the data model (ER), a flow as a sequence diagram, and a layer zoomed into |
 | `src/engine/claims.js` | Receipts: finds checkable claims in the agent's sentences (and questions or assumptions said in passing) and checks them against the run's record |
 | `src/engine/review.js` | The end-of-run review card: what needs a look, and where; and the red-pen marks for the board |
 | `src/engine/stickers.js` | The steering stickers: what a dropped sticker lands on, and the edit it makes |
@@ -207,7 +214,7 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `scripts/tour-check.cjs` | Takes the tour end to end in headless Chromium (Playwright) with screenshots, then checks the plain demo is unchanged |
 | `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, stickers and the red pen, the tour's steps, the views and their Mermaid exports, the decision log's diagrams, and git change tracking on a throwaway repo |
 
-Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node` (with `layer`), `edge`, `flow`, `table`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner, and `ask` (a command prompt) and `tour` (a checkpoint) that only do something during the tour.
+Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node` (with `layer`), `part`, `edge`, `flow`, `table`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner, and `ask` (a command prompt) and `tour` (a checkpoint) that only do something during the tour.
 
 ## License
 

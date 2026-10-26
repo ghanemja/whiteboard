@@ -28,7 +28,7 @@ npm run dev          # starts the app
 
 Open **http://localhost:5199** in your browser. Without an API key, a scripted demo starts by itself. That's all you need for this tutorial.
 
-Optional: to see three real, recorded runs under "Saved boards" (section 8), also run:
+Optional: to see three real, recorded runs under "Saved boards" (section 9), also run:
 
 ```bash
 cp fixtures/recordings/* recordings/
@@ -98,6 +98,14 @@ The last phase deploys it. All parts turn purple (★ shipped), and a flag appea
 
 You don't have to type to change its mind. **Edit the board**, and your changes are sent to the agent. They work best at the plan gate, before anything is built, but you can send them later too.
 
+### Pull the glass down
+
+The board sits **behind glass**, like a fishbowl: a faint blue sheen over the drawing. Through the glass you can look and **click anything** to learn what it is, but you can't move or change things by accident. To change the plan, press **Pull down to edit** (the tab at the top of the board) or **Pull the glass down to change the plan** (above it). The glass slides away and the **Edit the plan** toolbar appears. When you **Submit**, your changes go to the agent and the glass comes back up. **Glass back up** puts it back without sending anything; your changes wait in the list.
+
+![The board behind glass, with the Pull down to edit tab](../screenshots/glass/1-behind-glass.png)
+
+Buttons on a card that change the plan (**Use this**, **Rename**, **Remove**) pull the glass down for you.
+
 ### Pick another option for a decision
 
 Click a ◇, then press **Use this** next to one of the other options. Or drag one of the option pills that fan out beside the diamond onto it. To use your own idea, type it in the blank "+ your own" pill.
@@ -106,7 +114,7 @@ Click a ◇, then press **Use this** next to one of the other options. Or drag o
 
 ### Use the Edit the plan toolbar
 
-Above the board, **Edit the plan** has buttons with words:
+With the glass down, **Edit the plan** above the board has buttons with words:
 
 | Button | What it does |
 | --- | --- |
@@ -134,7 +142,7 @@ Your changes collect in a list at the bottom of the panel. At the plan gate:
 - **Revise plan** redraws the plan with your changes and asks you again.
 - **Approve with changes** folds them in and starts building.
 
-Later on, press **Submit** (on the board or in the panel).
+Later on, press **Submit** (on the board or in the panel). Either way, the glass goes back up.
 
 ### Answer its questions
 
@@ -144,7 +152,36 @@ Sometimes the agent can't tell something from the code, so it asks you. Question
 
 You can also just type in the box at the bottom ("Use SQLite instead"), or press **Ask why** on a decision.
 
-## 6. The command prompt
+## 6. See it other ways: Draw as and Zoom into
+
+The bar right above the board shows the same plan in other ways. Try it on any plan; it never changes the plan.
+
+![The bar above the board: Draw as and Zoom into](../screenshots/zoom/1-draw-as-and-zoom-into.png)
+
+**Draw as** redraws the board in a standard notation:
+
+| Draw as | What you see |
+| --- | --- |
+| **Pictures** | The pictograms (the default) |
+| **C4** | The official C4 container diagram: each part's type and technology |
+| **Data flow** | Processes, data stores and outside services, with the data on each arrow |
+| **Database** | The tables each data store holds: columns, keys, and how they relate (an ER diagram) |
+| **Sequence** | One request, step by step, as a sequence diagram (pick the flow under **Flows & export**) |
+
+**Zoom into** opens one **layer** of the system, so you see what's *inside* its parts instead of just boxes. The map stays the same: each part of that layer becomes a frame with its pieces inside, and parts from other layers stay closed, as grey boxes, where they were.
+
+- **Frontend**: the pages and views (in the demo: the upload page, the chat view, the PDF page viewer) and the calls they make.
+- **Backend**: the routes and jobs (`POST /documents`, `POST /ask`, `ingest(document_id)`) and where each one hands its work.
+- **Data**: the tables with their columns, the files in storage, and the indexes.
+- **ML**: the model pipeline, even where its steps live inside backend parts. In the demo: chunk → embed → the vector index, and retrieve top 8 → prompt → Claude writes the answer.
+
+![Zoom into ML: the pipeline across the worker, the vector index, the API server and Claude](../screenshots/zoom/2-ml-layer.png)
+
+![Zoom into Data: the PDFs in storage, the documents and chunks tables, and the index](../screenshots/zoom/3-data-layer.png)
+
+**Whole system** goes back to the full board. You can also click a part and press **Look inside** on its card. Zoomed-in views are read-only; to change something, go back to Whole system. **Flows & export** copies any view as Mermaid (GitHub renders it) or saves it as SVG or PNG.
+
+## 7. The command prompt
 
 An agent can run commands, and a command can do anything your terminal can: delete files, install things, send data. So it **asks before every command**.
 
@@ -158,7 +195,7 @@ Read the command first. Running the tests (`npm test`, `pytest`) is usually fine
 
 (The demo only shows this prompt during the tour. With a real agent, it appears for every command.)
 
-## 7. Check its work
+## 8. Check its work
 
 Agents can be wrong about their own work, and they say so confidently. So the app checks what it said against what really happened: **git** (which files actually changed) and **the test output**.
 
@@ -190,7 +227,7 @@ The **Timeline** tab shows the whole run over time: your actions on top (pink), 
 
 ![The Timeline of the demo run](../screenshots/tour/11-timeline-tab.png)
 
-## 8. Saved runs and the decision log
+## 9. Saved runs and the decision log
 
 Every run is recorded. The start screen lists them under **Saved boards**. With an API key, that's where you begin; with the demo, press **See saved runs** on the tour's last step. (To see the three sample runs, copy them first, see section 1.)
 
@@ -203,7 +240,7 @@ Every run is recorded. The start screen lists them under **Saved boards**. With 
 
 ![A saved run reopened on its Timeline, with the Decision log button](../screenshots/tutorial/replay-timeline.png)
 
-## 9. Your own task (needs an API key)
+## 10. Your own task (needs an API key)
 
 To run a real agent instead of the demo:
 
@@ -211,7 +248,7 @@ To run a real agent instead of the demo:
 2. Put your key in it: `AGENT_KEY=sk-ant-…` (an [Anthropic API key](https://console.anthropic.com); the README's *Models* section has other options).
 3. Restart `npm run dev`.
 
-Now the start screen asks **What should the agent do?** The repository field starts at the practice repo (`sandbox/linkshort`, a tiny URL shortener with tests). Pick one of the example tasks, like "Let links expire after a given number of days", or describe your own. Everything from sections 4–8 works the same, except the commands are real now, so read each prompt. To reset the practice repo, run `npm run sandbox` again.
+Now the start screen asks **What should the agent do?** The repository field starts at the practice repo (`sandbox/linkshort`, a tiny URL shortener with tests). Pick one of the example tasks, like "Let links expire after a given number of days", or describe your own. Everything from sections 4–9 works the same, except the commands are real now, so read each prompt. To reset the practice repo, run `npm run sandbox` again.
 
 A run costs about $0.20–0.40.
 
@@ -220,7 +257,8 @@ A run costs about $0.20–0.40.
 - The yellow **tips** card always says which step you're on and what to do. **Hide tips** puts it away; the **?** button brings it back.
 - Click anything on the board to learn what it is.
 - **Highlights only** (in Chat & log) hides the narration and keeps what matters.
-- **View** (above the board) switches the drawing: Pictures, C4, Data flow, Database (ER) or Sequence; it can also export the board as Mermaid, SVG or PNG.
+- **Draw as** and **Zoom into** (above the board) show the plan other ways; **Flows & export** shows one flow's steps and exports the view as Mermaid, SVG or PNG.
+- The glass over the board keeps clicks safe: pull it down to change things.
 - The ▶ / ⏸ button pauses the demo; **2×** changes its speed.
 
 Questions or ideas? Open an issue on [GitHub](https://github.com/ghanemja/whiteboard/issues).
