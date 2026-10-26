@@ -4,7 +4,7 @@ A real coding agent works in a repo while an Excalidraw board shows what it's do
 
 **New here?** Read the [step-by-step tutorial](docs/TUTORIAL.md) (no API key needed), or open the app and press **Take the tour**.
 
-![The demo: the agent plans on the board, you pick another option for a decision (D3 → Qdrant), approve, it builds and ships; then the review card and the Timeline](screenshots/demo.gif)
+![The demo: the agent plans on the board while the coach says what to do, tips point at a decision and a part; you click D3, press Use this on Pinecone, approve with changes; it builds, tests and ships; then the review card and the Timeline](screenshots/demo.gif)
 
 The board is pictures, not prose. Components are hand-drawn pictograms (browser window, server rack, database cylinder, cloud, queue, clipboard, person) with a short name; status is color plus a corner badge (… building, ✓ verified, ✗ failed, ★ live). Above the board, the project's name and goal sit beside the four phases, drawn as milestones on a road (Plan → Build → Verify → Ship) with a dot per task: hover one to read it, click to open it in Plan details. Below that, the board has a tab per canvas: **Architecture** (what's being built; edit it to steer), **Why** (the reasoning behind it) and **Timeline** (how that reasoning moved over the run). Words stay in the side panel.
 
