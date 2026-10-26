@@ -47,6 +47,7 @@ export function describeEdit(d) {
     case "note": return `Note “${d.text}”`;
     case "reject": return `Reject ${d.label} (${d.title})`;
     case "choose": return `${d.label} → ${d.to}`;
+    case "sticker": return `${STICKER_WORD[d.sticker] ?? d.sticker} on ${d.decision ? `${d.label} (${d.title})` : d.name}`;
     default: return d.kind ?? "";
   }
 }
@@ -58,7 +59,14 @@ export const AREAS = {
   decision: { icon: "◇", label: "Decision" },
   scope: { icon: "✐", label: "Scope" },
 };
-export const areaOf = (d) => (d.kind === "reject" || d.kind === "choose" ? "decision" : d.kind === "note" ? "scope" : "architecture");
+// A sticker: Keep this is a constraint on the task (scope); Why? and Not needed are about what
+// they're stuck on, a decision or a part.
+export const areaOf = (d) =>
+  d.kind === "sticker"
+    ? d.sticker === "keep" ? "scope" : d.decision ? "decision" : "architecture"
+    : d.kind === "reject" || d.kind === "choose" ? "decision" : d.kind === "note" ? "scope" : "architecture";
+// What each steering sticker says, as the panel and the log write it.
+export const STICKER_WORD = { why: "Why?", drop: "Not needed", keep: "Keep this" };
 
 // A command that runs tests (the server's family of runners). Matched on the command,
 // not on "test" alone, so `cat test/*.js` isn't a test run.

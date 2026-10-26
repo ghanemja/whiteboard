@@ -7,8 +7,9 @@ import { DECISION, INK, MILESTONE, MUTED, PHASES, PROOF, YOU } from "./palette";
 import { buildTimeline, drawTimeline, TL, xToTime } from "./timeline";
 import { c4Tag, dataOf, dfdIds, dfdRole, layerOf, parseColumns, parseSteps, sentenceCase, tagCase } from "./views";
 import { drawEr, drawSequence } from "./diagrams";
+import { STICKERS, stickerEdit } from "./stickers";
 
-export { MILESTONE, PHASES };
+export { MILESTONE, PHASES, STICKERS };
 
 // Owns the board's Excalidraw scenes and keeps them pictures, not documents:
 //   - Architecture: hand-drawn pictograms colored by status, connections, and the
@@ -86,6 +87,10 @@ const QSTYLE = {
 const QSTATES = ["open", "answered", "confirmed", "corrected"];
 // The coach's tips: yellow sticky notes and an orange ring (showTips).
 const TIP = { stroke: "#f08c00", fill: "#fff3bf", ring: "#e8590c" };
+// The teacher's red pen on the review (showPen), and the tape and pins that say whose note is whose.
+const PEN = "#e03131";
+const TAPE = { fill: "#a5d8ff", stroke: "#74c0fc" };
+const PIN = { head: "#fa5252", rim: "#c92a2a" };
 const WHY = "why:"; // element id prefix of the Why view
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 // Two elements' boxes touch (within m px).
@@ -210,6 +215,24 @@ function proofMark(pid, x, y, size, proof) {
 }
 
 // Where a line from the element's center along (dx, dy) leaves its outline.
+// A push pin stuck in at (cx, top): a red head with a rim, a glint, and the needle's shadow.
+function pinParts(pid, cx, top) {
+  return [
+    poly(`${pid}:pin-n`, [[cx + 1, top - 2], [cx + 5, top + 7]], { strokeColor: "#868e96", strokeWidth: 1.5, roughness: 0, opacity: 70 }),
+    { type: "ellipse", id: `${pid}:pin`, x: cx - 8, y: top - 15, width: 16, height: 16, strokeColor: PIN.rim, backgroundColor: PIN.head, fillStyle: "solid", strokeWidth: 1.5, roughness: 1 },
+    { type: "ellipse", id: `${pid}:pin-g`, x: cx - 4, y: top - 12, width: 5, height: 4, strokeColor: "transparent", backgroundColor: "#ffffff", fillStyle: "solid", strokeWidth: 1, roughness: 0, opacity: 80 },
+  ];
+}
+
+// A strip of washi tape across the top of a note at (x, y, w): see-through, a little crooked.
+function tapePart(id, x, y, w) {
+  const tw = Math.min(84, Math.max(48, w * 0.4));
+  return {
+    type: "rectangle", id, x: x + w / 2 - tw / 2, y: y - 10, width: tw, height: 20, angle: (seedOf(id) % 2 ? -1 : 1) * 0.06,
+    strokeColor: TAPE.stroke, backgroundColor: TAPE.fill, fillStyle: "solid", strokeWidth: 1, roughness: 1, opacity: 55,
+  };
+}
+
 function edgePoint(el, dx, dy, gap) {
   const hw = el.width / 2, hh = el.height / 2;
   const t =
@@ -218,6 +241,25 @@ function edgePoint(el, dx, dy, gap) {
       : Math.min(hw / Math.abs(dx || 1e-6), hh / Math.abs(dy || 1e-6));
   const len = Math.hypot(dx, dy) || 1;
   return [el.x + hw + dx * t + (dx / len) * gap, el.y + hh + dy * t + (dy / len) * gap];
+}
+
+// The sticker sheet, as Excalidraw library items (api.updateLibrary). Each is a bright,
+// hand-drawn label, a little crooked; its box and label carry customData.sticker, which a drop
+// from the Library keeps (it gets new ids), so diff() knows a sticker wherever it lands.
+export function stickerItems() {
+  return Object.entries(STICKERS).map(([key, st]) => {
+    const w = Math.max(104, st.label.length * 12 + 34);
+    const els = convertToExcalidrawElements(
+      [{
+        type: "rectangle", id: `sticker-${key}`, x: 0, y: 0, width: w, height: 46, angle: st.angle,
+        strokeColor: st.stroke, backgroundColor: st.fill, fillStyle: "solid", strokeWidth: 2, roughness: 2, roundness: { type: 3 },
+        customData: { sticker: key },
+        label: { text: st.label, fontSize: 20, strokeColor: "#1e1e1e" },
+      }],
+      { regenerateIds: false },
+    ).map((e) => ({ ...e, seed: seedOf(e.id), angle: st.angle, customData: { sticker: key } }));
+    return { id: `wb-sticker-${key}`, status: "unpublished", name: st.label, created: 1, elements: els };
+  });
 }
 
 export class Board {
@@ -250,6 +292,8 @@ export class Board {
     this.changes = []; // the repo's actual changed files (git), attributed to components by their paths
     this.alt = null; // a decision's alternatives shown as ghosts: { did, ids, options, labels }
     this.tips = null; // ids of the coach's sticky notes on the board (showTips), not part of the plan
+    this.pen = null; // the review's red-pen marks (showPen): { ids, links: elId -> lid, sig }
+    this.stickers = new Map(); // stickers sent to the agent: elId -> { sticker, ids } (cleared or kept once it answers)
     this.whyRows = 0; // decisions drawn on the Why canvas, to refit it when one is added
     this.hideCursor();
   }
@@ -260,11 +304,11 @@ export class Board {
   }
   // Decision diamonds stay above the components they sit on (a component redrawn later would
   // cover its diamond and take its clicks), a decision's option pills above those, and the
-  // coach's tips above everything.
+  // coach's tips and the review's red pen above everything.
   // A layer or flow filter fades what it leaves out, whatever was just drawn.
   commit(elements) {
     const on = (e, p) => e.id.startsWith(p) || e.containerId?.startsWith(p);
-    const layer = (e) => (on(e, "tip-") ? 3 : on(e, "alt-") ? 2 : e.groupIds?.[0]?.startsWith("g:dec-") || e.id.startsWith("flow:") ? 1 : 0);
+    const layer = (e) => (on(e, "tip-") || on(e, "pen-") ? 3 : on(e, "alt-") ? 2 : e.groupIds?.[0]?.startsWith("g:dec-") || e.id.startsWith("flow:") ? 1 : 0);
     const ls = elements.map(layer);
     if (ls.some((l, i) => i && l < ls[i - 1])) elements = elements.map((e, i) => [ls[i], i, e]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , e]) => e);
     this.api.updateScene({ elements: this.faded(elements), captureUpdate: CaptureUpdateAction.NEVER });
@@ -561,6 +605,11 @@ export class Board {
         : {}),
       free_cells,
       notes: m.notes.length,
+      // Keep this stickers still on the board: parts and decisions the user wants left as they are.
+      ...(() => {
+        const kept = (m.kept ?? []).filter((k) => this.api.getSceneElements().some((e) => e.id === k.elId));
+        return kept.length ? { kept: kept.map(({ node, decision }) => (node ? { node } : { decision })) } : {};
+      })(),
     };
   }
 
@@ -827,6 +876,8 @@ export class Board {
       },
       { type: "ellipse", id: `${q.elId}:b`, x: x - 12, y: y - 12, width: 24, height: 24, strokeColor: badge, backgroundColor: badge, fillStyle: "solid", strokeWidth: 1, roughness: 0 },
       { type: "text", id: `${q.elId}:g`, x, y, text: settled ? "✓" : q.state === "corrected" ? "↻" : st.glyph, fontSize: 15, strokeColor: "#ffffff" },
+      // The agent's notes are pinned up; yours are taped (tapeNotes). The flat official styles skip both.
+      ...(this.official ? [] : pinParts(q.elId, x + 105, y)),
     ]);
     for (const e of out) {
       e.groupIds = g;
@@ -1321,6 +1372,7 @@ export class Board {
     this.redrawEdges();
     this.redrawDecisions();
     for (const q of Object.values(this.model.questions)) this.drawQuestion(q);
+    this.tapeNotes();
     this.redrawKey();
     this.drawFlowSteps();
   }
@@ -1496,9 +1548,10 @@ export class Board {
   }
 
   // What to export: the board as it shows (faded where a filter leaves things out), without
-  // the highlighter or a decision's open option pills.
+  // the highlighter, a decision's open option pills, the coach's tips or the review's red pen.
+  // Tape and pins stay: they say whose note is whose.
   exportElements(title) {
-    const els = this.api.getSceneElements().filter((e) => !e.id.startsWith(MARK) && e.id !== "frame" && !(this.alt && (this.alt.ids.includes(e.id) || this.alt.ids.includes(e.containerId))) && !this.tips?.includes(e.id));
+    const els = this.api.getSceneElements().filter((e) => !e.id.startsWith(MARK) && e.id !== "frame" && !(this.alt && (this.alt.ids.includes(e.id) || this.alt.ids.includes(e.containerId))) && !this.tips?.includes(e.id) && !e.id.startsWith("pen-"));
     if (!title || !els.length) return els;
     const [x1, y1] = getCommonBounds(els);
     return [...els, ...this.convert([{ type: "text", id: "export:title", x: x1, y: y1 - 46, text: title, fontSize: 22, strokeColor: INK, fontFamily: SANS }])];
@@ -1555,6 +1608,111 @@ export class Board {
     this.commit(els);
   }
 
+  // ---- the review's red pen: what a teacher would mark ----
+  // marks: { circles: [{ node, lid }], notes: [{ file, lid }], crosses: [{ decision, lid }] } (review.js
+  // penMarks): a rough red ring round the part that owns a file a false claim names, a margin note
+  // for such a file no part owns, and a scribbled ✗ over a decision whose check failed. Board-drawn
+  // like the tips (pen-*, remembered, on top, never exported); clicking one opens what it marks.
+  showPen(marks) {
+    const els = this.scene();
+    const live = els.filter((e) => !e.isDeleted && !e.id.startsWith(MARK) && e.id !== "frame" && !e.id.startsWith("pen-") && !this.tips?.includes(e.id));
+    const at = (id) => live.find((e) => e.id === id);
+    const out = [], links = new Map(), centers = {};
+    const sigOf = [];
+    const mark = (id, lid, parts) => {
+      for (const p of parts) {
+        p.groupIds = [`g:${id}`];
+        links.set(p.id, lid);
+      }
+      out.push(...parts);
+    };
+    const pen = { strokeColor: PEN, backgroundColor: "transparent", roughness: 2.5 };
+    for (const c of marks?.circles ?? []) {
+      const el = at(this.model.nodes[c.node]?.elId);
+      if (!el) continue;
+      const [x1, y1, x2, y2] = getCommonBounds([el]);
+      const id = `pen-c-${c.node}`;
+      sigOf.push(`${id}:${x1 | 0}:${y1 | 0}`);
+      mark(id, c.lid, [{ type: "ellipse", id, x: x1 - 22, y: y1 - 14, width: x2 - x1 + 40, height: y2 - y1 + 30, strokeWidth: 2.5, ...pen }]);
+    }
+    for (const c of marks?.crosses ?? []) {
+      const el = at(`dec-${c.decision}`);
+      if (!el) continue;
+      const [x1, y1, x2, y2] = getCommonBounds([el]);
+      const id = `pen-x-${c.decision}`, k = 7;
+      sigOf.push(`${id}:${x1 | 0}:${y1 | 0}`);
+      mark(id, c.lid, [
+        poly(id, [[x1 - k, y1 - k], [(x1 + x2) / 2, (y1 + y2) / 2 + 2], [x2 + k, y2 + k]], { strokeWidth: 3, ...pen }),
+        poly(`${id}-2`, [[x2 + k, y1 - k + 2], [x1 - k + 2, y2 + k]], { strokeWidth: 3, ...pen }),
+      ]);
+    }
+    // A file no part owns: a note in the margin, under the board, the way a teacher writes beside the work.
+    const notes = marks?.notes ?? [];
+    if (notes.length && live.length) {
+      const [bx, , , by] = getCommonBounds(live);
+      notes.forEach((f, i) => {
+        const id = `pen-n-${i}`, y = by + 26 + i * 40;
+        sigOf.push(`${id}:${f.file}:${bx | 0}:${by | 0}`);
+        centers[id] = [bx, y];
+        mark(id, f.lid, [
+          { type: "text", id, x: bx, y, text: `✗ ${clip(f.file, 30)} · not on the board`, fontSize: 20, strokeColor: PEN },
+          poly(`${id}-u`, [[bx, y + 30], [bx + 120, y + 32], [bx + 250, y + 29]], { strokeWidth: 2, ...pen }),
+        ]);
+      });
+    }
+    const sig = sigOf.join("|");
+    if (sig === (this.pen?.sig ?? "")) return;
+    this.hidePen();
+    if (!out.length) return;
+    const conv = this.remember(this.convert(out));
+    for (const e of conv) e.seed = seedOf(e.id);
+    // A label measured, its underline fits it.
+    for (const e of conv) {
+      if (!centers[e.id]) continue;
+      const u = conv.find((x) => x.id === `${e.id}-u`);
+      if (u) u.points = [[0, 0], [e.width * 0.5, 2], [e.width + 6, -1]];
+    }
+    this.pen = { ids: conv.map((e) => e.id), links, sig };
+    this.commit([...this.scene(), ...conv]);
+  }
+
+  hidePen() {
+    if (!this.pen) return;
+    const els = this.scene();
+    this.kill(els, new Set(this.pen.ids));
+    this.pen = null;
+    this.commit(els);
+  }
+
+  // The red-pen mark among these element ids, as what it points at (a sentence or a decision).
+  penLink(ids) {
+    for (const id of ids) if (this.pen?.links.has(id)) return this.pen.links.get(id);
+    return null;
+  }
+
+  // ---- steering stickers (stickers.js) ----
+  // Sent: the agent has them now, so diff() stops reporting them. Once it has answered
+  // (settleStickers), Why? and Not needed come off; Keep this stays as a standing constraint.
+  markSent(edits) {
+    const els = this.scene();
+    for (const d of edits) {
+      if (d.kind !== "sticker") continue;
+      const ids = [d.elId, ...els.filter((e) => e.containerId === d.elId).map((e) => e.id)];
+      ids.forEach((id) => this.known.add(id));
+      this.stickers.set(d.elId, { sticker: d.sticker, ids });
+      if (d.sticker === "keep") (this.model.kept ??= []).push({ elId: d.elId, ...(d.node ? { node: d.node } : { decision: d.decision }) });
+    }
+  }
+
+  settleStickers() {
+    const gone = [...this.stickers].filter(([, s]) => s.sticker !== "keep");
+    this.stickers.clear();
+    if (!gone.length) return;
+    const els = this.scene();
+    this.kill(els, new Set(gone.flatMap(([, s]) => s.ids)));
+    this.commit(els);
+  }
+
   // The Remove button: delete what's selected as the Delete key would (so it can be undone);
   // diff() then reads it like any other edit. False when nothing is selected.
   deleteSelected() {
@@ -1580,7 +1738,33 @@ export class Board {
     }]));
     this.model.notes.push({ n, elId });
     this.commit([...this.scene(), ...out]);
+    this.tapeNotes();
     return [`note:${n}`];
+  }
+
+  // Your notes are taped to the board; the agent's questions and assumptions are pinned
+  // (drawQuestion), so whose note is whose shows at a glance. The tape is grouped with its note,
+  // so it moves with it, and it's the board's own drawing (remembered). The official notations
+  // (C4, data flow) are flat, so the tape comes off there and back on in Pictures.
+  tapeNotes() {
+    const els = this.scene();
+    const stale = new Set(els.filter((e) => e.id.startsWith("tape-") && !e.isDeleted).map((e) => e.id));
+    const fresh = [];
+    if (!this.official)
+      for (const n of this.model.notes) {
+        const i = els.findIndex((e) => e.id === n.elId && !e.isDeleted);
+        if (i === -1) continue;
+        const id = `tape-${n.elId}`, g = `g:${n.elId}`;
+        stale.delete(id);
+        const [x1, y1, x2] = getCommonBounds([els[i]]);
+        fresh.push({ ...tapePart(id, x1, y1, x2 - x1), groupIds: [g] });
+        if (!els[i].groupIds?.includes(g)) els[i] = bump(els[i], { groupIds: [...(els[i].groupIds ?? []), g] });
+      }
+    this.kill(els, stale);
+    const conv = this.convert(fresh);
+    for (const e of conv) e.seed = seedOf(e.id);
+    this.upsert(els, conv);
+    this.commit(els);
   }
 
   // Delete elements by id (plus their bound text) and drop dangling bindings.
@@ -1657,6 +1841,7 @@ export class Board {
     const n = this.model.notes.length;
     this.model.notes.push({ n, elId: el });
     this.known.add(el);
+    this.tapeNotes();
     return [`note:${n}`];
   }
 
@@ -1697,6 +1882,12 @@ export class Board {
 
     for (const e of els) {
       if (e.isDeleted || this.known.has(e.id) || e.id.startsWith(MARK)) continue;
+      // A sticker from the Library, dropped on a part or a ◇ (stickers.js).
+      if (e.customData?.sticker) {
+        const st = stickerEdit(e, this.model, live);
+        if (st) out.push(st);
+        continue;
+      }
       if (e.type === "arrow") {
         const a = this.nodeByEl(e.startBinding?.elementId), b = this.nodeByEl(e.endBinding?.elementId);
         if (a && b && a !== b && !this.model.edges[`${a.id}>${b.id}`])
@@ -1752,7 +1943,7 @@ export class Board {
       } else {
         const edge = Object.entries(this.model.edges).find(([, e]) => e.elId === id);
         if (edge) out.add(`edge:${edge[0]}`);
-        const note = this.model.notes.find((n) => n.elId === id);
+        const note = this.model.notes.find((n) => n.elId === id || id === `tape-${n.elId}`);
         if (note) out.add(`note:${note.n}`);
       }
     }

@@ -835,6 +835,17 @@ button.icon.speed {
   background: color-mix(in srgb, var(--blue) 16%, transparent);
   color: var(--blue);
 }
+/* A sticker edit names its sticker the way it looks on the board: bright, a little crooked. */
+.sticker-chip {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1.5px solid;
+  border-radius: 6px;
+  color: #1e1e1e;
+  font-family: var(--hand);
+  font-size: 13px;
+  transform: rotate(-2deg);
+}
 /* Grouped by what they change: ▢ architecture, ◇ decision, ✐ scope. */
 .edit-area {
   display: flex;

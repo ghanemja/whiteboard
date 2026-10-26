@@ -65,3 +65,29 @@ export function buildReview({ model, claims = [], passing = [], changes = null, 
   if (!rows.some((r) => r.tone === "bad" || r.tone === "warn")) rows.unshift({ key: "clear", tone: "ok", icon: "✓", text: "All clear", links: [] });
   return rows;
 }
+
+// The review as a teacher's red pen on the board (Board.showPen): a ring round each part that
+// owns a file a false claim got wrong, a margin note for such a file no part owns, and a ✗ over
+// each decision whose check failed (gone once a later run proves it). Each mark links to what it
+// marks: the sentence, or the decision.
+//   penMarks({ model, claims, ownerOf: (file) => nodeId | null })
+//     → { circles: [{ node, file, lid }], notes: [{ file, lid }], crosses: [{ decision, lid }] }
+export function penMarks({ model, claims = [], ownerOf = () => null }) {
+  const circles = [], notes = [], crosses = [];
+  const seen = new Set();
+  for (const c of claims) {
+    if (c.verdict !== "bad") continue;
+    for (const x of c.claims ?? [])
+      for (const file of x.verdict === "bad" ? x.wrong ?? [] : []) {
+        const node = ownerOf(file);
+        const k = node ? `node:${node}` : `file:${file}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        if (node) circles.push({ node, file, lid: `sentence:${c.id}` });
+        else notes.push({ file, lid: `sentence:${c.id}` });
+      }
+  }
+  for (const d of Object.values(model.decisions ?? {}).sort((a, b) => a.n - b.n))
+    if (d.state !== "rejected" && d.proof === "fail") crosses.push({ decision: d.id, lid: `decision:${d.id}` });
+  return { circles, notes, crosses };
+}

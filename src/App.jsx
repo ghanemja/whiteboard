@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Excalidraw, exportToBlob, exportToSvg, sceneCoordsToViewportCoords, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
-import { Board, PHASES, STATUS } from "./engine/board";
+import { Board, PHASES, STATUS, STICKERS, stickerItems } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
-import { AREAS, areaOf, fmt } from "./engine/timeline";
+import { AREAS, areaOf, fmt, STICKER_WORD } from "./engine/timeline";
 import { LAYERS, layerOf, tagCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "./engine/views";
-import { buildReview } from "./engine/review";
+import { buildReview, penMarks } from "./engine/review";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 
 // Tasks that fit the sample repo (sandbox/linkshort, created by `npm run sandbox`).
@@ -22,7 +22,7 @@ const UI_OPTIONS = { canvasActions: { loadScene: false, saveToActiveFile: false 
 const WHY_UI_OPTIONS = { canvasActions: { loadScene: false, saveToActiveFile: false, export: false, clearCanvas: false, changeViewBackgroundColor: false, toggleTheme: false } };
 const SPEEDS = [1, 2, 4];
 
-const GLYPH = { rename: "✎", remove: "✕", add: "+", link: "→", unlink: "✂", note: "✐", reject: "◇", choose: "⇄" };
+const GLYPH = { rename: "✎", remove: "✕", add: "+", link: "→", unlink: "✂", note: "✐", reject: "◇", choose: "⇄", sticker: "◪" };
 
 function describe(d) {
   switch (d.kind) {
@@ -34,6 +34,13 @@ function describe(d) {
     case "note": return <>Note “{d.text}”</>;
     case "reject": return <>Reject <b>{d.label}</b> ({d.title})</>;
     case "choose": return <><b>{d.label}</b> → <b>{d.to}</b></>;
+    case "sticker":
+      return (
+        <>
+          <span className="sticker-chip" style={{ background: STICKERS[d.sticker]?.fill, borderColor: STICKERS[d.sticker]?.stroke }}>{STICKER_WORD[d.sticker]}</span> on{" "}
+          {d.decision ? <><b>{d.label}</b> ({d.title})</> : <b>{d.name}</b>}
+        </>
+      );
     default: return null;
   }
 }
@@ -73,6 +80,7 @@ const TOOL_ICONS = {
   remove: <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />,
   note: <path d="M3 2.5h10v7.5l-3.5 3.5H3zM9.5 13.5V10H13" />,
   tools: <path d="M2.5 13.5l3-1 7.5-7.5-2-2L3.5 10.5zM9.5 4.5l2 2M2.5 2.5h3M2.5 2.5v3" />,
+  stickers: <path d="M3 3.5h10v6l-3.5 3.5H3zM9.5 13V9.5H13M5.5 6.5h5" />,
 };
 const ToolIcon = ({ name }) => (
   <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -1250,6 +1258,9 @@ export default function App() {
       if (!alive) return;
       setAgent(status);
       setRepo((r) => r || status.defaultRepo || "");
+      // The sticker sheet, in Excalidraw's Library (Stickers in Edit the plan opens it). Made once
+      // the hand-drawn font is loaded, so the labels are measured right.
+      api.updateLibrary({ libraryItems: stickerItems(), merge: true, defaultStatus: "unpublished" }).catch((e) => console.warn("Stickers didn't load", e));
       // Excalidraw measures its container after mount, so fit once it has real dimensions.
       timers.push(setTimeout(() => board.fit(), 150));
       // With an API key, wait for a task; otherwise play the scripted demo.
@@ -1343,6 +1354,14 @@ export default function App() {
         .join(",");
       if (sel !== lastSel.current) {
         lastSel.current = sel;
+        // A red-pen mark on the review: open what it marks (the sentence, or the decision's card).
+        const pen = sel && s.board.penLink(sel.split(","));
+        if (pen) {
+          goReview(pen);
+          lastSel.current = ""; // so clearing the selection doesn't clear what goReview just linked
+          s.board.api.updateScene({ appState: { selectedElementIds: {} } });
+          return;
+        }
         const lids = s.board.logicalIdsFor(sel ? sel.split(",") : []);
         showLinked(lids);
         setBoardSel(lids);
@@ -1402,6 +1421,14 @@ export default function App() {
       lastTest: (s.board.tl?.tests ?? []).filter((k) => k.ok != null).at(-1) ?? null,
       denied: messages.filter((m) => m.role === "you" && m.kind === "permission" && m.decision === "deny").map((m) => m.detail),
     });
+  // The review, marked on the board in red pen: the part behind a false claim, a failed check.
+  const pen = review ? penMarks({ model: s.board.model, claims: [...receipts].map(([id, r]) => ({ id, ...r })), ownerOf: (f) => s.board.ownerOf(f) }) : null;
+  useEffect(() => {
+    const b = sessionRef.current?.board;
+    if (!b) return;
+    if (pen) b.showPen(pen);
+    else b.hidePen();
+  });
   const contradicted = [...receipts.values()].filter((r) => r.verdict === "bad").length;
   const project = s?.board.model.project;
   const agentMode = s?.mode === "agent";
@@ -1631,7 +1658,7 @@ export default function App() {
               ? {
                   n: 2,
                   title: "Check the plan",
-                  text: `The drawing on the right is its plan. Nothing is built until you approve.${openQuestions ? ` It left ${plural(openQuestions, "question")} for you in Plan details.` : ""} Click a ◇ to see other options, or change the drawing with Edit the plan.`,
+                  text: `The drawing on the right is its plan. Nothing is built until you approve.${openQuestions ? ` It left ${plural(openQuestions, "question")} for you in Plan details.` : ""} Click a ◇ to see other options, change the drawing with Edit the plan, or stick a sticker (Why?, Not needed, Keep this) on a part.`,
                 }
               : finishedRun || phase === "complete"
                 ? {
@@ -1674,6 +1701,11 @@ export default function App() {
     setTimeout(() => !b.api.getAppState().editingTextElement && dbl(), 60);
     setToolHint("Type the new name, then click an empty spot.");
     return true;
+  };
+  // The sticker sheet is Excalidraw's Library sidebar.
+  const openStickers = () => {
+    s?.board.api.toggleSidebar({ name: "default", tab: "library", force: true });
+    setToolHint("Drag a sticker onto a part or a ◇. Why? asks it to explain, Not needed asks to drop it, Keep this says leave it as is.");
   };
   const selected = boardSel.length === 1 ? boardSel[0] : null;
   const toolRename = () => {
@@ -2017,7 +2049,7 @@ export default function App() {
             </div>
           ) : awaitingTask ? null : (
             <p className="hint">
-              <b>Steer from the board:</b> use Edit the plan above it, or click a ◇ to pick another option. Then Submit.
+              <b>Steer from the board:</b> use Edit the plan above it, click a ◇ to pick another option, or drop a sticker on a part. Then Submit.
               {agentMode && s?.runId && s?.result && (
                 <span className="after-run">
                   <button className="linkish" onClick={() => replay(s.runId)}>
@@ -2191,6 +2223,10 @@ export default function App() {
             <button onClick={() => useTool("text", "Click an empty spot and type a note, like “English PDFs only”.")} title="Add a note that narrows what it builds">
               <ToolIcon name="note" />
               Add a note
+            </button>
+            <button onClick={openStickers} title="Stickers to drag onto a part or a ◇: Why?, Not needed, Keep this">
+              <ToolIcon name="stickers" />
+              Stickers
             </button>
             <button className={`eb-tools ${tools ? "on" : ""}`} aria-pressed={tools} onClick={toggleTools} title="Show or hide Excalidraw's full drawing tools">
               <ToolIcon name="tools" />

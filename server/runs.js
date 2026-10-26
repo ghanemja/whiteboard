@@ -196,6 +196,10 @@ function describeEdit(d) {
     case "note": return `Note: “${d.text}”`;
     case "reject": return `Rejected **${d.label}** (${d.title}${d.chose ? `: ${d.chose}` : ""})`;
     case "choose": return `Chose **${d.to}** for **${d.label}** (${d.title}; was ${d.from})`;
+    case "sticker": {
+      const on = d.decision ? `**${d.label}** (${d.title})` : `**${d.name}**`;
+      return { why: `Asked why: ${on}`, drop: `Not needed: ${on}`, keep: `Keep this: ${on}` }[d.sticker] ?? `Sticker ${d.sticker} on ${on}`;
+    }
     default: return JSON.stringify(d);
   }
 }

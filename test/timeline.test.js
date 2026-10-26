@@ -162,6 +162,9 @@ test("board edits sort into architecture, decision and scope", () => {
   assert.deepEqual(["rename", "remove", "add", "link", "unlink"].map(area), Array(5).fill("architecture"));
   assert.deepEqual(["reject", "choose"].map(area), ["decision", "decision"]);
   assert.equal(area("note"), "scope");
+  // Stickers (test/stickers.test.js): Keep this is scope; the others follow what they're on.
+  assert.equal(areaOf({ kind: "sticker", sticker: "keep", node: "api" }), "scope");
+  assert.equal(areaOf({ kind: "sticker", sticker: "why", decision: "d1" }), "decision");
 });
 
 test("a deleted diamond rejects its decision and ends the lane", () => {

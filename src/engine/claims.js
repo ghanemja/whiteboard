@@ -4,7 +4,8 @@
 // it ran. Each sentence's claims get a verdict:
 //   ok      the record backs it
 //   bad     the record contradicts it (only ever from ground truth: the runner or git);
-//           `short` is the one token to show inline (a file, "11/12"), `why` the hover
+//           `short` is the one token to show inline (a file, "11/12"), `why` the hover,
+//           `wrong` the files a file claim got wrong (for the review's red pen)
 //   unknown nothing in the record says either way
 // Pure functions, like timeline.js, so `node --test` can run them.
 
@@ -138,7 +139,7 @@ export function checkClaim(claim, ev = {}) {
         const hit = (f) => changed.some((c) => sameFile(f, c.path));
         const wrong = claim.files.filter((f) => (claim.kind === "files" ? !hit(f) : hit(f)));
         if (!wrong.length) return { verdict: "ok", why: claim.kind === "files" ? `the diff changes ${claim.files.length === 1 ? "it" : `all ${claim.files.length}`}` : "the diff doesn't touch it" };
-        return { verdict: "bad", why: `${wrong.join(", ")} ${claim.kind === "files" ? "wasn't changed in this run" : "was changed in this run"}`, short: wrong.join(", ") };
+        return { verdict: "bad", why: `${wrong.join(", ")} ${claim.kind === "files" ? "wasn't changed in this run" : "was changed in this run"}`, short: wrong.join(", "), wrong };
       }
       // No diff recorded: an edit tool's word is support, but its silence proves nothing.
       if (claim.kind === "files" && ev.edited?.length && claim.files.every((f) => ev.edited.some((p) => sameFile(f, p))))

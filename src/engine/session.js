@@ -97,6 +97,7 @@ export class Session {
     this.changes = null; // the repo's actual changes this run, from git: path -> { path, add, del, patch }
     this.commits = 0; // commits made during the run
     this.demoRuns = 0;
+    this.stickerTurn = false; // a turn answering sent stickers has started (stateChanged)
   }
 
   // The repo's changes: a live run's `changes` events (a patch is only resent when it changed).
@@ -246,6 +247,15 @@ export class Session {
     }
     // In a replay the ⏸ still shows where the agent waited, though there's nothing to answer.
     this.board.setReviewTag(this.mode === "replay" ? !!this.gate : this.awaitingApproval);
+    // Stickers it has answered come off the board (Keep this stays: it's a standing constraint).
+    // It answers them in the turn they start, so they come off once that turn is over.
+    if (this.board.stickers.size) {
+      if (this.state.busy) this.stickerTurn = true;
+      else if (this.stickerTurn) {
+        this.stickerTurn = false;
+        this.board.settleStickers();
+      }
+    }
     this.notify();
   }
 
@@ -575,6 +585,7 @@ export class Session {
     this.stage = "building";
     this.board.setReviewTag(false);
     this.board.acceptDecisions();
+    this.board.markSent(decisions);
     const m = this.transcript.addUserMessage({ kind: "approve", decisions });
     this.demoEvent({ type: "user", kind: "approve", edits: wire(decisions), msg: m.id });
     if (this.mode === "agent") {
@@ -589,6 +600,7 @@ export class Session {
   }
 
   sendEdits(decisions) {
+    this.board.markSent(decisions);
     const m = this.transcript.addUserMessage({ kind: "edits", decisions });
     this.demoEvent({ type: "user", kind: this.awaitingApproval ? "revise" : "edits", edits: wire(decisions), msg: m.id });
     if (this.mode === "agent") {

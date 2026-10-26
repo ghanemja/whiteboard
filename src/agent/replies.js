@@ -78,6 +78,23 @@ export function buildEditsReply(decisions, model) {
       case "reject":
         lines.push(`Dropping **${d.label}** (${d.title}) from the plan${op({ op: "decision", id: d.decision, state: "rejected" })}.`);
         break;
+      case "sticker": {
+        const on = d.decision ? `**${d.label}** (${d.title})` : `**${d.name}**`;
+        if (d.sticker === "why")
+          lines.push(
+            d.decision
+              ? `Why ${on}: ${model.decisions[d.decision]?.why || "it's what the evidence in the repo points to."} If that doesn't convince you, pick another option on its ◇.`
+              : `Why ${on}: ${model.nodes[d.node]?.api?.length ? `it's what serves ${model.nodes[d.node].api.slice(0, 2).join(" and ")}` : "the plan needs it"}, and the decisions pinned to it depend on it. Put Not needed on it if you'd rather drop it.`,
+          );
+        else if (d.sticker === "drop")
+          lines.push(
+            d.decision
+              ? `Dropping ${on}, since you don't need it${op({ op: "decision", id: d.decision, state: "rejected" })}.`
+              : `Taking ${on} out of the plan${op({ op: "remove", id: d.node })}${task(`Remove ${short(d.name, 18)}`, "done")}.`,
+          );
+        else lines.push(`I'll keep ${on} as it is and won't change it without asking you first.`);
+        break;
+      }
       case "choose": {
         // A tag attribute lists with commas, so commas inside an option become semicolons.
         const over = [d.from, ...(model.decisions[d.decision]?.over ?? []).filter((o) => o !== d.to)].filter(Boolean).map((o) => o.replace(/,/g, ";")).join(", ");
