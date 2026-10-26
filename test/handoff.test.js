@@ -2,7 +2,7 @@
 // session, another agent) reads the plan there, diagrams included. Run with `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Run } from "../server/runs.js";
+import { provider, Run } from "../server/runs.js";
 
 // A Run's mirror of the board without an agent behind it: ops in, decision log out.
 function mirror() {
@@ -57,4 +57,19 @@ test("renaming keeps sentence case, and a flow with no usable steps is left out"
   const plan = plans.at(-1);
   assert.match(plan, /\| Ingest worker \|/);
   assert.equal([...plan.matchAll(/```mermaid/g)].length, 1);
+});
+
+test("which provider the agent runs on, from the variables Claude Code reads", () => {
+  assert.equal(provider({}), null); // nothing set: the scripted demo
+  assert.equal(provider({ ANTHROPIC_API_KEY: "" }), null);
+  assert.equal(provider({ ANTHROPIC_API_KEY: "sk-ant-x" }), "Anthropic API");
+  assert.equal(provider({ ANTHROPIC_BASE_URL: "https://api.anthropic.com", ANTHROPIC_API_KEY: "sk-ant-x" }), "Anthropic API");
+  assert.equal(provider({ ANTHROPIC_BASE_URL: "http://localhost:11434", ANTHROPIC_AUTH_TOKEN: "ollama" }), "Ollama (localhost:11434)");
+  assert.equal(provider({ ANTHROPIC_BASE_URL: "http://localhost:4000", ANTHROPIC_AUTH_TOKEN: "sk-litellm" }), "Gateway (localhost:4000)");
+  assert.equal(provider({ ANTHROPIC_BASE_URL: "http://localhost:4000" }), null); // a gateway needs a credential
+  assert.equal(provider({ CLAUDE_CODE_USE_BEDROCK: "1" }), "Amazon Bedrock");
+  assert.equal(provider({ CLAUDE_CODE_USE_MANTLE: "true" }), "Amazon Bedrock");
+  assert.equal(provider({ CLAUDE_CODE_USE_VERTEX: "1" }), "Google Vertex AI");
+  assert.equal(provider({ CLAUDE_CODE_USE_FOUNDRY: "1" }), "Microsoft Foundry");
+  assert.equal(provider({ CLAUDE_CODE_USE_BEDROCK: "0", ANTHROPIC_API_KEY: "sk-ant-x" }), "Anthropic API");
 });

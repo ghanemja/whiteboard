@@ -21,9 +21,10 @@ const agentRuns = () => {
 };
 
 export default defineConfig(({ mode }) => {
-  // Pick up ANTHROPIC_* / AGENT_* from .env / .env.local for the server side only
-  // (not VITE_-prefixed, so none of it is exposed to client code).
-  for (const [k, v] of Object.entries(loadEnv(mode, process.cwd(), ["ANTHROPIC_", "AGENT_"]))) process.env[k] ??= v;
+  // Pick up the agent's settings from .env / .env.local for the server side only (not
+  // VITE_-prefixed, so none of it reaches client code): ANTHROPIC_* and AGENT_*, plus what the
+  // cloud providers read (CLAUDE_CODE_USE_BEDROCK, AWS_*, CLOUD_ML_REGION, GOOGLE_*).
+  for (const [k, v] of Object.entries(loadEnv(mode, process.cwd(), ["ANTHROPIC_", "AGENT_", "CLAUDE_CODE_", "AWS_", "CLOUD_ML_", "GOOGLE_"]))) process.env[k] ??= v;
 
   return {
     plugins: [react(), agentRuns()],

@@ -25,15 +25,45 @@ git clone https://github.com/ghanemja/whiteboard.git
 cd whiteboard
 npm install                  # also copies Excalidraw's fonts into public/fonts
 npm run sandbox              # a safe repo to try: sandbox/linkshort (run again to reset)
-cp .env.example .env.local   # set ANTHROPIC_API_KEY to run a real agent (optional)
+cp .env.example .env.local   # pick a model provider to run a real agent (optional; see below)
 npm run dev                  # http://localhost:5199
 ```
 
-- **No key:** a scripted demo plays.
-- **With a key** (an Anthropic API key): the repo field starts at the sandbox (or `AGENT_REPO`); point it at any local folder, describe a task, start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
+- **No provider set:** a scripted demo plays.
+- **With a provider** (an Anthropic API key, or another one below): the repo field starts at the sandbox (or `AGENT_REPO`); point it at any local folder, describe a task, start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
 - **Saved runs:** `cp fixtures/recordings/* recordings/` adds three real runs under "Saved boards".
 - **Tests:** `npm test`.
-- **Settings** (`.env.local`): `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo).
+- **Settings** (`.env.local`): a model provider ([Models and providers](#models-and-providers)), `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo).
+
+## Models and providers
+
+The live agent runs on the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) (the engine behind Claude Code): its file and shell tools, permission prompts, plan mode and the board's `update_board` tool. So it isn't model-agnostic, but the SDK can reach a model several ways. Set one in `.env.local` (`.env.example` has every block), restart `npm run dev`, and the top bar names the provider it's using. With none set, the scripted demo plays.
+
+| Provider | In `.env.local` | Status |
+| --- | --- | --- |
+| Anthropic API | `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL` (default `claude-opus-5-5`) | Tested |
+| [Amazon Bedrock](https://code.claude.com/docs/en/amazon-bedrock) | `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION`, AWS credentials (`AWS_PROFILE`, access keys, or `AWS_BEARER_TOKEN_BEDROCK`) | Supported by the SDK, not tested here |
+| [Google Vertex AI](https://code.claude.com/docs/en/google-vertex-ai) | `CLAUDE_CODE_USE_VERTEX=1`, `CLOUD_ML_REGION`, `ANTHROPIC_VERTEX_PROJECT_ID`, gcloud credentials | Supported by the SDK, not tested here |
+| [Microsoft Foundry](https://code.claude.com/docs/en/microsoft-foundry) | `CLAUDE_CODE_USE_FOUNDRY=1`, `ANTHROPIC_FOUNDRY_RESOURCE`, `ANTHROPIC_FOUNDRY_API_KEY` | Supported by the SDK, not tested here |
+| Local models with [Ollama](https://docs.ollama.com/api/anthropic-compatibility) | `ANTHROPIC_BASE_URL=http://localhost:11434`, `ANTHROPIC_AUTH_TOKEN=ollama`, `ANTHROPIC_MODEL=qwen3-coder` | Unofficial, not tested here |
+| Other models through a gateway ([LiteLLM](https://docs.litellm.ai/docs/proxy/client_setup/claude_code): OpenAI, Gemini, …) | `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL` | Unofficial, not tested here |
+
+**Local models (Ollama).** Needs Ollama 0.14 or later, which speaks Anthropic's API.
+
+```bash
+ollama pull qwen3-coder                      # a coding model that calls tools well
+OLLAMA_CONTEXT_LENGTH=64000 ollama serve     # Ollama recommends 64K+ context for coding agents
+```
+
+Then in `.env.local`: `ANTHROPIC_BASE_URL=http://localhost:11434`, `ANTHROPIC_AUTH_TOKEN=ollama` (any value: Ollama ignores it), `ANTHROPIC_MODEL=qwen3-coder`, and the same model for `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL` and `ANTHROPIC_DEFAULT_HAIKU_MODEL`, because the SDK also calls a smaller model for background work.
+
+**Other providers (LiteLLM).** Run [LiteLLM's proxy](https://docs.litellm.ai/docs/proxy/client_setup/claude_code) with your models in its `config.yaml` (`openai/…`, `gemini/…`), then set `ANTHROPIC_BASE_URL=http://localhost:4000`, `ANTHROPIC_AUTH_TOKEN` to its key, and `ANTHROPIC_MODEL` to a `model_name` from the config. OpenRouter, Portkey and other gateways with an Anthropic-format endpoint work the same way.
+
+**What to expect from non-Claude models.** Anthropic doesn't support routing Claude Code to non-Claude models, so these are unofficial. The board needs a model that calls tools reliably: it draws only through `update_board`, with structured ops. A weaker model may plan and code fine but draw little, skip decisions, or forget proofs. Use the strongest coding model you can run, with at least 64K of context.
+
+### Other coding agents (Codex, opencode, pi, …)
+
+Not supported yet. They're separate agents with their own loops, tools and permission models, not models the SDK can call. The likely path is a board MCP server that any agent can add (Codex reads `mcp_servers` in `~/.codex/config.toml`, opencode reads `mcp` in `opencode.json`), so it draws on the same board while the whiteboard follows its edits through git. Plan mode, permission prompts and live activity would then depend on what each agent exposes.
 
 ## What happens in a run
 
