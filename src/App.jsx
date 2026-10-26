@@ -769,7 +769,7 @@ export default function App() {
   const [speed, setSpeed] = useState(1);
   const [draft, setDraft] = useState("");
   const [repo, setRepo] = useState("");
-  const [agent, setAgent] = useState(null); // { live, model, effort, defaultRepo } from the dev server
+  const [agent, setAgent] = useState(null); // { live, provider, model, effort, defaultRepo } from the dev server
   const [recordings, setRecordings] = useState([]);
   const [tab, setTab] = useState("activity"); // "activity" | "plan"
   // Skim: only the sentences that carry weight. Remembered per browser.
@@ -1236,7 +1236,9 @@ export default function App() {
     ? st.replaying ? (st.paused ? "Resume the replay" : "Pause the replay") : "Play the recording again"
     : agentMode && st.busy ? "Stop the agent" : st.paused ? "Resume" : st.busy ? "Pause" : reviewing ? "Continue: approve the plan" : agentMode ? "Run the task again" : "Replay";
   const modeLabel = replayMode ? "Replay" : agentMode || awaitingTask ? "Agent" : "Demo";
-  const modeTitle = agent?.live ? `Claude Agent SDK · ${agent.model} · effort ${agent.effort}` : "Scripted demo. Set ANTHROPIC_API_KEY and restart the dev server to run a real agent.";
+  const modeTitle = agent?.live
+    ? `Claude Agent SDK · ${agent.provider ?? "Anthropic API"} · ${agent.model} · effort ${agent.effort}`
+    : "Scripted demo. Set ANTHROPIC_API_KEY (or another provider: README, Models and providers) in .env.local and restart the dev server to run a real agent.";
 
   return (
     <div className="app" data-theme={theme}>

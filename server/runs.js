@@ -36,6 +36,26 @@ const settings = () => ({
   effort: process.env.AGENT_EFFORT || "low",
 });
 
+// Where the agent's model runs, from the same variables Claude Code reads (README: "Models and
+// providers"). null: nothing is configured, so the browser plays the scripted demo.
+export function provider(env = process.env) {
+  const on = (v) => ["1", "true"].includes(String(env[v] ?? "").toLowerCase());
+  if (on("CLAUDE_CODE_USE_BEDROCK") || on("CLAUDE_CODE_USE_MANTLE")) return "Amazon Bedrock";
+  if (on("CLAUDE_CODE_USE_VERTEX")) return "Google Vertex AI";
+  if (on("CLAUDE_CODE_USE_FOUNDRY")) return "Microsoft Foundry";
+  if (env.ANTHROPIC_BASE_URL && !/(^|\.)anthropic\.com$/.test(hostOf(env.ANTHROPIC_BASE_URL)) && (env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY))
+    return hostOf(env.ANTHROPIC_BASE_URL).endsWith(":11434") ? `Ollama (${hostOf(env.ANTHROPIC_BASE_URL)})` : `Gateway (${hostOf(env.ANTHROPIC_BASE_URL)})`;
+  if (env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN) return "Anthropic API";
+  return null;
+}
+const hostOf = (url) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return String(url);
+  }
+};
+
 // One board op. Mirrors Board.apply() in src/engine/board.js.
 const strs = z.array(z.string());
 const Op = z.object({
@@ -896,7 +916,8 @@ export function runsMiddleware({ defaultRepo }) {
 
     if (req.method === "GET" && parts[0] === "status") {
       return json(res, 200, {
-        live: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
+        live: Boolean(provider()),
+        provider: provider(),
         ...settings(),
         defaultRepo,
       });
