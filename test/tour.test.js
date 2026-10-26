@@ -2,7 +2,7 @@
 // where it points, and when the demo waits for you.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { TOUR, advance, back, holds, isFresh, next, startTour, stepOf, targets, waiting } from "../src/engine/tour.js";
+import { BOARD, TOUR, advance, back, holds, isFresh, next, startTour, stepOf, targets, waiting } from "../src/engine/tour.js";
 
 // The run before anything happens; each step below changes what the person or the demo did.
 const base = {
@@ -146,4 +146,34 @@ test("the demo holds at a checkpoint only while its step waits for you", () => {
   const v = { ...c, phase: "verification", testCaused: true };
   assert.ok(holds(t, "verify", v));
   assert.ok(!holds(t, "verify", { ...v, view: "why" }));
+});
+
+test("what stays lit, and where the card goes", () => {
+  const go = (id, c) => {
+    let t = startTour(base);
+    while (at(t) !== id) t = next(t, c);
+    return targets(t, c);
+  };
+  assert.equal(go("welcome", base).place, "center", "the three areas are the whole screen");
+  assert.equal(go("welcome", base).dom.length, 3);
+  assert.equal(go("finish", base).place, "center", "nothing to point at");
+  assert.deepEqual(go("finish", base).spot, []);
+
+  const plan = { ...base, started: true, stage: "planning", phase: "planning", gate: true, firstDecision: "d1", firstQuestion: "q1" };
+  assert.deepEqual(go("plans", { ...plan, gate: false }).spot, [BOARD], "watch the parts appear");
+  const d = go("decision", plan);
+  assert.deepEqual(d.spot, [BOARD], "a note on the board: the board stays lit");
+  assert.equal(d.place, "beside");
+  assert.deepEqual(go("steer", { ...plan, explainUse: true }).spot, [".explain"], "the options card, not the board");
+  assert.deepEqual(go("steer", plan).spot, [BOARD]);
+  assert.deepEqual(go("answer", { ...plan, tab: "plan" }).spot, [".transcript", BOARD]);
+  assert.deepEqual(go("approve", plan).spot, [".gate"]);
+  assert.deepEqual(go("approve", { ...plan, gate: false }).spot, [BOARD], "waiting with nothing to click: the board is where it's happening");
+
+  const built = { ...plan, gate: false, stage: "building", phase: "implementation", building: "api" };
+  assert.deepEqual(go("build", built).spot, [".transcript", BOARD]);
+  assert.deepEqual(go("build", { ...built, tab: "plan" }).spot, [BOARD]);
+  assert.deepEqual(go("why", { ...built, testCaused: true }).spot, [], "just the Why tab");
+  assert.deepEqual(go("untrue", { ...built, phase: "complete", finished: true }).spot, [BOARD], "the red pen marks");
+  assert.deepEqual(go("untrue", { ...built, phase: "complete", finished: true, view: "why" }).spot, [], "no pen marks on the Why tab");
 });

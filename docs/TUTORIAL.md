@@ -40,7 +40,7 @@ The first time you open the app, it offers a tour. Press **Take the tour** (you 
 
 ![The first-visit offer: a yellow card asks "New here? Take the tour"](../screenshots/tour/00-first-visit-offer.png)
 
-The tour plays the demo as a lesson. A yellow card on the left says what to do and why, and orange rings or sticky notes point at the thing to click. The demo **waits for you** at each step, so take your time. If you get stuck, **Skip step** does it for you; **Back** shows the last step again; **Exit tour** leaves it (the demo keeps going as normal).
+The tour plays the demo as a lesson. The screen dims except for the part each step is about, and a yellow card pops out beside it to say what to do and why; orange rings or sticky notes point at the thing to click. Everything still works under the dim. The demo **waits for you** at each step, so take your time. If you get stuck, **Skip step** does it for you; **Back** shows the last step again; **Exit tour** leaves it (the demo keeps going as normal).
 
 The rest of this guide covers the same run in more detail. Do the tour first, then read on, or follow along here instead.
 
