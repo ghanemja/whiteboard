@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
-import { z } from "zod";
 import { commitsSince, diff, head, isRepo, snapshot } from "./changes.js";
+import { serveBoardMcp } from "./board-mcp.js";
+import { boardReply, UPDATE_BOARD } from "./board-tool.js";
 import { BOARD_INSTRUCTIONS, PLAN_INSTRUCTIONS } from "./instructions.js";
 import { listRecordings, readDecisions, readRecording, Recorder } from "./recordings.js";
 import { layerOf, LAYERS, parseColumns, parseSteps, sentenceCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "../src/engine/views.js";
@@ -77,52 +78,6 @@ const hostOf = (url) => {
     return String(url);
   }
 };
-
-// One board op. Mirrors Board.apply() in src/engine/board.js.
-const strs = z.array(z.string());
-const Op = z.object({
-  op: z.enum(["project", "phase", "task", "node", "part", "edge", "flow", "table", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note"]),
-  id: z.string().optional().describe("component id (node/status/rename/remove/adopt), part id (part, e.g. api.ask), task id (task), decision id (decision), flow id (flow), q1… (question) or a1… (assumption)"),
-  name: z.string().optional().describe("project name, phase name, component name (≤16 chars, sentence case), part name (≤24 chars), or flow name (≤24 chars)"),
-  layer: z.enum(LAYERS.map((l) => l.key)).optional().describe("node: frontend | backend | data | ml | external (defaults from kind; set ml for models, embeddings, evals); part: only when it differs from its component's"),
-  steps: z.union([z.string(), strs]).optional().describe('flow: the steps in order, each "from>to: what", e.g. ["web>api: POST /ask", "api>vdb: top 8 chunks"]'),
-  of: z.string().optional().describe("table: the id of the data component that holds it; part: the id of the component it's inside"),
-  links: z.union([z.string(), strs]).optional().describe('part: what it hands on, each "target: what" with target a part, table or component id, e.g. ["api.retrieve: the question", "vdb: nearest 8 chunks"]'),
-  columns: z.union([z.string(), strs]).optional().describe('table: its columns, each "name type [pk] [unique] [fk>table.column]", e.g. ["id uuid pk", "document_id uuid fk>documents.id", "page int"]'),
-  goal: z.string().optional().describe("project: the goal in one sentence"),
-  kind: z.string().optional().describe("node: client | service | data | external | queue | test | user; part: one word, e.g. page, view, route, job, module, step, model, index, bucket, dataset"),
-  col: z.number().int().min(0).max(2).optional(),
-  row: z.number().int().min(0).max(2).optional(),
-  paths: strs.optional().describe("node: repo-relative files or folders this component owns"),
-  libs: strs.optional().describe("node: libraries/frameworks/runtimes it uses, with versions when known, main one first"),
-  api: z.union([z.string(), strs]).optional().describe("node: the interface it exposes (endpoints, functions, events); edge: the exact call"),
-  from: z.string().optional(),
-  to: z.string().optional(),
-  via: z.string().optional().describe("edge: protocol or mechanism, ≤8 chars ideally (HTTP, SQL, call, queue, event)"),
-  style: z.enum(["sync", "async"]).optional(),
-  v: z.enum(["planned", "building", "built", "verified", "failed", "live"]).optional().describe("component status"),
-  phase: z.string().optional(),
-  text: z.string().optional().describe("task text (≤26 chars), note text, or the question / assumption (≤60 chars)"),
-  status: z.enum(["todo", "building", "done", "failed"]).optional().describe("task status"),
-  title: z.string().optional().describe("decision: what was decided, as a short question or topic"),
-  chose: z.string().optional().describe("decision: the option chosen"),
-  over: strs.optional().describe("decision: the alternatives considered and not chosen"),
-  why: z.string().optional().describe("decision: the reasoning, one or two sentences"),
-  affects: strs.optional().describe("decision: ids of the components it shapes"),
-  evidence: strs.optional().describe("decision: facts from the repo behind it, with file paths"),
-  builds_on: strs.optional().describe("decision: ids of earlier decisions this one follows from"),
-  state: z
-    .enum(["proposed", "accepted", "changed", "rejected", "open", "answered", "confirmed", "corrected"])
-    .optional()
-    .describe("decision: proposed | accepted | changed | rejected; question: open | answered; assumption: open | confirmed | corrected"),
-  options: strs.optional().describe("question: 2 to 4 short answers to pick from, when it's a choice"),
-  about: z.string().optional().describe("question / assumption: the decision id it bears on"),
-  answer: z.string().optional().describe("question: the user's answer, once they've given it"),
-  verify: z.string().optional().describe("decision: the check that will show it was right: a test by name, or a command and what it must show"),
-  proof: z.enum(["pass", "fail"]).optional().describe("decision: the result of that check, once you've run it"),
-  proof_by: z.string().optional().describe("decision: what proved or disproved it: the test's exact name as the runner printed it, or the command and what it showed"),
-  el: z.string().optional().describe("element id of a shape the user drew (adopt ops)"),
-});
 
 // Per-test results in a test runner's output: TAP (node --test), node's spec reporter,
 // Jest/Vitest, pytest -v and go test -v. name -> passed?
@@ -215,8 +170,11 @@ const COMPONENT_STATUS = new Set(["planned", "building", "built", "verified", "f
 const DECISION_STATES = new Set(["proposed", "accepted", "changed", "rejected"]);
 
 export class Run {
-  constructor({ repo, brief }) {
+  constructor({ repo, brief, origin = "http://127.0.0.1:5199" }) {
     this.id = randomUUID().slice(0, 8);
+    // The board over MCP's HTTP transport, for agents that can't take Claude's in-process tool
+    // (board-mcp.js). The token stays out of events and recordings.
+    this.boardMcp = { url: `${origin}/api/runs/${this.id}/mcp`, token: randomBytes(24).toString("base64url") };
     this.repo = repo;
     this.started = Date.now();
     this.events = [];
@@ -630,18 +588,7 @@ export class Run {
       name: "board",
       version: "1.0.0",
       alwaysLoad: true, // the agent needs it from the first turn; don't hide it behind tool search
-      tools: [
-        tool(
-          "update_board",
-          "Draw on the shared whiteboard the user is watching. Pass several ops at once. Ops: project, phase, task, node, edge, decision, status, rename, note, remove, unlink, adopt, adopt-edge, adopt-note.",
-          { ops: z.array(Op).min(1) },
-          async ({ ops }) => {
-            const notes = this.emitOps(ops);
-            const text = `Board updated (${ops.length} change${ops.length === 1 ? "" : "s"}).${notes.length ? `\n${notes.join("\n")}` : ""}`;
-            return { content: [{ type: "text", text }] };
-          },
-        ),
-      ],
+      tools: [tool(UPDATE_BOARD.name, UPDATE_BOARD.description, UPDATE_BOARD.input, async ({ ops }) => boardReply(ops, this.emitOps(ops)))],
     });
 
     this.q = query({
@@ -973,7 +920,8 @@ export function runsMiddleware({ defaultRepo }) {
       const repo = path.resolve(String(body.repo || defaultRepo || ""));
       if (!repo || !existsSync(repo) || !statSync(repo).isDirectory()) return json(res, 400, { error: `Not a folder: ${repo}` });
       if (!body.brief?.trim()) return json(res, 400, { error: "Describe the task first." });
-      const run = new Run({ repo, brief: body.brief.trim() });
+      // Where an agent on this machine reaches the run's board server: this server's own port.
+      const run = new Run({ repo, brief: body.brief.trim(), origin: `http://127.0.0.1:${req.socket.localPort}` });
       runs.set(run.id, run);
       return json(res, 200, { id: run.id });
     }
@@ -989,6 +937,9 @@ export function runsMiddleware({ defaultRepo }) {
 
     const run = runs.get(parts[0]);
     if (!run) return parts.length ? json(res, 404, { error: "No such run." }) : next();
+
+    // The run's board as an MCP server (POST, plus GET and DELETE per the transport).
+    if (parts[1] === "mcp" && parts.length === 2) return serveBoardMcp(req, res, { token: run.boardMcp.token, draw: (ops) => run.emitOps(ops) });
 
     if (req.method === "GET" && parts[1] === "events") {
       res.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-cache", "x-accel-buffering": "no" });

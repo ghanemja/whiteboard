@@ -194,6 +194,8 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | --- | --- |
 | `server/runs.js` | One Agent SDK `query()` per run: the in-process `update_board` MCP tool, plan gate and permission prompts via `canUseTool`, activity events, `/api/runs` endpoints |
 | `server/recordings.js` | Writes each run to `recordings/` (events + decision log), lists and serves them |
+| `server/board-tool.js` | The `update_board` tool: its op schema and reply, shared by both ways of serving it |
+| `server/board-mcp.js` | The same tool as an MCP server over HTTP, for agents other than Claude (Codex, opencode): each run's board at `/api/runs/<id>/mcp`, behind that run's bearer token |
 | `server/changes.js` | What a run changed in the repo, from git: working-tree snapshots through a throwaway index, and their diff |
 | `server/instructions.js` | What the agent is told about the board (appended to the Claude Code system prompt) |
 | `src/agent/live.js` | Browser side of `/api/runs`: start, follow the event stream, send approvals and messages |
