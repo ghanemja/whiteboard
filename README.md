@@ -10,9 +10,9 @@ The board is pictures, not prose. Components are hand-drawn pictograms (browser 
 
 ## Take the tour
 
-New here? Press **Take the tour** (on the start screen, as **Tour** beside the coach's Hide tips, or the flag button by **?**). The scripted demo plays as a lesson: no API key, nothing touches your files. It stops at each step until you've tried it, then carries on: click a ◇ decision, pick another option with **Use this** (or drag a sticker onto a part), answer its question, **Approve with changes**, hover a log line while it builds, answer a command prompt (**Allow once**, **Allow all** or **Deny**, and *Why am I asked?*), open **Why** when a check fails and the decision changes, find the claim that isn't true (the ✗ row in the review, or the red pen), and read the **Timeline**. Twelve steps; Back, Skip step (it does the step for you) and Exit tour are on the card. A first visit offers it once.
+New here? Press **Take the tour** (on the start screen, as **Tour** beside the coach's Hide tips, or the flag button by **?**). The scripted demo plays as a lesson: no API key, nothing touches your files. It stops at each step until you've tried it, then carries on: click a ◇ decision, pick another option with **Use this** (or drag a sticker onto a part), answer its question, **Approve with changes**, hover a log line while it builds, answer a command prompt (**Allow once**, **Allow all** or **Deny**, and *Why am I asked?*), open **Why** when a check fails and the decision changes, find the claim that isn't true (the ✗ row in the review, or the red pen), and read the **Timeline**. Twelve steps: the screen dims round the part each one is about, and its card pops out beside it, with Back, Skip step (it does the step for you) and Exit tour. A first visit offers it once.
 
-![The tour at step 4: the yellow tour card says what to do and why, orange rings point at Use this on the decision's card and at the Stickers button](screenshots/tour/04-use-this.png)
+![The tour at step 4: the screen dims round the decision's card and the glass button, orange rings point at Use this and Pull the glass down, and the yellow tour card pops out beside Use this to say what to do and why](screenshots/tour/04-use-this.png)
 
 ## First-time help
 
@@ -207,6 +207,7 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `src/engine/review.js` | The end-of-run review card: what needs a look, and where; and the red-pen marks for the board |
 | `src/engine/stickers.js` | The steering stickers: what a dropped sticker lands on, and the edit it makes |
 | `src/engine/tour.js` | The guided tour as pure functions: the steps, when each is done, where it points, when the demo waits for you |
+| `src/engine/spotlight.js`, `src/Tour.jsx` | The tour on screen: the dim with the step's part lit, and its card popped out beside it |
 | `src/PhaseHeader.jsx` | The journey above the tabs: title, goal, milestones and task dots, drawn with roughjs (Excalidraw's renderer) |
 | `src/engine/transcript.js` | Sentences and activity rows, each linked to the board items it touched |
 | `src/engine/parser.js`, `player.js`, `src/agent/script.js`, `replies.js` | The scripted demo (inline `<board/>` tags typed out at reading pace) |

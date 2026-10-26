@@ -40,7 +40,7 @@ The first time you open the app, it offers a tour. Press **Take the tour** (you 
 
 ![The first-visit offer: a yellow card asks "New here? Take the tour"](../screenshots/tour/00-first-visit-offer.png)
 
-The tour plays the demo as a lesson. A yellow card on the left says what to do and why, and orange rings or sticky notes point at the thing to click. The demo **waits for you** at each step, so take your time. If you get stuck, **Skip step** does it for you; **Back** shows the last step again; **Exit tour** leaves it (the demo keeps going as normal).
+The tour plays the demo as a lesson. The screen dims except for the part each step is about, and a yellow card pops out beside it to say what to do and why; orange rings or sticky notes point at the thing to click. Everything still works under the dim. The demo **waits for you** at each step, so take your time. If you get stuck, **Skip step** does it for you; **Back** shows the last step again; **Exit tour** leaves it (the demo keeps going as normal).
 
 The rest of this guide covers the same run in more detail. Do the tour first, then read on, or follow along here instead.
 
@@ -110,7 +110,7 @@ Buttons on a card that change the plan (**Use this**, **Rename**, **Remove**) pu
 
 Click a ◇, then press **Use this** next to one of the other options. Or drag one of the option pills that fan out beside the diamond onto it. To use your own idea, type it in the blank "+ your own" pill.
 
-![The decision card with Use this ringed, and the Stickers button](../screenshots/tour/04-use-this.png)
+![The decision card with Use this ringed, and the button to pull the glass down](../screenshots/tour/04-use-this.png)
 
 ### Use the Edit the plan toolbar
 

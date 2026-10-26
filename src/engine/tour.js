@@ -16,15 +16,21 @@
 //   view, tab,                          board tab: "board" | "why" | "timeline"; panel tab: "activity" | "plan"
 //   testCaused,                         a decision was changed because its check failed
 //   finished, reviewOpens,              the run is over (review card); review rows / red pen opened
-//   lenses,                             diagrams and layers picked in the bar above the board
 //   firstDecision, firstQuestion, building: ids to point at (or null)
 // }
 // A step's done(ctx, start) gets the context from when the step began, so "did something new"
 // is a comparison. Steps also count as done once the run has moved past them (you approved
 // before answering, say), so the tour never waits for something that can't happen any more.
+//
+// How a step is shown (App's spotlight): the screen dims, its dom targets stay lit with a ring
+// and its card pops out beside the first one. Two optional hints are only about that picture:
+// spot(ctx) lists more areas to leave lit (what you read or watch, no ring), and place:
+// "center" puts the card in the middle of the screen.
 
 const past = (c, phases) => phases.includes(c.phase);
 const LATE = ["verification", "deployment", "complete"];
+// The board's area on the page: lit whenever the tour points at something drawn on it.
+export const BOARD = '[data-tour="board"]';
 
 export const TOUR = [
   {
@@ -32,6 +38,7 @@ export const TOUR = [
     title: "Welcome! This is a run, start to finish",
     text: "A coding agent gets a task, plans it, builds it and tests it. Here it's a scripted demo: no API key, and it never touches your files. Three areas: (1) this panel, where it talks and you answer; (2) the board, its plan as a drawing; (3) the phase road: Plan → Build → Verify → Ship.",
     next: true,
+    place: "center", // the three areas are the whole screen: the card sits in the middle, a ring round each
     dom: () => [
       { sel: '[data-tour="panel"]', label: "1 Panel" },
       { sel: '[data-tour="board"]', label: "2 Board" },
@@ -46,6 +53,7 @@ export const TOUR = [
     wait: (c) => (c.gate ? null : "Playing at 2×. The plan stops by itself when it's ready."),
     done: (c) => c.gate || c.stage === "building",
     dom: () => [{ sel: '[data-tour="key"]', label: "What the colors mean" }],
+    spot: () => [BOARD], // the parts appear there
   },
   {
     id: "decision",
@@ -65,6 +73,7 @@ export const TOUR = [
       { sel: '[data-tour="stickers"]', label: "Or a sticker" },
     ].filter(Boolean),
     board: (c) => (!c.explainUse && c.firstDecision ? [{ lid: `decision:${c.firstDecision}`, text: "Click a ◇ for its options" }] : []),
+    spot: (c) => (c.explainUse ? [".explain"] : []), // the options, on the decision's card
     skip: "pick",
   },
   {
@@ -74,6 +83,7 @@ export const TOUR = [
     done: (c, s) => c.answered > s.answered || c.stage === "building",
     board: (c) => (c.firstQuestion ? [{ lid: `question:${c.firstQuestion}`, circle: true }] : []),
     dom: () => [{ sel: '[data-tour="plan-tab"]', label: "Plan details" }],
+    spot: (c) => (c.tab === "plan" ? [".transcript"] : []), // the question, in Plan details
     skip: "answer",
     clearSelection: true, // the decision's card from the last step would cover the note
   },
@@ -84,6 +94,7 @@ export const TOUR = [
     wait: (c) => (c.gate ? null : "It's updating the plan…"),
     done: (c) => c.stage === "building",
     dom: (c) => (c.gate ? [{ sel: '[data-tour="approve"]', label: "Approve" }] : []),
+    spot: (c) => (c.gate ? [".gate"] : []), // your list of changes
     skip: "approve",
     clearSelection: true,
   },
@@ -94,6 +105,7 @@ export const TOUR = [
     done: (c, s) => c.hovers > s.hovers || past(c, LATE),
     board: (c) => (c.building ? [{ lid: `node:${c.building}`, text: "Orange: being built now" }] : []),
     dom: () => [{ sel: '[data-tour="log-tab"]', label: "Chat & log" }],
+    spot: (c) => (c.tab === "activity" ? [".transcript"] : []), // the sentences to hover
     release: "build",
     clearSelection: true,
   },
@@ -124,6 +136,7 @@ export const TOUR = [
     // The review is at the end of Chat & log: open that tab first if Plan details is showing.
     dom: (c) =>
       !c.finished ? [] : c.tab === "activity" ? [{ sel: '[data-tour="untrue"]', label: "✗ not true" }] : [{ sel: '[data-tour="log-tab"]', label: "The review is in here" }],
+    spot: (c) => (c.finished && c.view === "board" ? [BOARD] : []), // its red pen marks, on the Architecture board
     skip: "review",
   },
   {
@@ -136,9 +149,10 @@ export const TOUR = [
   {
     id: "views",
     title: "See the same plan other ways",
-    text: "On Architecture, the bar above the board redraws the plan. Draw as: C4, Data flow, Database (its tables) or Sequence (one request, step by step). Zoom into opens a layer to show what's inside its parts: try ML for the pipeline from chunking to the answer.",
-    done: (c, s) => c.lenses > s.lenses,
+    text: "On Architecture, the bar above the board redraws the plan. Draw as: C4, Data flow, Database (its tables) or Sequence (one request, step by step). Zoom into opens a layer to show what's inside its parts: try ML for the pipeline from chunking to the answer. Look around, then press Next.",
+    next: true,
     dom: (c) => (c.view === "board" ? [{ sel: '[data-tour="lens"]', label: "Draw as · Zoom into" }] : [{ sel: '[data-tour="arch-tab"]', label: "Architecture" }]),
+    spot: (c) => (c.view === "board" ? [BOARD] : []), // what each one draws
   },
   {
     id: "finish",
@@ -201,7 +215,14 @@ export function holds(tour, at, ctx) {
 // Where to point: rings round page elements, and notes or circles on the board. Steps point
 // only at what's there (their dom/board functions check the context), so a waiting step can
 // still point, like the plan step at the color key.
+// Also what stays lit while the rest of the screen dims (spot), and where the card goes
+// (place): the board whenever a note is drawn on it, or while a step waits with nothing to
+// click (the run is working on the board); the middle of the screen when there's nothing to show.
 export function targets(tour, ctx) {
   const step = stepOf(tour);
-  return { dom: step?.dom?.(ctx) ?? [], board: step?.board?.(ctx) ?? [] };
+  const dom = step?.dom?.(ctx) ?? [], board = step?.board?.(ctx) ?? [];
+  const spot = [...(step?.spot?.(ctx) ?? [])];
+  if (!spot.includes(BOARD) && (board.length || (!dom.length && waiting(step, ctx)))) spot.push(BOARD);
+  const place = step?.place ?? (dom.length || spot.length ? "beside" : "center");
+  return { dom, board, spot, place };
 }

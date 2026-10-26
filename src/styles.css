@@ -2722,7 +2722,7 @@ button:focus-visible {
   color: var(--soft);
 }
 
-/* ---- the guided tour: the coach's yellow note with a step count, and rings round what it points at ---- */
+/* ---- the guided tour: the coach's yellow note with a step count, popped out beside what it points at ---- */
 .coach-links {
   display: flex;
   gap: 12px;
@@ -2792,22 +2792,152 @@ button:focus-visible {
 .app[data-theme="dark"] .coach.tour-offer .linkish {
   color: var(--soft);
 }
-.tour-rings {
+/* The spotlight: the screen dims round what the step is about (cut out of an SVG mask), with a
+   ring round each thing to click, and the card pops out beside it. Only the card takes clicks:
+   the dim and the rings let them through, so the page underneath works as usual. */
+.tour-layer {
   position: fixed;
   inset: 0;
   z-index: 50;
   pointer-events: none;
 }
+.tour-dim {
+  position: absolute;
+  inset: 0;
+  animation: tour-in 0.35s ease-out both;
+}
+.tour-shade {
+  fill: rgba(16, 17, 28, 0.5);
+}
+.app[data-theme="dark"] .tour-shade {
+  fill: rgba(0, 0, 0, 0.6);
+}
+.tour-hole {
+  fill: #000;
+  animation: tour-in 0.4s ease-out both;
+}
+.tour-hole.out {
+  animation: tour-out 0.35s ease-in both;
+}
+@keyframes tour-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes tour-out {
+  to {
+    opacity: 0;
+  }
+}
+.tour-rings {
+  position: absolute;
+  inset: 0;
+}
 .tour-ring {
   position: absolute;
-  border: 3px solid #e8590c;
+  border: 2.5px solid #e8590c;
   border-radius: 12px;
-  box-shadow: 0 0 0 4px rgba(232, 89, 12, 0.18);
-  animation: tour-pulse 1.6s ease-in-out infinite;
+  box-shadow: 0 0 0 4px rgba(232, 89, 12, 0.22);
+  animation:
+    tour-in 0.4s ease-out both,
+    tour-pulse 1.6s ease-in-out 0.4s infinite;
 }
 @keyframes tour-pulse {
   50% {
-    box-shadow: 0 0 0 9px rgba(232, 89, 12, 0.06);
+    box-shadow: 0 0 0 9px rgba(232, 89, 12, 0.08);
+  }
+}
+.app[data-theme="dark"] .tour-ring {
+  border-color: #ffa94d;
+  box-shadow: 0 0 0 4px rgba(255, 169, 77, 0.22);
+}
+/* The card: the coach's note, popped out. It glides from target to target. */
+.tour-pop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  pointer-events: auto;
+}
+.tour-pop.ready {
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.app .tour-pop .coach.tour {
+  margin: 0;
+  box-shadow:
+    0 14px 36px rgba(16, 17, 28, 0.32),
+    0 2px 8px rgba(16, 17, 28, 0.14);
+  animation: tour-in 0.3s ease-out both;
+}
+.app[data-theme="dark"] .tour-pop .coach.tour {
+  border-color: rgba(255, 212, 59, 0.5);
+  background: #39342a;
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.3);
+}
+/* Its arrow, on the edge that faces the target: a turned square showing two of its borders. */
+.tour-caret {
+  position: absolute;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  background: #fff3bf;
+  transform: rotate(45deg);
+  animation: tour-in 0.25s ease-out 0.3s both;
+}
+.tour-pop.at-right .tour-caret {
+  border-left-color: #f2c94c;
+  border-bottom-color: #f2c94c;
+}
+.tour-pop.at-left .tour-caret {
+  border-top-color: #f2c94c;
+  border-right-color: #f2c94c;
+}
+.tour-pop.at-below .tour-caret {
+  border-top-color: #f2c94c;
+  border-left-color: #f2c94c;
+}
+.tour-pop.at-above .tour-caret {
+  border-bottom-color: #f2c94c;
+  border-right-color: #f2c94c;
+}
+.app[data-theme="dark"] .tour-caret {
+  background: #39342a;
+}
+.app[data-theme="dark"] .tour-pop.at-right .tour-caret {
+  border-left-color: rgba(255, 212, 59, 0.5);
+  border-bottom-color: rgba(255, 212, 59, 0.5);
+}
+.app[data-theme="dark"] .tour-pop.at-left .tour-caret {
+  border-top-color: rgba(255, 212, 59, 0.5);
+  border-right-color: rgba(255, 212, 59, 0.5);
+}
+.app[data-theme="dark"] .tour-pop.at-below .tour-caret {
+  border-top-color: rgba(255, 212, 59, 0.5);
+  border-left-color: rgba(255, 212, 59, 0.5);
+}
+.app[data-theme="dark"] .tour-pop.at-above .tour-caret {
+  border-bottom-color: rgba(255, 212, 59, 0.5);
+  border-right-color: rgba(255, 212, 59, 0.5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-pop.ready {
+    transition: none;
+  }
+  .tour-dim,
+  .tour-hole,
+  .tour-ring,
+  .app .tour-pop .coach.tour,
+  .tour-caret,
+  .tour-wait .dot {
+    animation: none;
+  }
+  .tour-hole.out {
+    display: none;
   }
 }
 .tour-tag {

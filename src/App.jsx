@@ -8,6 +8,7 @@ import { LAYERS, layerOf, openableLayers, tagCase, toDfdMermaid, toErMermaid, to
 import { buildReview, penMarks } from "./engine/review";
 import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour, stepOf, targets as tourTargets, tourLength, waiting as tourWaiting } from "./engine/tour";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
+import { TourCard, TourSpotlight } from "./Tour";
 
 // Tasks that fit the sample repo (sandbox/linkshort, created by `npm run sandbox`).
 const EXAMPLES = [
@@ -878,92 +879,6 @@ function Coach({ c, onHide, onTour }) {
   );
 }
 
-// The guided tour's card: the same yellow note as the coach, with a step count and a way out.
-// A step that waits for the run (it's still planning, say) says so instead of offering Next.
-function TourCard({ step, n, total, wait, manual, onBack, onNext, onSkip, onExit, finish }) {
-  return (
-    <div className="coach tour" role="region" aria-label="Tour">
-      <div className="coach-top">
-        <span className="coach-label">
-          Tour · step {n} of {total}
-        </span>
-        <button className="linkish coach-hide" onClick={onExit} title="Leave the tour: the demo carries on as usual">
-          Exit tour
-        </button>
-      </div>
-      <div className="tour-bar" aria-hidden="true">
-        <i style={{ width: `${(n / total) * 100}%` }} />
-      </div>
-      <b className="coach-title">{step.title}</b>
-      <p>{step.text}</p>
-      {wait && (
-        <p className="tour-wait" role="status">
-          <span className="dot" /> {wait}
-        </p>
-      )}
-      <div className="tour-actions">
-        <button className="linkish" onClick={onBack} disabled={n === 1}>
-          ← Back
-        </button>
-        {finish ? (
-          <span className="tour-finish">{finish}</span>
-        ) : step.next || manual ? (
-          <button className="primary" onClick={onNext}>
-            Next →
-          </button>
-        ) : (
-          <button className="linkish" onClick={onSkip} title="Do it for me and go on">
-            Skip step
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Rings round what the tour points at on the page (a tab, a button, a card), with a label.
-// Positioned over everything and click-through, re-measured as the layout moves.
-function TourRings({ targets }) {
-  const [boxes, setBoxes] = useState([]);
-  const key = targets.map((t) => t.sel).join("|");
-  useEffect(() => {
-    const measure = () => {
-      const next = targets
-        .map((t) => {
-          const el = [...document.querySelectorAll(t.sel)].find((e) => e.offsetParent !== null);
-          const r = el?.getBoundingClientRect();
-          if (!r || r.width <= 0) return null;
-          // Kept on screen: a panel that starts at the window's edge still gets its whole ring.
-          const x = Math.max(r.left, 8), y = Math.max(r.top, 8);
-          const w = Math.min(r.right, window.innerWidth - 8) - x, h = Math.min(r.bottom, window.innerHeight - 8) - y;
-          return { label: t.label, x, y, w, h };
-        })
-        .filter(Boolean);
-      setBoxes((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
-    };
-    measure();
-    const t = setInterval(measure, 250);
-    window.addEventListener("resize", measure);
-    return () => {
-      clearInterval(t);
-      window.removeEventListener("resize", measure);
-    };
-  }, [key]);
-  return (
-    <div className="tour-rings" aria-hidden="true">
-      {boxes.map((b, i) => {
-        const pad = 5;
-        const below = b.y < 40 && b.h < window.innerHeight / 2; // a tall ring keeps its tag inside, at the top
-        return (
-          <div key={i} className="tour-ring" style={{ left: b.x - pad, top: b.y - pad, width: b.w + pad * 2, height: b.h + pad * 2 }}>
-            {b.label && <span className={`tour-tag ${below ? "below" : b.y < 40 ? "inside" : ""}`}>{b.label}</span>}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // Click to explain: the one thing selected on the board, in plain words, and what you can do
 // to it. The board stays pictures; the words are on this card beside it.
 const STATUS_WORD = { planned: "New: not built yet", building: "Being built now", built: "Exists", verified: "Tested ✓", failed: "A test failed ✗", live: "Shipped ★" };
@@ -1287,16 +1202,13 @@ export default function App() {
   // layer's components opened to show their parts. Read-only, on the diagram canvas.
   const [inside, setInside] = useState(null);
   const readOnlyView = readOnlyDiagram || !!inside;
-  const lenses = useRef(0); // diagrams and layers picked (the tour waits for one)
   const chooseInside = (k) => {
     setInside(k);
-    lenses.current++;
     if (k && focus) chooseFocus(null);
   };
   const chooseDiagram = (v) => {
     setDiagram(v);
     setInside(null);
-    lenses.current++;
     if (!["er", "sequence"].includes(v)) {
       styleRef.current = v;
       sessionRef.current?.board.setStyle(v);
@@ -1916,7 +1828,6 @@ export default function App() {
     testCaused: allDecisions.some((d) => d.cause?.who === "test"),
     finished: !!review,
     reviewOpens: reviewOpens.current,
-    lenses: lenses.current,
     firstDecision: allDecisions.filter((d) => d.state !== "rejected").sort((a, b) => a.n - b.n)[0]?.id ?? null,
     firstQuestion: Object.values(model.questions).find((q) => q.kind === "question" && q.state === "open")?.id ?? null,
     building: Object.values(model.nodes).find((n) => n.status === "building")?.id ?? null,
@@ -2004,6 +1915,15 @@ export default function App() {
     }
     if (stepOf(tour).clearSelection) s?.board.api.updateScene({ appState: { selectedElementIds: {} } });
   }, [tour]);
+  // Where the tour's first note on the board is, on screen: the card's arrow points at it.
+  const tourNote = () => {
+    const b = s?.board;
+    const e = b?.tips && b.api?.getSceneElements().find((x) => x.id === b.tips[0]);
+    if (!e) return null;
+    const st = b.api.getAppState();
+    const p = sceneCoordsToViewportCoords({ sceneX: e.x, sceneY: e.y }, st);
+    return { x: p.x, y: p.y, w: e.width * st.zoom.value, h: e.height * st.zoom.value };
+  };
   // Its notes and circles on the board (the coach's own tips stay off while it runs).
   const tourTips = useRef("");
   useEffect(() => {
@@ -2062,7 +1982,39 @@ export default function App() {
 
   return (
     <div className="app" data-theme={theme}>
-      {tourAt && <TourRings targets={tourAt.dom} />}
+      {tourAt && (
+        <TourSpotlight targets={tourAt.dom} spots={tourAt.spot} center={tourAt.place === "center"} note={tourNote}>
+          <TourCard
+            key={tour.i}
+            step={tourStep}
+            n={tour.i + 1}
+            total={tourLength}
+            wait={tourWaiting(tourStep, tourCtx)}
+            manual={tour.manual}
+            onBack={() => setTour(tourBack(tour, tourCtx))}
+            onNext={() => setTour(tourNext(tour, tourCtx))}
+            onSkip={skipTour}
+            onExit={exitTour}
+            finish={
+              tourStep.finish && (
+                <>
+                  {agent?.live && (
+                    <button className="secondary" onClick={() => leaveTour("task")}>
+                      Start your own task
+                    </button>
+                  )}
+                  <button className="secondary" onClick={() => leaveTour("start")}>
+                    See saved runs
+                  </button>
+                  <button className="primary" onClick={() => leaveTour("stay")}>
+                    Finish
+                  </button>
+                </>
+              )
+            }
+          />
+        </TourSpotlight>
+      )}
       <aside className="agent" data-tour="panel">
         <header className="top">
           <div className="titlebar">
@@ -2109,36 +2061,7 @@ export default function App() {
               <span className="caption">{status}</span>
             </div>
           )}
-          {tour ? (
-            <TourCard
-              step={tourStep}
-              n={tour.i + 1}
-              total={tourLength}
-              wait={tourWaiting(tourStep, tourCtx)}
-              manual={tour.manual}
-              onBack={() => setTour(tourBack(tour, tourCtx))}
-              onNext={() => setTour(tourNext(tour, tourCtx))}
-              onSkip={skipTour}
-              onExit={exitTour}
-              finish={
-                tourStep.finish && (
-                  <>
-                    {agent?.live && (
-                      <button className="secondary" onClick={() => leaveTour("task")}>
-                        Start your own task
-                      </button>
-                    )}
-                    <button className="secondary" onClick={() => leaveTour("start")}>
-                      See saved runs
-                    </button>
-                    <button className="primary" onClick={() => leaveTour("stay")}>
-                      Finish
-                    </button>
-                  </>
-                )
-              }
-            />
-          ) : tourOffer && s ? (
+          {tour ? null : tourOffer && s ? (
             <div className="coach tour-offer" role="region" aria-label="Take the tour">
               <div className="coach-top">
                 <span className="coach-label">New here?</span>

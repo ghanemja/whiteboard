@@ -148,10 +148,21 @@ let page;
   await shot("11-timeline-tab");
   await page.click('[data-tour="timeline-tab"]');
 
-  // 12 Finish.
+  // 12 Other ways to see it: back to Architecture, open the ML layer, then Next.
   await waitStep(12);
+  await shot("12-see-it-other-ways");
+  await page.click('[data-tour="arch-tab"]');
+  await page.waitForSelector('[data-tour="lens"]');
+  await page.click('[data-tour="lens"] .lens:text-is("ML")');
+  await page.waitForTimeout(900);
+  if (!(await S(() => document.querySelector('.canvas.on[aria-label^="Inside the ML layer"]')))) fail("Zoom into ML should show the ML layer");
+  await shot("12b-zoom-into-ml");
+  await page.click(".coach.tour button:has-text('Next')");
+
+  // 13 Finish.
+  await waitStep(13);
   await page.waitForTimeout(600);
-  await shot("12-finish");
+  await shot("13-finish");
   await page.click(".coach.tour .tour-finish button.primary");
   await page.waitForTimeout(400);
   if (await page.$(".coach.tour")) fail("Finish should close the tour");
