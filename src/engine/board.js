@@ -1674,6 +1674,12 @@ export class Board {
     }
     this.pen = { ids: conv.map((e) => e.id), links, sig };
     this.commit([...this.scene(), ...conv]);
+    // A margin note sits under the board, often out of view: refit so every mark shows.
+    const st = this.api.getAppState(), z = st.zoom.value;
+    const [x1, y1, x2, y2] = getCommonBounds(conv);
+    const vx = -st.scrollX, vy = -st.scrollY, vw = st.width / z, vh = st.height / z;
+    if (x1 < vx || y1 < vy || x2 > vx + vw || y2 > vy + vh - 70 / z) // 70 px: the zoom and undo controls
+      this.api.scrollToContent(this.api.getSceneElements().filter((e) => !e.id.startsWith(MARK)), { fitToViewport: true, viewportZoomFactor: 0.88, animate: true });
   }
 
   hidePen() {
