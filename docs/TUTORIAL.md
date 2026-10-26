@@ -52,6 +52,10 @@ The rest of this guide covers the same run in more detail. Do the tour first, th
 2. **The board (right).** The plan as a drawing. Each picture is a part of the system; arrows show which part talks to which.
 3. **The phase road (top).** Where the run is: **Plan → Build → Verify → Ship**, with a dot for each task.
 
+### Legend
+
+![Legend. Parts: color is their state (new, exists, being built, tested, failed, shipped). Decisions: dashed diamond proposed, solid approved, blue changed, a check mark or cross for its check. For you: a question note, an assumption note. Your marks: Why?, Not needed and Keep this stickers, and the red pen for something that isn't true.](../screenshots/tutorial/legend.svg)
+
 ## 4. A first run, end to end
 
 ### It plans
@@ -64,11 +68,11 @@ When the plan is ready, the agent **stops and waits for you**. The Plan mileston
 
 ### Look at a decision
 
-Diamonds (◇ D1, D2, …) are the agent's technical decisions. Click one. A card opens with what it chose, what else it could have chosen (**Instead of**), **why**, and the check that will prove it right (**We'll know it's right when**).
+Diamonds (◇ D1, D2, …) are the agent's technical decisions. **Click one to see its other options:** they fan out beside the ◇, and the card lists them under **Instead of**, each with **Use this**. The card also says **why** it chose what it did, and the check that will prove it.
 
-![A sticky note on the board says "Click this ◇" with an arrow to decision D1](../screenshots/tour/03-click-a-decision.png)
+![D1 clicked: its other options fan out beside it on the board, and the card lists them, each with Use this](../screenshots/tutorial/decision-options.png)
 
-Dashed diamonds are *proposed*: you haven't approved them yet.
+**Use this** switches to that option (see section 5). Dashed diamonds are *proposed*: not approved yet.
 
 ### Approve
 
@@ -255,7 +259,7 @@ A run costs about $0.20–0.40.
 ## Tips
 
 - The yellow **tips** card always says which step you're on and what to do. **Hide tips** puts it away; the **?** button brings it back.
-- Click anything on the board to learn what it is.
+- Click anything on the board to learn what it is. The legend (section 3) says what each color and mark means.
 - **Highlights only** (in Chat & log) hides the narration and keeps what matters.
 - **Draw as** and **Zoom into** (above the board) show the plan other ways; **Flows & export** shows one flow's steps and exports the view as Mermaid, SVG or PNG.
 - The glass over the board keeps clicks safe: pull it down to change things.

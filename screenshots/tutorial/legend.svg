@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="294" viewBox="0 0 780 294" role="img" aria-label="Legend: what the colors and marks on the board mean">
+<rect x="0.5" y="0.5" width="779" height="293" rx="14" fill="#ffffff" stroke="#e3e3e8"/>
+<text x="24.0" y="30.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="18" font-weight="800" fill="#1e1e1e" text-anchor="start">Legend</text>
+<line x1="18" x2="762" y1="44" y2="44" stroke="#f1f1f4"/>
+<text x="24.0" y="72.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="15" font-weight="800" fill="#1e1e1e" text-anchor="start">Parts</text>
+<text x="24.0" y="89.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#5c5f66" text-anchor="start">color = its state</text>
+<line x1="18" x2="762" y1="106" y2="106" stroke="#f1f1f4"/>
+<text x="24.0" y="134.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="15" font-weight="800" fill="#1e1e1e" text-anchor="start">Decisions</text>
+<text x="24.0" y="151.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#5c5f66" text-anchor="start">◇ = a choice it made</text>
+<line x1="18" x2="762" y1="168" y2="168" stroke="#f1f1f4"/>
+<text x="24.0" y="196.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="15" font-weight="800" fill="#1e1e1e" text-anchor="start">For you</text>
+<text x="24.0" y="213.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#5c5f66" text-anchor="start">it needs you</text>
+<line x1="18" x2="762" y1="230" y2="230" stroke="#f1f1f4"/>
+<text x="24.0" y="258.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="15" font-weight="800" fill="#1e1e1e" text-anchor="start">Your marks</text>
+<text x="24.0" y="275.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#5c5f66" text-anchor="start">what you add</text>
+<rect x="170.0" y="60" width="20" height="20" rx="4" fill="#f8f9fa" stroke="#868e96" stroke-width="2"/>
+<text x="197.0" y="75.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">New</text>
+<rect x="237.7" y="60" width="20" height="20" rx="4" fill="#d0ebff" stroke="#1971c2" stroke-width="2"/>
+<text x="264.7" y="75.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Exists</text>
+<rect x="326.1" y="60" width="20" height="20" rx="4" fill="#fff3bf" stroke="#e8590c" stroke-width="2"/>
+<text x="353.1" y="75.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Being built</text>
+<rect x="449.0" y="60" width="20" height="20" rx="4" fill="#d3f9d8" stroke="#2f9e44" stroke-width="2"/>
+<text x="476.0" y="75.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Tested ✓</text>
+<rect x="551.2" y="60" width="20" height="20" rx="4" fill="#ffe3e3" stroke="#e03131" stroke-width="2"/>
+<text x="578.2" y="75.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Failed ✗</text>
+<rect x="653.4" y="60" width="20" height="20" rx="4" fill="#e5dbff" stroke="#6741d9" stroke-width="2"/>
+<text x="680.4" y="75.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Shipped ★</text>
+<path d="M184.0 118 L198.0 132 L184.0 146 L170.0 132 Z" fill="#f3f0ff" stroke="#6741d9" stroke-width="2" stroke-dasharray="4 3"/>
+<text x="184.0" y="135.5" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="9" font-weight="800" fill="#6741d9" text-anchor="middle">D1</text>
+<text x="206.0" y="137.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Proposed</text>
+<path d="M291.2 118 L305.2 132 L291.2 146 L277.2 132 Z" fill="#e5dbff" stroke="#6741d9" stroke-width="2"/>
+<text x="291.2" y="135.5" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="9" font-weight="800" fill="#6741d9" text-anchor="middle">D1</text>
+<text x="313.2" y="137.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Approved</text>
+<path d="M398.4 118 L412.4 132 L398.4 146 L384.4 132 Z" fill="#d0ebff" stroke="#1971c2" stroke-width="2"/>
+<text x="398.4" y="135.5" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="9" font-weight="800" fill="#1971c2" text-anchor="middle">D1</text>
+<text x="420.4" y="137.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Changed</text>
+<path d="M498.7 118 L512.7 132 L498.7 146 L484.7 132 Z" fill="#e5dbff" stroke="#6741d9" stroke-width="2"/>
+<text x="498.7" y="135.5" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="9" font-weight="800" fill="#6741d9" text-anchor="middle">D1</text>
+<text x="514.7" y="125.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="15" font-weight="800" fill="#2f9e44" text-anchor="start">✓</text>
+<text x="528.7" y="137.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Check passed</text>
+<path d="M641.5 118 L655.5 132 L641.5 146 L627.5 132 Z" fill="#e5dbff" stroke="#6741d9" stroke-width="2"/>
+<text x="641.5" y="135.5" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="9" font-weight="800" fill="#6741d9" text-anchor="middle">D1</text>
+<text x="657.5" y="125.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="15" font-weight="800" fill="#e03131" text-anchor="start">✗</text>
+<text x="671.5" y="137.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Check failed</text>
+<rect x="178" y="180" width="34" height="26" rx="4" fill="#fff4e6" stroke="#f08c00" stroke-width="1.5"/>
+<circle cx="178" cy="180" r="8" fill="#f08c00"/>
+<text x="178.0" y="184.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle">?</text>
+<text x="222.0" y="198.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Question: answer it in Plan details</text>
+<rect x="488" y="180" width="34" height="26" rx="4" fill="#f3f0ff" stroke="#7048e8" stroke-width="1.5" stroke-dasharray="4 3"/>
+<circle cx="488" cy="180" r="8" fill="#7048e8"/>
+<text x="488.0" y="184.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle">≈</text>
+<text x="532.0" y="198.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">Assumption: confirm or correct it</text>
+<g transform="rotate(-4 195.8 256)"><rect x="170.0" y="243" width="51.6" height="24" rx="12" fill="#74c0fc" stroke="#1971c2" stroke-width="1.5"/>
+<text x="195.8" y="260" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="800" fill="#1e1e1e" text-anchor="middle">Why?</text></g>
+<g transform="rotate(3 279.6 256)"><rect x="231.6" y="243" width="96.0" height="24" rx="12" fill="#ff8787" stroke="#c92a2a" stroke-width="1.5"/>
+<text x="279.6" y="260" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="800" fill="#1e1e1e" text-anchor="middle">Not needed</text></g>
+<g transform="rotate(-2 381.9 256)"><rect x="337.6" y="243" width="88.6" height="24" rx="12" fill="#8ce99a" stroke="#2b8a3e" stroke-width="1.5"/>
+<text x="381.9" y="260" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="800" fill="#1e1e1e" text-anchor="middle">Keep this</text></g>
+<text x="438.2" y="260.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#5c5f66" text-anchor="start">stickers</text>
+<ellipse cx="552.2" cy="256" rx="31" ry="15" fill="none" stroke="#e03131" stroke-width="2.2" transform="rotate(-6 552.2 256)"/>
+<text x="552.2" y="260.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#e03131" text-anchor="middle">README</text>
+<text x="594.2" y="260.0" font-family="Nunito, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#1e1e1e" text-anchor="start">red pen: not true</text>
+</svg>
