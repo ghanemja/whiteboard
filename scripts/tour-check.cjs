@@ -1,6 +1,6 @@
-// End-to-end check of the guided tour in headless Chromium: takes it from the first-visit offer
-// to the finish with real clicks, drags and hovers, and screenshots each step. Then checks the
-// plain demo still plays straight through (no prompt, no pauses, no offer once it's been seen).
+// End-to-end check of the guided tour in headless Chromium: takes it from a first visit (where it
+// starts by itself) to the finish with real clicks, drags and hovers, and screenshots each step. Then checks the
+// plain demo still plays straight through (no prompt, no pauses, no tour once it's been taken).
 //
 //   npm run dev     # in another terminal (http://localhost:5199)
 //   NODE_PATH=$(npm root -g) node scripts/tour-check.cjs [out-dir] [light|dark]
@@ -51,13 +51,12 @@ let page;
   await page.goto(URL);
   await page.waitForFunction(() => window.__wb?.board?.api, null, { timeout: 30000 });
   if (theme === "dark") await S(() => window.__wb.board.api.updateScene({ appState: { theme: "dark" } }));
-  await page.waitForSelector(".tour-offer", { timeout: 10000 });
-  await page.waitForTimeout(1500); // the plain demo starts behind the offer
-  await shot("00-first-visit-offer");
-  await page.click(".tour-offer button.primary");
+  // A first visit (no API key): the tour starts by itself, with no demo playing behind it.
+  if (await page.$(".tour-offer")) fail("a first visit starts the tour, not an offer");
 
   // 1 Welcome: the three areas.
-  await waitStep(1);
+  await waitStep(1, 15000);
+  if (await S(() => window.__wb.transcript.messages.length)) fail("the demo waits for the tour's second step");
   const rings = await page.$$eval(".tour-ring", (r) => r.length);
   if (rings !== 3) fail(`welcome should ring 3 areas, rings ${rings}`);
   await shot("01-welcome");
@@ -167,7 +166,7 @@ let page;
   await page.waitForTimeout(400);
   if (await page.$(".coach.tour")) fail("Finish should close the tour");
   const stored = await S(() => localStorage.getItem("wb-tour"));
-  if (!stored) fail("the offer should be remembered");
+  if (!stored) fail("the tour should be remembered as taken");
   console.log("tour ok; messages before the build pause:", typed);
 
   // Back, Skip step and Exit: from the ? / coach entry point, on a fresh board.
@@ -194,10 +193,10 @@ let page;
   if (await S(() => window.__wb.transcript.messages.some((m) => m.kind === "permission"))) fail("no command prompt outside the tour");
   console.log("back/skip/exit ok; the demo finished as usual after Exit");
 
-  // The plain demo, for someone who's seen the offer: no offer, no prompt, no pause.
+  // The plain demo, for someone who's taken the tour: no tour, no prompt, no pause.
   await page.reload();
   await page.waitForFunction(() => window.__wb?.mode === "demo" && window.__wb.transcript.messages.length > 0, null, { timeout: 30000 });
-  if (await page.$(".tour-offer")) fail("the offer shows once");
+  if (await page.$(".tour-offer") || (await page.$(".coach.tour"))) fail("the tour starts by itself only on a first visit");
   await S(() => (window.__wb.player.speed = 4));
   await page.waitForFunction(() => window.__wb.awaitingApproval, null, { timeout: 120000 });
   await page.click('.gate button.primary');

@@ -1151,7 +1151,8 @@ export default function App() {
     setTips(v);
     remember("wb-tips", v);
   };
-  // The guided tour (engine/tour.js): its step, and whether to offer it (once, on a first visit).
+  // The guided tour (engine/tour.js): its step, and whether it's someone's first visit. Then it
+  // starts by itself (the demo), or is offered (with an API key: they came to run a task).
   const [tour, setTour] = useState(null);
   const tourRef = useRef(null);
   tourRef.current = tour;
@@ -1170,6 +1171,7 @@ export default function App() {
       /* private window: just this page */
     }
   };
+  const [autoTour, setAutoTour] = useState(false); // start the tour once the session is ready
   const reviewOpens = useRef(0); // review rows and red-pen marks opened (the tour waits for one)
   const lineHovers = useRef(0); // Chat & log sentences hovered to light up the board (and this one)
   const [tools, setTools] = useState(() => remembered("wb-tools", false));
@@ -1312,9 +1314,10 @@ export default function App() {
       api.updateLibrary({ libraryItems: stickerItems(), merge: true, defaultStatus: "unpublished" }).catch((e) => console.warn("Stickers didn't load", e));
       // Excalidraw measures its container after mount, so fit once it has real dimensions.
       timers.push(setTimeout(() => board.fit(), 150));
-      // With an API key, wait for a task; otherwise play the scripted demo.
-      if (!status.live) timers.push(setTimeout(() => s.startDemo({ fresh: true }), 700));
-      else document.getElementById("ask")?.focus();
+      // With an API key, wait for a task; otherwise play the scripted demo, as the tour on a first visit.
+      if (status.live) document.getElementById("ask")?.focus();
+      else if (tourOffer) setAutoTour(true);
+      else timers.push(setTimeout(() => s.startDemo({ fresh: true }), 700));
     });
     return () => {
       alive = false;
@@ -1851,6 +1854,11 @@ export default function App() {
     setPhase(null);
     setTour(startTour(tourCtxRef.current));
   };
+  useEffect(() => {
+    if (!autoTour || !s) return;
+    setAutoTour(false);
+    takeTour();
+  }, [autoTour, s]);
   const exitTour = () => {
     markTour("done");
     setTour(null);

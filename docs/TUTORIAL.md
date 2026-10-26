@@ -36,9 +36,7 @@ cp fixtures/recordings/* recordings/
 
 ## 2. Take the tour
 
-The first time you open the app, it offers a tour. Press **Take the tour** (you can also find it on the start screen, or as **Tour** in the yellow tips card).
-
-![The first-visit offer: a yellow card asks "New here? Take the tour"](../screenshots/tour/00-first-visit-offer.png)
+The first time you open the app, the tour starts by itself. To take it again later, press **Tour** in the yellow tips card (or **Take the tour** on the start screen).
 
 The tour plays the demo as a lesson. The screen dims except for the part each step is about, and a yellow card pops out beside it to say what to do and why; orange rings or sticky notes point at the thing to click. Everything still works under the dim. The demo **waits for you** at each step, so take your time. If you get stuck, **Skip step** does it for you; **Back** shows the last step again; **Exit tour** leaves it (the demo keeps going as normal).
 
