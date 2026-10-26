@@ -157,7 +157,7 @@ export function drawInside(model, layer) {
   const rects = new Map(); // "node/part" (part "null" for the component) -> { x, y, w, h }
   const tables = new Map(); // table name -> { x, y, w, rows: [row center y], t }
   sk.push(text("in:title", 0, -78, `${label(layer)} layer`, 22, INK));
-  sk.push(text("in:sub", 0, -46, "What's inside each part, and what passes between them. Grey boxes belong to other layers.", 13, MUTED));
+  sk.push(text("in:sub", 0, -46, "Grey boxes are other layers.", 13, MUTED));
   for (const it of items) {
     const [c, r] = cellOf(it.node);
     const x = colX.get(c) + (colW.get(c) - it.w) / 2;

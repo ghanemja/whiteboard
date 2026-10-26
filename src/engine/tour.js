@@ -65,7 +65,7 @@ export const TOUR = [
   {
     id: "steer",
     title: "Change its mind",
-    text: "You've been looking through glass: clicks only explain. Press Use this on one of the other options (that pulls the glass down for you), or pull the glass down and drag a sticker (Stickers, above the board) onto a part: Why? asks it to explain, Not needed asks to drop it. Nothing is sent until you Submit.",
+    text: "Press Use this on another option. Or pull the glass down and drag a sticker onto a part. Nothing is sent until you Submit.",
     done: (c, s) => c.edits > s.edits || c.stage === "building",
     dom: (c) => [
       c.explainUse ? { sel: '[data-tour="use-this"]', label: "Use this" } : null,
@@ -149,7 +149,7 @@ export const TOUR = [
   {
     id: "views",
     title: "See the same plan other ways",
-    text: "On Architecture, the bar above the board redraws the plan. Draw as: C4, Data flow, Database (its tables) or Sequence (one request, step by step). Zoom into opens a layer to show what's inside its parts: try ML for the pipeline from chunking to the answer. Look around, then press Next.",
+    text: "The bar above the board redraws the plan. Draw as: C4, Data flow, Database, Sequence. Zoom into opens a layer: try ML. Then press Next.",
     next: true,
     dom: (c) => (c.view === "board" ? [{ sel: '[data-tour="lens"]', label: "Draw as · Zoom into" }] : [{ sel: '[data-tour="arch-tab"]', label: "Architecture" }]),
     spot: (c) => (c.view === "board" ? [BOARD] : []), // what each one draws

@@ -1714,7 +1714,7 @@ export default function App() {
               ? {
                   n: 2,
                   title: "Check the plan",
-                  text: `The drawing on the right is its plan. Nothing is built until you approve.${openQuestions ? ` It left ${plural(openQuestions, "question")} for you in Plan details.` : ""} Click a ◇ to see other options. To change the drawing or stick a sticker (Why?, Not needed, Keep this) on a part, pull the glass down.`,
+                  text: `The drawing on the right is its plan. Nothing is built until you approve.${openQuestions ? ` It left ${plural(openQuestions, "question")} for you in Plan details.` : ""} Click a ◇ to see other options; pull the glass down to change the drawing.`,
                 }
               : finishedRun || phase === "complete"
                 ? {
@@ -2466,7 +2466,7 @@ export default function App() {
               : boardView === "timeline"
                 ? `How the decisions moved. ${replayMode ? "Click a moment to jump there." : "Click a mark to read it."}`
                 : inside
-                  ? "What's inside each part, and what passes between them. Read-only."
+                  ? "Inside each part. Read-only."
                   : diagram === "er"
                     ? "The tables each data store holds: keys, columns and relations. Read-only."
                     : diagram === "sequence"
@@ -2496,15 +2496,6 @@ export default function App() {
                 </button>
               ))}
             </div>
-          </div>
-        )}
-        {editable && glassUp && (
-          <div className="edit-bar glass-bar" role="region" aria-label="Behind glass">
-            <span className="eb-label">Behind glass:</span>
-            <span className="gb-text">look, and click anything to learn what it is.</span>
-            <button className="gb-pull" data-tour="glass" onClick={lowerGlass} title="Move, rename, remove or add things, then Submit">
-              <span aria-hidden="true">⇣</span> Pull the glass down to change the plan
-            </button>
           </div>
         )}
         {editable && !glassUp && (
@@ -2560,7 +2551,7 @@ export default function App() {
               </div>
             )}
             {editable && glassUp && (
-              <button className="glass-handle" onClick={lowerGlass} title="Pull the glass down to move, rename, remove or add things">
+              <button className="glass-handle" data-tour="glass" onClick={lowerGlass} title="Pull the glass down to move, rename, remove or add things, then Submit">
                 <span aria-hidden="true">⇣</span> Pull down to edit
               </button>
             )}

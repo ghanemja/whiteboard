@@ -100,7 +100,7 @@ You don't have to type to change its mind. **Edit the board**, and your changes 
 
 ### Pull the glass down
 
-The board sits **behind glass**, like a fishbowl: a faint blue sheen over the drawing. Through the glass you can look and **click anything** to learn what it is, but you can't move or change things by accident. To change the plan, press **Pull down to edit** (the tab at the top of the board) or **Pull the glass down to change the plan** (above it). The glass slides away and the **Edit the plan** toolbar appears. When you **Submit**, your changes go to the agent and the glass comes back up. **Glass back up** puts it back without sending anything; your changes wait in the list.
+The board sits **behind glass**. You can click anything to learn what it is, but nothing moves by accident. To change the plan, press **Pull down to edit** at the top of the board: the glass slides away and **Edit the plan** appears. **Submit** sends your changes and puts the glass back. **Glass back up** puts it back without sending.
 
 ![The board behind glass, with the Pull down to edit tab](../screenshots/glass/1-behind-glass.png)
 
@@ -154,7 +154,7 @@ You can also just type in the box at the bottom ("Use SQLite instead"), or press
 
 ## 6. See it other ways: Draw as and Zoom into
 
-The bar right above the board shows the same plan in other ways. Try it on any plan; it never changes the plan.
+The bar above the board shows the same plan other ways. It never changes the plan.
 
 ![The bar above the board: Draw as and Zoom into](../screenshots/zoom/1-draw-as-and-zoom-into.png)
 
@@ -168,18 +168,18 @@ The bar right above the board shows the same plan in other ways. Try it on any p
 | **Database** | The tables each data store holds: columns, keys, and how they relate (an ER diagram) |
 | **Sequence** | One request, step by step, as a sequence diagram (pick the flow under **Flows & export**) |
 
-**Zoom into** opens one **layer** of the system, so you see what's *inside* its parts instead of just boxes. The map stays the same: each part of that layer becomes a frame with its pieces inside, and parts from other layers stay closed, as grey boxes, where they were.
+**Zoom into** opens one **layer**, so you see what's *inside* its parts. Same map: that layer's parts open up, the rest stay as grey boxes.
 
-- **Frontend**: the pages and views (in the demo: the upload page, the chat view, the PDF page viewer) and the calls they make.
-- **Backend**: the routes and jobs (`POST /documents`, `POST /ask`, `ingest(document_id)`) and where each one hands its work.
-- **Data**: the tables with their columns, the files in storage, and the indexes.
-- **ML**: the model pipeline, even where its steps live inside backend parts. In the demo: chunk → embed → the vector index, and retrieve top 8 → prompt → Claude writes the answer.
+- **Frontend**: pages and views, and the calls they make.
+- **Backend**: routes and jobs, and where each hands its work.
+- **Data**: tables, stored files, indexes.
+- **ML**: the model pipeline, even inside backend parts (chunk → embed → index, retrieve → prompt → answer).
 
 ![Zoom into ML: the pipeline across the worker, the vector index, the API server and Claude](../screenshots/zoom/2-ml-layer.png)
 
 ![Zoom into Data: the PDFs in storage, the documents and chunks tables, and the index](../screenshots/zoom/3-data-layer.png)
 
-**Whole system** goes back to the full board. You can also click a part and press **Look inside** on its card. Zoomed-in views are read-only; to change something, go back to Whole system. **Flows & export** copies any view as Mermaid (GitHub renders it) or saves it as SVG or PNG.
+**Whole system** goes back. **Look inside** on a part's card does the same as Zoom into. **Flows & export** copies any view as Mermaid or saves it as SVG or PNG.
 
 ## 7. The command prompt
 

@@ -2389,20 +2389,6 @@ button:focus-visible {
     transition: none;
   }
 }
-.edit-bar.glass-bar {
-  background: linear-gradient(90deg, rgba(214, 232, 252, 0.6), var(--panel-2) 70%);
-}
-.app[data-theme="dark"] .edit-bar.glass-bar {
-  background: linear-gradient(90deg, rgba(90, 120, 170, 0.22), var(--panel-2) 70%);
-}
-.gb-text {
-  font-size: 12.5px;
-  color: var(--soft);
-}
-.edit-bar .gb-pull {
-  margin-left: auto;
-  border-color: rgba(120, 160, 205, 0.75);
-}
 .edit-bar .gb-raise {
   border-style: dashed;
 }
