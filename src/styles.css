@@ -1,38 +1,57 @@
-/* Agent panel styled to sit beside Excalidraw: its purple, its hand-drawn font for
-   display text, and the same highlighter yellow the board uses for live marks. */
+/* The look of the user's other apps (crochet, pptgpt's Bolt): paper, ink for text and every
+   outline and hard shadow, one orange action colour with ink on it, Bricolage Grotesque for
+   display and Figtree for reading. The boards stay Excalidraw: its hand-drawn font is --hand. */
 :root {
-  --accent: #6965db;
-  --accent-soft: #e3e2fe;
-  --ink: #1b1b1f;
-  --soft: #5c5f66;
-  --faint: #909399;
-  --line: #e7e7ec;
+  --accent: #ff7a3d; /* the one action colour: a fill, with ink text on it */
+  --accent-press: #f0652a;
+  --accent-soft: #ffe6d8;
+  --accent-ink: #b5401a; /* the accent as text: dark enough to read */
+  --on-accent: #1e1b2e;
+  --ink: #1e1b2e; /* text, every outline, every hard shadow */
+  --soft: #4f4b63; /* secondary text, still easy to read */
+  --faint: #6a6680; /* only to de-emphasise */
+  --line: #d6d3e0;
   --panel: #ffffff;
-  --panel-2: #f6f6f9;
-  --marker: #ffe066;
-  --marker-soft: #fff3bf;
-  --green: #2f9e44;
+  --panel-2: #f7f5ff;
+  --paper: #f1f3ec;
+  --marker: #ffd86b;
+  --marker-soft: #fff2c7;
+  --green: #1e6b52;
   --orange: #e8590c;
-  --red: #e03131;
+  --red: #d6336c;
   --blue: #1971c2;
+  --bw: 2px;
+  --sh: 3px 3px 0 var(--ink);
+  --sh-lg: 6px 6px 0 var(--ink);
+  --r-card: 18px;
+  --r-sm: 12px;
   --hand: Excalifont, Virgil, "Segoe Print", "Bradley Hand", cursive;
-  --ui: Assistant, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --display:
+    "Bricolage Grotesque Variable", "Figtree Variable", system-ui, sans-serif;
+  --ui:
+    "Figtree Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 .app[data-theme="dark"] {
-  --accent: #a8a5ff;
-  --accent-soft: #3b3a5c;
-  --ink: #e3e3e8;
-  --soft: #a8a8b3;
-  --faint: #7a7a85;
-  --line: #2e2d39;
-  --panel: #232329;
-  --panel-2: #2b2b33;
-  --marker: rgba(255, 212, 59, 0.42);
-  --marker-soft: rgba(255, 212, 59, 0.16);
+  --accent: #ff8a50;
+  --accent-press: #ff9d6b;
+  --accent-soft: #4a2c1e;
+  --accent-ink: #ffa577;
+  --on-accent: #17141f;
+  --ink: #f1ede6;
+  --soft: #c9c4d6;
+  --faint: #9a95ab;
+  --line: #3a3647;
+  --panel: #211f2a;
+  --panel-2: #2a2735;
+  --paper: #18161f;
+  --marker: rgba(255, 216, 107, 0.42);
+  --marker-soft: rgba(255, 216, 107, 0.16);
   --green: #69db7c;
   --orange: #ffa94d;
   --red: #ff8787;
   --blue: #74c0fc;
+  --sh: 3px 3px 0 #000;
+  --sh-lg: 6px 6px 0 #000;
   color-scheme: dark;
 }
 
@@ -48,6 +67,8 @@ body,
 }
 body {
   font-family: var(--ui);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
 }
 button {
   font-family: inherit;
@@ -56,9 +77,9 @@ button {
 /* The board on the left, the panel (first in the page, for keyboard and screen readers) on the right. */
 .app {
   display: grid;
-  grid-template-columns: 1fr minmax(340px, 410px);
+  grid-template-columns: 1fr minmax(360px, 430px);
   height: 100%;
-  background: var(--panel);
+  background: var(--paper);
   color: var(--ink);
 }
 /* ---- the board: the journey on top, then a tab per canvas ---- */
@@ -69,7 +90,7 @@ button {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
+  background: var(--paper);
 }
 .journey {
   position: relative;
@@ -91,9 +112,10 @@ button {
 }
 .journey-title h2 {
   margin: 0;
-  font-family: var(--hand);
-  font-weight: 400;
-  font-size: 23px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 25px;
+  letter-spacing: -0.02em;
   line-height: 1.2;
   color: var(--ink);
   /* One line: the board below gets the height. */
@@ -103,7 +125,7 @@ button {
 }
 .journey-title p {
   margin: 4px 0 0;
-  font-size: 12.5px;
+  font-size: 14px;
   line-height: 1.4;
   color: var(--soft);
   display: -webkit-box;
@@ -124,11 +146,12 @@ button {
   cursor: pointer;
 }
 .journey-strip .ms-label {
-  font-family: var(--hand);
-  font-size: 17px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 16px;
 }
 .journey-strip .badge {
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 700;
   fill: #ffffff;
   text-anchor: middle;
@@ -153,7 +176,7 @@ button {
   border-radius: 7px;
   background: var(--ink);
   color: var(--panel);
-  font-size: 12px;
+  font-size: 13.5px;
   line-height: 1.35;
   pointer-events: none;
 }
@@ -162,23 +185,23 @@ button {
   flex-shrink: 0;
   display: flex;
   align-items: flex-end;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
   padding: 0 14px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--bw) solid var(--ink);
 }
 .canvas-tabs button {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   padding: 8px 14px;
-  margin-bottom: -1px;
-  border: 1px solid transparent;
+  margin-bottom: calc(-1 * var(--bw));
+  border: var(--bw) solid transparent;
   border-bottom: 0;
-  border-radius: 9px 9px 0 0;
+  border-radius: 12px 12px 0 0;
   background: transparent;
-  color: var(--soft);
-  font-size: 13px;
+  color: var(--ink);
+  font-size: 15px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -189,8 +212,8 @@ button {
 }
 .canvas-tabs button[aria-selected="true"] {
   background: var(--panel);
-  border-color: var(--line);
-  color: var(--accent);
+  border-color: var(--ink);
+  font-weight: 800;
 }
 /* A tiny architecture: three boxes. */
 .ct-icon {
@@ -226,19 +249,19 @@ button {
     linear-gradient(currentColor, currentColor) 1px 8.4px / 7px 1.6px no-repeat;
 }
 .ct-count {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
   color: var(--faint);
 }
 .ct-changes {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
   color: var(--blue);
 }
 .ct-proofs {
   display: inline-flex;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
 }
 .ct-proofs .pf-pass {
@@ -255,7 +278,7 @@ button {
   align-self: center;
   min-width: 0;
   padding-left: 12px;
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--faint);
   white-space: nowrap;
   overflow: hidden;
@@ -272,7 +295,7 @@ button {
   background: var(--panel);
   color: var(--ink);
   font: inherit;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -285,12 +308,12 @@ button {
 }
 .export-menu summary {
   list-style: none;
-  padding: 4px 9px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--soft);
+  padding: 4px 10px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -300,7 +323,7 @@ button {
 .export-menu[open] summary,
 .export-menu summary:hover {
   color: var(--ink);
-  border-color: var(--accent);
+  border-color: var(--accent-ink);
 }
 .export-items {
   position: absolute;
@@ -322,12 +345,12 @@ button {
   border: 0;
   border-radius: 6px;
   text-align: left;
-  font-size: 12.5px;
+  font-size: 14px;
 }
 /* The Plan tab's data model: each table's columns, keys marked. */
 .plan-table {
   margin-bottom: 10px;
-  font-size: 13px;
+  font-size: 14.5px;
 }
 .pt-name {
   display: flex;
@@ -343,12 +366,12 @@ button {
   gap: 2px;
 }
 .plan-table code {
-  font-size: 12px;
+  font-size: 13.5px;
 }
 .pt-type {
   margin-left: 6px;
   color: var(--soft);
-  font-size: 12px;
+  font-size: 13.5px;
 }
 .pt-key {
   margin-left: 6px;
@@ -356,13 +379,13 @@ button {
   border-radius: 4px;
   background: var(--accent-soft);
   color: var(--blue);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
 }
 /* The Plan tab's flows: numbered steps under each name. */
 .plan-flow {
   margin-bottom: 10px;
-  font-size: 13px;
+  font-size: 14.5px;
 }
 .plan-flow .pf-name {
   font-weight: 700;
@@ -376,7 +399,7 @@ button {
 }
 .plan-flow code {
   margin-left: 6px;
-  font-size: 11.5px;
+  font-size: 13px;
   color: var(--soft);
 }
 /* A flow's steps, over the board's lower right (the Key sits lower left). */
@@ -391,7 +414,7 @@ button {
   border-radius: 10px;
   background: var(--panel);
   box-shadow: 0 4px 14px rgb(0 0 0 / 0.12);
-  font-size: 12.5px;
+  font-size: 14px;
 }
 .fs-h {
   display: flex;
@@ -423,14 +446,14 @@ button {
   border-radius: 50%;
   background: var(--blue);
   color: #fff;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 800;
 }
 .fs-what {
   display: block;
   color: var(--soft);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 11.5px;
+  font-size: 13px;
 }
 .canvases {
   position: relative;
@@ -469,7 +492,7 @@ button {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-left: 1px solid var(--line);
+  border-left: var(--bw) solid var(--ink);
   background: var(--panel);
 }
 
@@ -491,9 +514,10 @@ button {
   min-width: 0;
 }
 .brand h1 {
-  font-family: var(--hand);
-  font-weight: 400;
-  font-size: 25px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 26px;
+  letter-spacing: -0.02em;
   line-height: 1.15;
   margin: 0;
 }
@@ -503,7 +527,7 @@ button {
   border-radius: 999px;
   vertical-align: 1px;
   font-family: var(--ui);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -513,11 +537,11 @@ button {
 }
 .brand .mode.live {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
   border-color: transparent;
 }
 .brand .proj {
-  font-size: 13px;
+  font-size: 14.5px;
   color: var(--soft);
   white-space: nowrap;
   overflow: hidden;
@@ -530,28 +554,27 @@ button {
   margin-top: 2px;
 }
 button.icon {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 10px;
   background: var(--panel);
-  color: var(--soft);
+  color: var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+  transition: background-color 0.15s;
 }
 button.icon:hover {
-  color: var(--accent);
-  border-color: var(--accent);
   background: var(--accent-soft);
 }
 button.icon.speed {
   width: auto;
   min-width: 34px;
   padding: 0 6px;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -562,7 +585,7 @@ button.icon.speed {
   align-items: center;
   gap: 8px;
   min-height: 18px;
-  font-size: 12.5px;
+  font-size: 14px;
   color: var(--soft);
 }
 .status .caption {
@@ -603,13 +626,14 @@ button.icon.speed {
   flex-shrink: 0;
 }
 .empty {
-  color: var(--soft);
-  font-size: 14px;
+  color: var(--ink);
+  font-size: 15.5px;
   line-height: 1.55;
 }
 .empty .hand {
-  font-family: var(--hand);
-  font-size: 22px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 24px;
   color: var(--ink);
   margin: 0 0 6px;
 }
@@ -617,11 +641,11 @@ button.icon.speed {
   margin: 0 0 12px;
 }
 .empty .note {
-  font-size: 13px;
+  font-size: 14.5px;
   color: var(--faint);
 }
 .empty code {
-  font-size: 12px;
+  font-size: 13.5px;
   padding: 1px 4px;
   border-radius: 4px;
   background: var(--panel-2);
@@ -639,25 +663,30 @@ button.icon.speed {
   border-radius: 10px;
   background: var(--panel);
   color: var(--ink);
-  font-size: 13.5px;
+  font-size: 15px;
   cursor: pointer;
-  transition: border-color 0.15s, background-color 0.15s;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
 }
 .example:hover {
-  border-color: var(--accent);
+  border-color: var(--accent-ink);
   background: var(--accent-soft);
 }
 .linkish {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 600;
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
   cursor: pointer;
 }
 .linkish:hover {
-  text-decoration: underline;
+  color: var(--accent-ink);
 }
 .msg.notice {
   padding: 9px 12px;
@@ -665,12 +694,12 @@ button.icon.speed {
   border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
   background: color-mix(in srgb, var(--red) 8%, var(--panel));
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14.5px;
   line-height: 1.5;
 }
 .msg p {
   margin: 0 0 10px;
-  font-size: 14.5px;
+  font-size: 16px;
   line-height: 1.62;
 }
 .msg p:last-child {
@@ -680,7 +709,7 @@ button.icon.speed {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--soft);
   margin-bottom: 6px;
@@ -693,8 +722,9 @@ button.icon.speed {
   color: #fff;
   display: grid;
   place-items: center;
-  font-family: var(--hand);
-  font-size: 13px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 14px;
 }
 .typing {
   font-weight: 600;
@@ -707,8 +737,9 @@ button.icon.speed {
   align-items: center;
   gap: 8px;
   margin: 18px 0 8px;
-  font-family: var(--hand);
-  font-size: 19px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 18px;
   color: var(--faint);
 }
 .who + .section {
@@ -729,7 +760,7 @@ button.icon.speed {
   border: 1.5px solid currentColor;
   border-radius: 50%;
   font-family: var(--ui);
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 800;
 }
 .section.current {
@@ -746,7 +777,9 @@ button.icon.speed {
 
 .s {
   border-radius: 3px;
-  transition: background-color 0.5s, box-shadow 0.5s;
+  transition:
+    background-color 0.5s,
+    box-shadow 0.5s;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
@@ -758,7 +791,12 @@ button.icon.speed {
   transition-duration: 0.1s;
 }
 .s.live {
-  background: linear-gradient(transparent 14%, var(--marker) 14%, var(--marker) 90%, transparent 90%);
+  background: linear-gradient(
+    transparent 14%,
+    var(--marker) 14%,
+    var(--marker) 90%,
+    transparent 90%
+  );
 }
 .s.linked {
   background: var(--accent-soft);
@@ -787,11 +825,11 @@ button.icon.speed {
   padding: 10px 12px;
 }
 .msg.you.linked {
-  border-color: var(--accent);
+  border-color: var(--accent-ink);
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 .msg.you .sub {
-  font-size: 13px;
+  font-size: 14.5px;
   color: var(--soft);
   margin-bottom: 6px;
 }
@@ -804,7 +842,7 @@ button.icon.speed {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: 13.5px;
+  font-size: 15px;
   line-height: 1.4;
 }
 .edits li {
@@ -820,10 +858,10 @@ button.icon.speed {
   height: 18px;
   margin-top: 1px;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 800;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .g-remove,
 .g-unlink {
@@ -847,7 +885,7 @@ button.icon.speed {
   border-radius: 6px;
   color: #1e1e1e;
   font-family: var(--hand);
-  font-size: 13px;
+  font-size: 14.5px;
   transform: rotate(-2deg);
 }
 /* Grouped by what they change: ▢ architecture, ◇ decision, ✐ scope. */
@@ -865,11 +903,11 @@ button.icon.speed {
   gap: 5px;
 }
 .ea-h {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--soft);
+  color: var(--ink);
 }
 /* A decision's alternatives in its Plan card: click one to pick it. */
 .over {
@@ -887,8 +925,8 @@ button.icon.speed {
   cursor: pointer;
 }
 .alt-pick:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
 }
 /* Selecting the board's own drawing (a component, a diamond, an option) skips Excalidraw's style panel. */
 .canvas.own-sel .selected-shape-actions {
@@ -924,7 +962,7 @@ button.icon.speed {
 }
 .hint {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 14px;
   line-height: 1.5;
   color: var(--faint);
 }
@@ -942,7 +980,7 @@ button.icon.speed {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 700;
   margin-bottom: 8px;
 }
@@ -952,24 +990,33 @@ button.icon.speed {
   border-radius: 999px;
   background: var(--accent);
   color: #fff;
-  font-size: 11px;
+  font-size: 12.5px;
   text-align: center;
 }
 button.primary {
   width: 100%;
   margin-top: 10px;
-  padding: 9px;
-  border: 0;
-  border-radius: 8px;
+  padding: 10px 14px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
   background: var(--accent);
-  color: #fff;
-  font-size: 13.5px;
-  font-weight: 700;
+  color: var(--on-accent);
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: var(--sh);
   cursor: pointer;
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s,
+    background-color 0.12s;
 }
-.app[data-theme="dark"] button.primary,
-.app[data-theme="dark"] .count {
-  color: #1b1b1f;
+button.primary:hover:not(:disabled) {
+  background: var(--accent-press);
+}
+button.primary:active:not(:disabled),
+button.secondary:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink);
 }
 /* Real work the agent did: compact rows between its sentences. */
 .act {
@@ -980,9 +1027,9 @@ button.primary {
   padding: 4px 8px;
   border-radius: 7px;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 12px;
+  font-size: 13.5px;
   line-height: 1.45;
-  color: var(--soft);
+  color: var(--ink);
   background: var(--panel-2);
   transition: background-color 0.3s;
 }
@@ -1007,7 +1054,7 @@ button.primary {
   color: var(--orange);
 }
 .act-command .act-icon {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .act-body {
   display: flex;
@@ -1056,26 +1103,26 @@ button.primary {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 10px 8px;
+  padding: 8px 10px 9px;
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-bottom: 3px solid transparent;
   background: none;
-  color: var(--soft);
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
   margin-bottom: -1px;
 }
 .tab[aria-selected="true"] {
-  color: var(--ink);
+  font-weight: 800;
   border-bottom-color: var(--accent);
 }
 .tab-count {
   padding: 0 6px;
   border-radius: 999px;
   background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 11px;
+  color: var(--accent-ink);
+  font-size: 12.5px;
 }
 .tab-count.bad {
   background: color-mix(in srgb, var(--red) 14%, transparent);
@@ -1098,15 +1145,15 @@ button.primary {
   border: 1px solid var(--line);
   border-radius: 999px;
   background: transparent;
-  color: var(--soft);
-  font-size: 12px;
+  color: var(--ink);
+  font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
 }
 .skim-row .skim.on {
-  border-color: var(--accent);
+  border-color: var(--accent-ink);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .skim-gap {
   padding: 0 7px;
@@ -1114,14 +1161,14 @@ button.primary {
   border-radius: 999px;
   background: transparent;
   color: var(--faint);
-  font-size: 12px;
+  font-size: 13.5px;
   line-height: 1.5;
   cursor: pointer;
   vertical-align: 1px;
 }
 .skim-gap:hover {
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent-ink);
 }
 
 /* Receipts: what the run's record says about a sentence's claims. */
@@ -1130,7 +1177,7 @@ button.primary {
   align-items: baseline;
   gap: 5px;
   margin-left: 3px;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 700;
   cursor: help;
 }
@@ -1162,7 +1209,7 @@ button.primary {
   border-radius: 999px;
   background: #c2255c;
   color: #fff;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
   line-height: 1.5;
 }
@@ -1178,7 +1225,7 @@ button.primary {
   border-radius: 999px;
   background: #7048e8;
   color: #fff;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
   line-height: 1.5;
 }
@@ -1196,20 +1243,20 @@ button.primary {
 }
 .plan h3 {
   margin: 0;
-  font-family: var(--hand);
-  font-weight: 400;
-  font-size: 19px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 18px;
   color: var(--ink);
 }
 .h3-note {
   font-family: var(--ui);
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--faint);
   margin-left: 6px;
 }
 .plan-goal {
   margin: 0;
-  font-size: 14px;
+  font-size: 15.5px;
   line-height: 1.55;
 }
 .plan-empty {
@@ -1221,7 +1268,9 @@ button.primary {
   padding: 9px 11px;
   background: var(--panel);
   cursor: pointer;
-  transition: background-color 0.15s, border-color 0.15s;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
 }
 .plan-card:hover {
   background: var(--marker-soft);
@@ -1229,14 +1278,14 @@ button.primary {
 .plan-card.linked,
 .plan-edges li.linked,
 .ps-task.linked {
-  border-color: var(--accent);
+  border-color: var(--accent-ink);
   background: var(--accent-soft);
 }
 .pc-head {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 13.5px;
+  font-size: 15px;
   min-width: 0;
 }
 .pc-head b {
@@ -1252,7 +1301,7 @@ button.primary {
 .pc-kind {
   margin-left: auto;
   flex-shrink: 0;
-  font-size: 11.5px;
+  font-size: 13px;
   color: var(--faint);
 }
 .chips {
@@ -1267,12 +1316,12 @@ button.primary {
   border-radius: 999px;
   background: var(--panel-2);
   border: 1px solid var(--line);
-  font-size: 11.5px;
-  color: var(--soft);
+  font-size: 13px;
+  color: var(--ink);
 }
 .chip.builds {
   border-style: dashed;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .pc-api {
   list-style: none;
@@ -1285,7 +1334,7 @@ button.primary {
 .plan code,
 .pc-api code {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 11.5px;
+  font-size: 13px;
   padding: 1px 4px;
   border-radius: 4px;
   background: var(--panel-2);
@@ -1294,7 +1343,7 @@ button.primary {
 .pc-files {
   margin-top: 6px;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--faint);
   overflow-wrap: anywhere;
 }
@@ -1314,8 +1363,9 @@ button.primary {
   margin-bottom: 8px;
 }
 .rv-head .hand {
-  font-family: var(--hand);
-  font-size: 20px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 19px;
   color: var(--ink);
 }
 .rv-count {
@@ -1325,7 +1375,7 @@ button.primary {
   border-radius: 999px;
   background: color-mix(in srgb, #f08c00 16%, transparent);
   color: #e8590c;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 700;
 }
 .review ul {
@@ -1340,7 +1390,7 @@ button.primary {
   display: flex;
   align-items: flex-start;
   gap: 9px;
-  font-size: 13px;
+  font-size: 14.5px;
   line-height: 1.45;
 }
 .rv-icon {
@@ -1351,7 +1401,7 @@ button.primary {
   height: 20px;
   border-radius: 999px;
   color: #fff;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 700;
 }
 .rv-bad .rv-icon {
@@ -1383,8 +1433,8 @@ button.primary {
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
-  color: var(--accent);
-  font-size: 12px;
+  color: var(--accent-ink);
+  font-size: 13.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1408,7 +1458,7 @@ button.primary {
   height: 20px;
   border-radius: 999px;
   color: #fff;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 700;
 }
 .qmark.asks {
@@ -1423,7 +1473,7 @@ button.primary {
 .q-text {
   flex: 1;
   min-width: 0;
-  font-size: 13.5px;
+  font-size: 15px;
   line-height: 1.4;
 }
 .qcard.q-question {
@@ -1442,7 +1492,7 @@ button.primary {
 }
 .q-done {
   margin: 6px 0 0 28px;
-  font-size: 13px;
+  font-size: 14.5px;
   color: var(--green);
 }
 .q-done.corrected {
@@ -1463,8 +1513,8 @@ button.primary {
   border: 1px solid var(--accent);
   border-radius: 999px;
   background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 12px;
+  color: var(--accent-ink);
+  font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -1477,7 +1527,7 @@ button.primary {
   background: var(--panel);
   color: var(--ink);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 14px;
 }
 .q-send {
   padding: 4px 10px;
@@ -1485,7 +1535,7 @@ button.primary {
   border-radius: 7px;
   background: var(--accent);
   color: #fff;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -1502,7 +1552,7 @@ button.primary {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 13px;
+  font-size: 14.5px;
 }
 .pass-text {
   flex: 1;
@@ -1526,7 +1576,7 @@ button.primary {
   border: 0;
   background: none;
   color: var(--soft);
-  font-size: 12px;
+  font-size: 13.5px;
   cursor: pointer;
 }
 .pc-diff:hover {
@@ -1558,7 +1608,7 @@ button.primary {
   align-items: center;
   gap: 8px;
   margin-bottom: 2px;
-  font-size: 13px;
+  font-size: 14.5px;
 }
 .fd-head {
   display: flex;
@@ -1570,7 +1620,7 @@ button.primary {
   border-radius: 5px;
   background: none;
   color: var(--ink);
-  font-size: 12px;
+  font-size: 13.5px;
   text-align: left;
   cursor: pointer;
 }
@@ -1585,7 +1635,7 @@ button.primary {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: 13.5px;
 }
 .patch {
   max-height: 340px;
@@ -1595,7 +1645,7 @@ button.primary {
   border-radius: 8px;
   background: var(--panel-2);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 11.5px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .patch span {
@@ -1628,7 +1678,7 @@ button.primary {
   padding: 5px 8px;
   border-radius: 8px;
   border: 1px solid transparent;
-  font-size: 13px;
+  font-size: 14.5px;
   cursor: pointer;
 }
 .plan-edges li:hover {
@@ -1643,7 +1693,7 @@ button.primary {
   place-items: center;
   width: 28px;
   height: 28px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
   color: #6741d9;
 }
@@ -1689,7 +1739,7 @@ button.primary {
   flex-shrink: 0;
   padding: 0 7px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
   background: var(--panel-2);
   color: var(--soft);
@@ -1714,7 +1764,7 @@ button.primary {
   flex-shrink: 0;
   padding: 0 7px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
 }
 .dproof + .dstate {
@@ -1762,12 +1812,12 @@ button.primary {
   grid-template-columns: auto 1fr;
   gap: 4px 10px;
   margin: 8px 0 0;
-  font-size: 13px;
+  font-size: 14.5px;
   line-height: 1.45;
 }
 .decision dt {
   color: var(--faint);
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 700;
   padding-top: 1px;
 }
@@ -1783,7 +1833,7 @@ button.primary {
 .evidence {
   margin: 0;
   padding-left: 16px;
-  color: var(--soft);
+  color: var(--ink);
 }
 .dlinks {
   display: flex;
@@ -1792,7 +1842,7 @@ button.primary {
 }
 .challenge {
   margin-top: 8px;
-  font-size: 12.5px;
+  font-size: 14px;
 }
 .plan-steps {
   display: flex;
@@ -1800,7 +1850,7 @@ button.primary {
   gap: 3px;
 }
 .ps-phase {
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--faint);
   margin-top: 2px;
@@ -1812,7 +1862,7 @@ button.primary {
   padding: 3px 6px;
   border-radius: 6px;
   border: 1px solid transparent;
-  font-size: 13px;
+  font-size: 14.5px;
   cursor: pointer;
 }
 .ps-dot {
@@ -1842,8 +1892,9 @@ button.primary {
   border-top: 1px solid var(--line);
 }
 .saved-h {
-  font-family: var(--hand);
-  font-size: 19px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 18px;
   color: var(--ink);
   margin-bottom: 8px;
 }
@@ -1863,7 +1914,7 @@ button.primary {
   min-width: 0;
 }
 .saved-name {
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--ink);
   overflow: hidden;
@@ -1871,7 +1922,7 @@ button.primary {
   white-space: nowrap;
 }
 .saved-meta {
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--faint);
 }
 .saved-actions {
@@ -1904,12 +1955,13 @@ a.linkish:hover {
   margin-bottom: 10px;
 }
 .rb-name {
-  font-family: var(--hand);
-  font-size: 19px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 17px;
   color: var(--ink);
 }
 .rb-meta {
-  font-size: 12.5px;
+  font-size: 14px;
   color: var(--soft);
   line-height: 1.45;
 }
@@ -1929,7 +1981,7 @@ a.linkish:hover {
   border-radius: 6px;
   background: var(--panel);
   border: 1px solid var(--line);
-  font-size: 11.5px;
+  font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;
   max-height: 5.5em; /* long commands (heredocs) scroll instead of taking over the panel */
@@ -1944,9 +1996,10 @@ a.linkish:hover {
   background: color-mix(in srgb, var(--accent) 7%, var(--panel));
 }
 .permit .gh {
-  font-family: var(--hand);
+  font-family: var(--display);
   font-size: 19px;
-  color: var(--accent);
+  font-weight: 800;
+  color: var(--ink);
   margin-bottom: 6px;
 }
 .permit .cmd {
@@ -1955,7 +2008,7 @@ a.linkish:hover {
   border-radius: 8px;
   background: var(--panel);
   border: 1px solid var(--line);
-  font-size: 12px;
+  font-size: 13.5px;
   white-space: pre-wrap;
   word-break: break-all;
   max-height: 120px;
@@ -1963,8 +2016,8 @@ a.linkish:hover {
 }
 .permit p {
   margin: 0;
-  font-size: 12.5px;
-  color: var(--soft);
+  font-size: 14px;
+  color: var(--ink);
 }
 .permit .gate-actions button {
   flex: 1;
@@ -1977,9 +2030,9 @@ a.linkish:hover {
   margin-bottom: 12px;
 }
 .field span {
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--soft);
+  color: var(--ink);
 }
 .field input {
   padding: 8px 10px;
@@ -1988,38 +2041,40 @@ a.linkish:hover {
   background: var(--panel-2);
   color: var(--ink);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 12px;
+  font-size: 13.5px;
 }
 .field input:focus {
   outline: 2px solid var(--accent-soft);
-  border-color: var(--accent);
+  border-color: var(--accent-ink);
 }
 
 /* Plan review gate: the agent has stopped and is waiting on the user. */
 .gate {
-  border: 1.5px solid var(--blue);
-  border-radius: 12px;
-  padding: 11px 12px 12px;
-  background: color-mix(in srgb, var(--blue) 7%, var(--panel));
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-card);
+  padding: 12px 14px 14px;
+  background: var(--panel);
+  box-shadow: var(--sh);
 }
 .gate .gh {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
-  font-family: var(--hand);
+  font-family: var(--display);
   font-size: 19px;
-  color: var(--blue);
+  font-weight: 800;
+  color: var(--ink);
 }
 .gate .pause {
   font-family: var(--ui);
-  font-size: 13px;
+  font-size: 14.5px;
 }
 .gate p {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 14px;
   line-height: 1.5;
-  color: var(--soft);
+  color: var(--ink);
 }
 .gate .edits {
   margin-top: 4px;
@@ -2035,24 +2090,29 @@ a.linkish:hover {
 }
 button.secondary,
 a.secondary {
-  padding: 9px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  padding: 10px 14px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
   background: var(--panel);
   color: var(--ink);
-  font-size: 13.5px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: var(--sh);
   cursor: pointer;
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s,
+    background-color 0.12s;
 }
 button.secondary:hover,
 a.secondary:hover {
-  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 .msg.you .approved {
   display: flex;
   align-items: center;
   font-weight: 700;
-  font-size: 13.5px;
+  font-size: 15px;
 }
 .g-approve {
   background: color-mix(in srgb, var(--green) 18%, transparent);
@@ -2069,25 +2129,26 @@ a.secondary:hover {
 .ask input {
   flex: 1;
   min-width: 0;
-  padding: 9px 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel-2);
+  padding: 10px 12px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
+  background: var(--panel);
   color: var(--ink);
   font: inherit;
-  font-size: 13.5px;
+  font-size: 15px;
 }
 .ask input:focus {
   outline: 2px solid var(--accent-soft);
-  border-color: var(--accent);
+  border-color: var(--accent-ink);
 }
 .ask button {
-  padding: 0 14px;
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--accent);
-  font-weight: 700;
+  padding: 0 16px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 800;
+  box-shadow: 2px 2px 0 var(--ink);
   cursor: pointer;
 }
 .ask button:disabled {
@@ -2138,15 +2199,15 @@ button:focus-visible {
 /* The coach: which step you're on and what to do now. Yellow like the board's sticky notes. */
 .coach {
   margin: 10px 0 2px;
-  padding: 10px 12px 12px;
-  border: 1px solid #f2c94c;
-  border-radius: 12px;
-  background: #fff3bf;
-  color: #1b1b1f;
+  padding: 12px 14px 14px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-card);
+  background: var(--marker-soft);
+  color: var(--ink);
+  box-shadow: var(--sh);
 }
 .app[data-theme="dark"] .coach {
-  border-color: rgba(255, 212, 59, 0.45);
-  background: rgba(255, 212, 59, 0.12);
+  background: #3a3322;
   color: var(--ink);
 }
 .coach-top {
@@ -2168,7 +2229,7 @@ button:focus-visible {
   counter-increment: step;
   padding: 1px 8px;
   border-radius: 999px;
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 700;
   color: #6b5a1e;
 }
@@ -2190,13 +2251,13 @@ button:focus-visible {
   color: #1b1b1f;
 }
 .coach-label {
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 .coach .coach-hide {
-  font-size: 12px;
+  font-size: 13.5px;
   color: #6b5a1e;
 }
 .app[data-theme="dark"] .coach .coach-hide {
@@ -2204,13 +2265,17 @@ button:focus-visible {
 }
 .coach-title {
   display: block;
-  font-size: 15px;
-  line-height: 1.35;
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 .coach p {
-  margin: 3px 0 0;
-  font-size: 13px;
+  margin: 4px 0 0;
+  font-size: 15px;
   line-height: 1.5;
+  color: var(--ink);
 }
 .coach button.coach-act {
   margin-top: 8px;
@@ -2227,22 +2292,22 @@ button:focus-visible {
   flex-direction: column;
   gap: 3px;
   padding: 6px 8px;
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--soft);
+  color: var(--ink);
 }
 .view-items select.focus-pick {
   margin: 0;
   width: 100%;
-  font-size: 13px;
+  font-size: 14.5px;
 }
 .vi-head {
   padding: 8px 8px 2px;
   border-top: 1px solid var(--line);
   margin-top: 4px;
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--soft);
+  color: var(--ink);
 }
 
 /* The view bar: the same plan drawn other ways (Draw as), or one layer opened up (Zoom into). */
@@ -2262,38 +2327,35 @@ button:focus-visible {
   align-items: center;
   gap: 2px;
   padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel-2);
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
+  background: var(--panel);
 }
 .lens-label {
   padding: 0 8px 0 6px;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 800;
   letter-spacing: 0.02em;
-  color: var(--soft);
+  color: var(--ink);
 }
 .lens {
   padding: 4px 11px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
   color: var(--ink);
   font: inherit;
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 700;
   cursor: pointer;
 }
 .lens:hover {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .lens.on {
   background: var(--accent);
-  color: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
-}
-.app[data-theme="dark"] .lens.on {
-  color: #1b1b1f;
+  color: var(--on-accent);
+  box-shadow: inset 0 0 0 var(--bw) var(--ink);
 }
 .lens:focus-visible {
   outline: 2px solid var(--accent);
@@ -2309,9 +2371,21 @@ button:focus-visible {
   pointer-events: none;
   border-radius: 22px;
   background:
-    radial-gradient(140% 100% at 16% 0%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 36%),
-    radial-gradient(110% 110% at 100% 100%, rgba(165, 200, 240, 0.2) 0%, rgba(165, 200, 240, 0) 55%),
-    linear-gradient(180deg, rgba(196, 222, 250, 0.08), rgba(196, 222, 250, 0.16));
+    radial-gradient(
+      140% 100% at 16% 0%,
+      rgba(255, 255, 255, 0.5) 0%,
+      rgba(255, 255, 255, 0) 36%
+    ),
+    radial-gradient(
+      110% 110% at 100% 100%,
+      rgba(165, 200, 240, 0.2) 0%,
+      rgba(165, 200, 240, 0) 55%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(196, 222, 250, 0.08),
+      rgba(196, 222, 250, 0.16)
+    );
   box-shadow:
     inset 0 0 0 1.5px rgba(135, 172, 210, 0.55),
     inset 0 0 0 7px rgba(255, 255, 255, 0.3),
@@ -2350,8 +2424,16 @@ button:focus-visible {
 }
 .app[data-theme="dark"] .glass {
   background:
-    radial-gradient(140% 100% at 16% 0%, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 36%),
-    linear-gradient(180deg, rgba(120, 160, 220, 0.06), rgba(120, 160, 220, 0.12));
+    radial-gradient(
+      140% 100% at 16% 0%,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0) 36%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(120, 160, 220, 0.06),
+      rgba(120, 160, 220, 0.12)
+    );
   box-shadow:
     inset 0 0 0 1.5px rgba(140, 170, 220, 0.45),
     inset 0 0 0 7px rgba(255, 255, 255, 0.05),
@@ -2377,14 +2459,14 @@ button:focus-visible {
   background: rgba(240, 247, 255, 0.94);
   color: #34506e;
   font: inherit;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 800;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(60, 90, 130, 0.15);
 }
 .glass-handle:hover {
   background: #ffffff;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .app[data-theme="dark"] .glass-handle {
   background: rgba(43, 50, 66, 0.94);
@@ -2405,41 +2487,42 @@ button:focus-visible {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  padding: 4px 14px;
+  gap: 6px;
+  padding: 5px 12px 7px;
   border-bottom: 1px solid var(--line);
   background: var(--panel-2);
 }
 .eb-label {
   margin-right: 4px;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 800;
-  color: var(--soft);
+  color: var(--ink);
 }
 .edit-bar button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  padding: 4px 8px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 10px;
   background: var(--panel);
   color: var(--ink);
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 700;
+  box-shadow: 2px 2px 0 var(--ink);
   cursor: pointer;
 }
 .edit-bar button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
 }
 .edit-bar .eb-tools {
   margin-left: auto;
 }
 .edit-bar .eb-tools.on {
-  border-color: var(--accent);
+  border-color: var(--accent-ink);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 /* The stickers live in the tray on the board, so Excalidraw's Library button has nothing to offer. */
 .canvas.arch .default-sidebar-trigger {
@@ -2460,10 +2543,10 @@ button:focus-visible {
   gap: 4px 10px;
   max-width: 300px;
   padding: 7px 12px 5px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
   background: var(--panel);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--sh);
 }
 .sticker {
   padding: 3px 12px;
@@ -2481,7 +2564,7 @@ button:focus-visible {
 .st-hint {
   flex-basis: 100%;
   text-align: center;
-  font-size: 11.5px;
+  font-size: 13px;
   color: var(--faint);
 }
 
@@ -2503,7 +2586,7 @@ button:focus-visible {
   border-radius: 6px;
   background: #fff3bf;
   color: #1b1b1f;
-  font-family: var(--hand);
+  font-family: var(--ui);
   font-size: 15px;
   line-height: 1.35;
   box-shadow: 0 3px 10px rgb(0 0 0 / 0.12);
@@ -2519,24 +2602,24 @@ button:focus-visible {
   top: 66px;
   right: 14px;
   z-index: 4;
-  width: min(310px, calc(100% - 28px));
+  width: min(330px, calc(100% - 28px));
   max-height: calc(100% - 126px);
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 12px 14px 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  padding: 14px 16px 16px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-card);
   background: var(--panel);
   color: var(--ink);
-  box-shadow: 0 8px 26px rgb(0 0 0 / 0.14);
-  font-size: 13px;
+  box-shadow: var(--sh-lg);
+  font-size: 15px;
   line-height: 1.45;
 }
 .explain h3 {
   margin: 2px 26px 6px 0;
-  font-family: var(--hand);
-  font-size: 20px;
-  font-weight: 400;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 19px;
   line-height: 1.2;
 }
 .explain p {
@@ -2561,7 +2644,7 @@ button:focus-visible {
 }
 .ex-kicker,
 .ex-k {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2583,7 +2666,7 @@ button:focus-visible {
   padding: 1px 8px;
   border: 1.5px solid var(--st, var(--line));
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 700;
 }
 .ex-proof.pf-pass {
@@ -2622,7 +2705,7 @@ button:focus-visible {
   display: block;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 11.5px;
+  font-size: 13px;
 }
 .ex-diff .add {
   color: var(--green);
@@ -2635,11 +2718,11 @@ button:focus-visible {
   border: 0;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: 13.5px;
 }
 .ex-faint {
   color: var(--faint);
-  font-size: 12px;
+  font-size: 13.5px;
 }
 .ex-use {
   display: flex;
@@ -2666,8 +2749,8 @@ button:focus-visible {
   padding: 1px 8px;
   border-radius: 999px;
   background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 11.5px;
+  color: var(--accent-ink);
+  font-size: 13px;
 }
 .ex-actions {
   display: flex;
@@ -2677,7 +2760,7 @@ button:focus-visible {
 }
 .ex-actions button.secondary {
   padding: 6px 10px;
-  font-size: 12.5px;
+  font-size: 14px;
 }
 
 /* The key under the Pictures board. */
@@ -2689,8 +2772,8 @@ button:focus-visible {
   gap: 4px 14px;
   padding: 7px 16px;
   border-top: 1px solid var(--line);
-  font-size: 12px;
-  color: var(--soft);
+  font-size: 13.5px;
+  color: var(--ink);
 }
 .board-key b {
   color: var(--ink);
@@ -2726,36 +2809,36 @@ button:focus-visible {
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
-  color: var(--soft);
-  font-size: 12px;
+  color: var(--ink);
+  font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
 }
 .suggest button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
 }
 
 /* "What's a decision?", "Why am I asked?": a short answer one click away. */
 .whats {
   margin: 0 0 10px;
-  font-size: 12.5px;
+  font-size: 14px;
 }
 .whats summary {
   display: inline;
-  color: var(--accent);
+  color: var(--accent-ink);
   font-weight: 700;
   cursor: pointer;
 }
 .whats p {
   margin: 5px 0 0;
-  color: var(--soft);
+  color: var(--ink);
   line-height: 1.5;
 }
 .rv-note {
   margin: -2px 0 8px;
-  font-size: 12px;
-  color: var(--soft);
+  font-size: 13.5px;
+  color: var(--ink);
 }
 
 /* ---- the guided tour: the coach's yellow note with a step count, popped out beside what it points at ---- */
@@ -2821,42 +2904,48 @@ button:focus-visible {
   gap: 6px;
 }
 .app .coach.tour .linkish {
-  color: #6b5a1e;
+  color: var(--ink);
 }
 .app[data-theme="dark"] .coach.tour .linkish {
   color: var(--soft);
 }
 /* The intro (and the finish): in the middle of the screen, bigger, over the demo playing behind. */
 .tour-pop.at-center {
-  width: 460px;
+  width: 520px;
 }
 .app .coach.tour.intro {
-  padding: 22px 24px 18px;
+  padding: 26px 28px 22px;
 }
 .intro-brand {
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  color: #8a6d1c;
+  color: var(--accent-ink);
 }
 .app[data-theme="dark"] .intro-brand {
   color: var(--soft);
 }
 .intro-title {
-  margin: 6px 0 8px;
-  font: 400 27px/1.2 var(--hand);
+  margin: 8px 0 10px;
+  font-family: var(--display);
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
   color: var(--ink);
 }
 .app .coach.tour.intro p {
-  font-size: 14px;
+  font-size: 17px;
+  line-height: 1.5;
 }
 .app .coach.tour.intro .tour-actions {
-  margin-top: 16px;
+  margin-top: 20px;
+  align-items: center;
 }
 .app .coach.tour.intro .tour-actions button.primary {
-  padding: 8px 16px;
-  font-size: 14px;
+  padding: 11px 20px;
+  font-size: 16.5px;
 }
 /* The spotlight: the screen dims round what the step is about (cut out of an SVG mask), with a
    ring round each thing to click, and the card pops out beside it. Only the card takes clicks:
@@ -2931,9 +3020,7 @@ button:focus-visible {
 }
 .app .tour-pop .coach.tour {
   margin: 0;
-  box-shadow:
-    0 14px 36px rgba(16, 17, 28, 0.32),
-    0 2px 8px rgba(16, 17, 28, 0.14);
+  box-shadow: var(--sh-lg);
   animation: tour-in 0.3s ease-out both;
 }
 .app[data-theme="dark"] .tour-pop .coach.tour {
@@ -2947,29 +3034,29 @@ button:focus-visible {
 .tour-caret {
   position: absolute;
   z-index: 1;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   box-sizing: border-box;
-  border: 1px solid transparent;
-  background: #fff3bf;
+  border: var(--bw) solid transparent;
+  background: var(--marker-soft);
   transform: rotate(45deg);
   animation: tour-in 0.25s ease-out 0.3s both;
 }
 .tour-pop.at-right .tour-caret {
-  border-left-color: #f2c94c;
-  border-bottom-color: #f2c94c;
+  border-left-color: var(--ink);
+  border-bottom-color: var(--ink);
 }
 .tour-pop.at-left .tour-caret {
-  border-top-color: #f2c94c;
-  border-right-color: #f2c94c;
+  border-top-color: var(--ink);
+  border-right-color: var(--ink);
 }
 .tour-pop.at-below .tour-caret {
-  border-top-color: #f2c94c;
-  border-left-color: #f2c94c;
+  border-top-color: var(--ink);
+  border-left-color: var(--ink);
 }
 .tour-pop.at-above .tour-caret {
-  border-bottom-color: #f2c94c;
-  border-right-color: #f2c94c;
+  border-bottom-color: var(--ink);
+  border-right-color: var(--ink);
 }
 .app[data-theme="dark"] .tour-caret {
   background: #39342a;
