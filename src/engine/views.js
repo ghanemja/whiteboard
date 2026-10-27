@@ -10,6 +10,8 @@
 //   - Names in sentence case.
 //   - Mermaid for each: the container view and the data flow as flowcharts, a flow as a sequence
 //     diagram, the data model as an ER diagram. GitHub, GitLab and Notion render them inline.
+//   - Which decisions are in progress (their status circle pulses on the board).
+import { YOU } from "./palette.js";
 
 // What each component kind is in C4 terms.
 export const C4_TYPE = {
@@ -30,8 +32,9 @@ export const LAYERS = [
   { key: "ml", label: "ML" },
   { key: "external", label: "External" },
 ];
-// Each layer's color: the plate behind its components on the whole board, and the icons its
-// parts get when the layer is opened up (explode.js). Soft fills, so status keeps its own colors.
+// Each layer's color, the same in every view: the plate behind its components (Pictures, C4, data
+// flow), a data store's tables (ER), a participant (sequence), the icons its parts get when the
+// layer is opened up (explode.js), and the Mermaid exports. Soft fills, so status keeps its own colors.
 export const LAYER_COLOR = {
   frontend: { stroke: "#1c7ed6", fill: "#e7f5ff" },
   backend: { stroke: "#7048e8", fill: "#f3f0ff" },
@@ -82,6 +85,16 @@ export function parseSteps(steps) {
 const q = (s) => String(s ?? "").replace(/;/g, ",").replace(/"/g, "'").replace(/</g, "#lt;").replace(/>/g, "#gt;").replace(/\s+/g, " ").trim();
 const alias = (id) => `n_${String(id).replace(/[^A-Za-z0-9_]/g, "_")}`;
 
+// Mermaid classes in the board's colors, so an export reads like the board: each layer's plate
+// color, people in "you" pink. pairs: [[Mermaid id, layer key or null for a person]].
+function colorClasses(pairs) {
+  const lines = [];
+  const add = (name, c, ids) => ids.length && lines.push(`  classDef ${name} fill:${c.fill},stroke:${c.stroke},color:#1e1e1e`, `  class ${ids.join(",")} ${name}`);
+  for (const l of LAYERS) add(l.key, LAYER_COLOR[l.key], pairs.filter(([, k]) => k === l.key).map(([id]) => id));
+  add("person", YOU, pairs.filter(([, k]) => k === null).map(([id]) => id));
+  return lines;
+}
+
 // The container view as a Mermaid flowchart in C4 notation. Mermaid's own C4 diagrams lay out one
 // box per row, so this uses its flowchart layout: square boxes, the system's boundary as a
 // subgraph, async links dashed. `only`: the component ids to include (a layer, say).
@@ -113,14 +126,8 @@ export function toMermaid(model, { only } = {}) {
     const label = [tagCase(e.via), e.api && clip(e.api, 40)].filter(Boolean).join(": ");
     lines.push(`  ${alias(e.from)} ${e.async ? "-.->" : "-->"}${label ? `|"${q(label)}"|` : ""} ${alias(e.to)}`);
   }
-  // C4's usual colors: blue containers, dark blue people, grey external systems.
-  const of = (pred) => nodes.filter(pred).map((n) => alias(n.id)).join(",");
-  const groups = [
-    ["container", "fill:#438dd5,stroke:#2e6295,color:#fff", of((n) => !OUTSIDE.has(n.kind))],
-    ["person", "fill:#08427b,stroke:#052e56,color:#fff", of((n) => n.kind === "user")],
-    ["external", "fill:#999999,stroke:#6b6b6b,color:#fff", of((n) => n.kind === "external")],
-  ];
-  for (const [name, style, ids] of groups) if (ids) lines.push(`  classDef ${name} ${style}`, `  class ${ids} ${name}`);
+  // The board's layer colors (not C4's usual blues), so the export reads like the board.
+  lines.push(...colorClasses(nodes.map((n) => [alias(n.id), layerOf(n)])));
   if (inside.length) lines.push("  style system fill:none,stroke:#444,stroke-dasharray:5 5");
   return `${lines.join("\n")}\n`;
 }
@@ -186,6 +193,7 @@ export function toDfdMermaid(model, { only } = {}) {
     const label = clip(dataOf(e), 40);
     lines.push(`  ${alias(e.from)} ${e.async ? "-.->" : "-->"}${label ? `|"${q(label)}"|` : ""} ${alias(e.to)}`);
   }
+  lines.push(...colorClasses(nodes.map((n) => [alias(n.id), layerOf(n)])));
   if (inside.length) lines.push("  style system fill:none,stroke:#444,stroke-dasharray:5 5");
   return `${lines.join("\n")}\n`;
 }
@@ -349,6 +357,24 @@ export function toInsideMermaid(model, layer) {
   }
   for (const n of stubs) lines.push(`  ${alias(n.id)}(["${q(n.name)}"])`);
   for (const l of links) lines.push(`  ${pid(l.from.node, l.from.part)} -->${l.what ? `|"${q(clip(l.what, 40))}"|` : ""} ${pid(l.to.node, l.to.part)}`);
+  // Colored as on the board: each part in its layer's color, each component's frame in its own.
+  lines.push(...colorClasses(groups.flatMap((g) => g.parts.map((p) => [pid(g.node.id, p.id), partLayer(model, p)]))));
+  for (const g of groups) {
+    const c = LAYER_COLOR[layerOf(g.node)];
+    if (c) lines.push(`  style ${alias(g.node.id)} fill:${c.fill},stroke:${c.stroke},stroke-dasharray:5 5`);
+  }
   if (stubs.length) lines.push("  classDef stub fill:#f8f9fa,stroke:#adb5bd,color:#868e96", `  class ${stubs.map((n) => alias(n.id)).join(",")} stub`);
   return `${lines.join("\n")}\n`;
+}
+
+// ---- decisions on the board ----
+// The decisions being worked on now, whose status circle on the board pulses: one shaping a part
+// that's being built, or, while the run verifies, one whose check has no result yet. A proposed
+// one waits for your approval (not in progress), and a rejected one is done with.
+export function busyDecisions(model) {
+  const verifying = model.phase === "verification";
+  return Object.values(model.decisions ?? {})
+    .filter((d) => d.state !== "proposed" && d.state !== "rejected")
+    .filter((d) => (d.affects ?? []).some((a) => model.nodes?.[a]?.status === "building") || (verifying && !d.proof))
+    .map((d) => d.id);
 }

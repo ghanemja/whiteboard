@@ -1,19 +1,38 @@
 // The read-only diagram views, drawn from the model as Excalidraw skeletons (Board converts and
 // places them, as it does the Timeline's): the data model as an ER diagram, and a flow as a UML
-// sequence diagram. Both use the official look: 1 px crisp lines and a plain typeface. Pure, so
-// `node --test` can run it. Text centered on a point carries `_c: [x, y]`; right-aligned text
-// carries `_r: x` (where its right edge goes).
-import { INK, MUTED } from "./palette.js";
+// sequence diagram. They look like the rest of the board: Excalidraw's hand-drawn lines and hand
+// font, and each part in its layer's color (LAYER_COLOR), so Frontend is the same blue in every
+// view. Pure, so `node --test` can run it. Text centered on a point carries `_c: [x, y]`;
+// right-aligned text carries `_r: x` (where its right edge goes).
+import { INK, MUTED, YOU } from "./palette.js";
 import { C4_TYPE, LAYERS, LAYER_COLOR, c4Tag, insideOf, layerOf, partLayer } from "./views.js";
 
-const SANS = 6; // Nunito, Excalidraw's "Normal" typeface
-const crisp = { strokeWidth: 1, roughness: 0, locked: true };
+const hand = { strokeWidth: 2, roughness: 1, locked: true }; // as the board draws
+const thin = { ...hand, strokeWidth: 1 };
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
-const text = (id, x, y, t, size, color, extra = {}) => ({ type: "text", id, x, y, text: t, fontSize: size, strokeColor: color, fontFamily: SANS, ...crisp, ...extra });
-const KEY = "#1971c2";
+const text = (id, x, y, t, size, color, extra = {}) => ({ type: "text", id, x, y, text: t, fontSize: size, strokeColor: color, ...hand, ...extra });
+const NONE = { stroke: MUTED, fill: "#f8f9fa" }; // something with no layer (a table no store holds)
+const colorOf = (node) => (node?.kind === "user" ? YOU : LAYER_COLOR[node ? layerOf(node) : ""] ?? NONE);
 
 // ---- the data model: tables grouped by the data store that holds them ----
 export const ER = { HEAD: 32, ROW: 22, GAP: 80, PAD: 24 };
+// A table's width for its name (15 px) and its columns (13 px name, 12 px type) in the hand font.
+const tableW = (t) => Math.round(Math.max(200, t.name.length * 9.5 + 40, ...t.columns.map((c) => (c.name.length + c.type.length) * 7.6 + 80)));
+
+// One table: a white body under a header in its store's layer color, keys in that color too.
+function table(sk, id, t, x, y, w, c) {
+  sk.push({ type: "rectangle", id, x, y, width: w, height: ER.HEAD + t.columns.length * ER.ROW + 8, strokeColor: INK, backgroundColor: "#ffffff", fillStyle: "solid", ...hand });
+  sk.push({ type: "rectangle", id: `${id}:h`, x, y, width: w, height: ER.HEAD, strokeColor: INK, backgroundColor: c.fill, fillStyle: "solid", ...hand });
+  sk.push(text(`${id}:n`, x, y, t.name, 15, INK, { _c: [x + w / 2, y + ER.HEAD / 2] }));
+  return t.columns.map((col, i) => {
+    const cy = y + ER.HEAD + 4 + i * ER.ROW + ER.ROW / 2;
+    const key = [col.pk && "PK", col.fk && "FK", col.unique && !col.pk && "UK"].filter(Boolean).join(" ");
+    if (key) sk.push(text(`${id}:k${i}`, x + 8, cy - 7, key, 11, c.stroke));
+    sk.push(text(`${id}:c${i}`, x + 46, cy - 9, col.name, 13, INK));
+    if (col.type) sk.push(text(`${id}:y${i}`, x + w - 10, cy - 8, col.type, 12, MUTED, { _r: x + w - 10 }));
+    return cy;
+  });
+}
 
 export function drawEr(model) {
   const tables = Object.values(model.tables ?? {});
@@ -25,37 +44,29 @@ export function drawEr(model) {
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(t);
   }
-  const width = (t) => Math.round(Math.max(200, t.name.length * 9 + 40, ...t.columns.map((c) => (c.name.length + c.type.length) * 7.2 + 76)));
   const at = new Map(); // table name -> { x, y, w, rows: [row center y], t }
   let gy = 0;
   for (const [store, ts] of groups) {
     const node = model.nodes?.[store];
-    const top = gy + 40;
+    const c = node ? colorOf(node) : NONE;
+    const top = gy + 44;
+    const inner = [];
     let x = ER.PAD, tallest = 0;
     for (const t of ts) {
-      const w = width(t), h = ER.HEAD + t.columns.length * ER.ROW + 8;
-      const id = `er:t:${t.id}`;
-      sk.push({ type: "rectangle", id, x, y: top, width: w, height: h, strokeColor: INK, backgroundColor: "#ffffff", fillStyle: "solid", ...crisp });
-      sk.push({ type: "rectangle", id: `${id}:h`, x, y: top, width: w, height: ER.HEAD, strokeColor: INK, backgroundColor: "#e7f5ff", fillStyle: "solid", ...crisp });
-      sk.push(text(`${id}:n`, x, top, t.name, 15, INK, { _c: [x + w / 2, top + ER.HEAD / 2] }));
-      const rows = t.columns.map((c, i) => {
-        const cy = top + ER.HEAD + 4 + i * ER.ROW + ER.ROW / 2;
-        const key = [c.pk && "PK", c.fk && "FK", c.unique && !c.pk && "UK"].filter(Boolean).join(" ");
-        if (key) sk.push(text(`${id}:k${i}`, x + 8, cy - 7, key, 10, KEY));
-        sk.push(text(`${id}:c${i}`, x + 46, cy - 9, c.name, 13, INK));
-        if (c.type) sk.push(text(`${id}:y${i}`, x + w - 10, cy - 8, c.type, 12, MUTED, { _r: x + w - 10 }));
-        return cy;
-      });
-      at.set(t.name, { x, y: top, w, rows, t });
+      const w = tableW(t), h = ER.HEAD + t.columns.length * ER.ROW + 8;
+      at.set(t.name, { x, y: top, w, rows: table(inner, `er:t:${t.id}`, t, x, top, w, c), t });
       x += w + ER.GAP;
       tallest = Math.max(tallest, h);
     }
-    // The store that holds them: a dashed frame with its name and C4 type.
+    // The store that holds them: its layer's plate, as on the board, with its name and C4 type,
+    // under its tables. Tables no store holds get a plain dashed frame.
     const label = node ? `${node.name} [${C4_TYPE[node.kind] ?? "Database"}${node.libs?.[0] ? `: ${node.libs[0]}` : ""}]` : "Other tables";
     const gid = `er:g:${store || "other"}`;
-    sk.push({ type: "rectangle", id: gid, x: 8, y: gy, width: x - ER.GAP + ER.PAD - 8, height: tallest + 56, strokeColor: MUTED, backgroundColor: "transparent", strokeStyle: "dashed", ...crisp });
-    sk.push(text(`${gid}:t`, 20, gy + 10, label, 13, MUTED));
-    gy += tallest + 56 + 36;
+    const plate = node ? { strokeColor: c.stroke, backgroundColor: c.fill, fillStyle: "solid", roundness: { type: 3 }, opacity: 70 } : { strokeColor: MUTED, backgroundColor: "transparent", strokeStyle: "dashed" };
+    sk.push({ type: "rectangle", id: gid, x: 8, y: gy, width: x - ER.GAP + ER.PAD - 8, height: tallest + 64, ...plate, ...thin });
+    sk.push(text(`${gid}:t`, 22, gy + 12, label, 14, node ? INK : MUTED));
+    sk.push(...inner);
+    gy += tallest + 64 + 36;
   }
   // A crow's-foot line for each foreign key: many at the referencing column, one at the key it
   // references (one and only one when the column is itself unique).
@@ -81,7 +92,7 @@ export function drawEr(model) {
       const [x0, y0] = pts[0];
       sk.push({
         type: "arrow", id: `er:r:${t.id}:${i}`, x: x0, y: y0, points: pts.map(([px, py]) => [px - x0, py - y0]),
-        strokeColor: INK, startArrowhead: c.pk || c.unique ? "crowfoot_one" : "crowfoot_many", endArrowhead: "crowfoot_one", ...crisp,
+        strokeColor: INK, startArrowhead: c.pk || c.unique ? "crowfoot_one" : "crowfoot_many", endArrowhead: "crowfoot_one", ...hand,
       });
     });
   return sk;
@@ -95,14 +106,16 @@ export function drawSequence(model, flow) {
   const ids = [...new Set(flow.steps.flatMap((s) => [s.from, s.to]))];
   const xOf = new Map(ids.map((id, i) => [id, 30 + i * SEQ.GAP + SEQ.BW / 2]));
   const bottom = SEQ.TOP + SEQ.BH + 34 + flow.steps.length * SEQ.STEP;
-  const sk = [text("sq:title", 30, 0, flow.name, 18, INK)];
+  const sk = [text("sq:title", 30, 0, flow.name, 20, INK)];
   for (const id of ids) {
     const n = model.nodes?.[id];
     const cx = xOf.get(id);
-    // People are actors: drawn with a pink fill, like "You" everywhere else.
-    sk.push({ type: "rectangle", id: `sq:p:${id}`, x: cx - SEQ.BW / 2, y: SEQ.TOP, width: SEQ.BW, height: SEQ.BH, strokeColor: INK, backgroundColor: n?.kind === "user" ? "#fff0f6" : "#f8f9fa", fillStyle: "solid", ...crisp });
-    sk.push(text(`sq:p:${id}:t`, cx, SEQ.TOP, n?.name ?? id, 14, INK, { _c: [cx, SEQ.TOP + SEQ.BH / 2] }));
-    sk.push({ type: "line", id: `sq:l:${id}`, x: cx, y: SEQ.TOP + SEQ.BH, points: [[0, 0], [0, bottom - SEQ.TOP - SEQ.BH]], strokeColor: MUTED, strokeStyle: "dashed", ...crisp });
+    // Each participant on its layer's plate, its lifeline in that color; people are actors, in the
+    // pink of "You" everywhere else.
+    const c = n ? colorOf(n) : NONE;
+    sk.push({ type: "rectangle", id: `sq:p:${id}`, x: cx - SEQ.BW / 2, y: SEQ.TOP, width: SEQ.BW, height: SEQ.BH, strokeColor: c.stroke, backgroundColor: c.fill, fillStyle: "solid", roundness: { type: 3 }, ...hand });
+    sk.push(text(`sq:p:${id}:t`, cx, SEQ.TOP, clip(n?.name ?? id, 20), 15, INK, { _c: [cx, SEQ.TOP + SEQ.BH / 2] }));
+    sk.push({ type: "line", id: `sq:l:${id}`, x: cx, y: SEQ.TOP + SEQ.BH, points: [[0, 0], [0, bottom - SEQ.TOP - SEQ.BH]], strokeColor: c.stroke, strokeStyle: "dashed", opacity: 70, ...hand, strokeWidth: 1.5 });
   }
   flow.steps.forEach((st, i) => {
     const y = SEQ.TOP + SEQ.BH + 44 + i * SEQ.STEP;
@@ -112,27 +125,26 @@ export function drawSequence(model, flow) {
     const reply = !fwd && !!back;
     sk.push({
       type: "arrow", id: `sq:m:${i}`, x: x1, y, points: [[0, 0], [x2 - x1, 0]], strokeColor: INK,
-      strokeStyle: reply ? "dashed" : "solid", startArrowhead: null, endArrowhead: reply || fwd?.async ? "arrow" : "triangle", ...crisp,
+      strokeStyle: reply ? "dashed" : "solid", startArrowhead: null, endArrowhead: reply || fwd?.async ? "arrow" : "triangle", ...hand,
     });
     const label = `${i + 1}. ${st.what || fwd?.api || back?.api || ""}`.trim();
-    sk.push(text(`sq:m:${i}:t`, (x1 + x2) / 2, y - 22, clip(label, 44), 13, INK, { _c: [(x1 + x2) / 2, y - 13] }));
+    // Over the first gap from the sender, so a message that passes other lifelines isn't crossed by one.
+    const mx = x1 + (Math.sign(x2 - x1) * Math.min(Math.abs(x2 - x1), SEQ.GAP)) / 2;
+    sk.push(text(`sq:m:${i}:t`, mx, y - 22, clip(label, 44), 14, INK, { _c: [mx, y - 14] }));
   });
   return sk;
 }
 
 // ---- inside a layer: the board's map, with the layer's components opened to show their parts ----
-// Each open component is a dashed frame at its place on the board, its parts stacked inside
-// (tables drawn as in the data model); a component of another layer it talks to stays closed, a
-// grey box at its place. Arrows carry what passes between them.
+// Each open component is a dashed frame in its layer's color at its place on the board, its parts
+// stacked inside in theirs (tables drawn as in the data model); a component of another layer it
+// talks to stays closed, faded, at its place. Arrows carry what passes between them.
 export const IN = { PAD: 16, HEAD: 50, GAP: 38, GX: 210, GY: 110, PH: 50, STUB: 46 };
-export const LAYER_TINT = Object.fromEntries(Object.entries(LAYER_COLOR).map(([k, c]) => [k, c.fill]));
-const FAINT = "#adb5bd";
 
 export function drawInside(model, layer) {
   const { groups, stubs, links } = insideOf(model, layer);
   if (!groups.length) return [];
   const label = (k) => LAYERS.find((l) => l.key === k)?.label ?? k;
-  const tableW = (t) => Math.round(Math.max(200, t.name.length * 9 + 40, ...t.columns.map((c) => (c.name.length + c.type.length) * 7.2 + 76)));
   const partW = (p) => (p.table ? tableW(p.table) : Math.round(Math.max(180, Math.min(300, p.name.length * 8 + 36))));
   const partH = (p) => (p.table ? ER.HEAD + p.table.columns.length * ER.ROW + 8 : IN.PH);
   // Sizes, then the grid: each used column as wide as its widest item, each row as tall as its tallest.
@@ -157,24 +169,26 @@ export function drawInside(model, layer) {
   const rects = new Map(); // "node/part" (part "null" for the component) -> { x, y, w, h }
   const tables = new Map(); // table name -> { x, y, w, rows: [row center y], t }
   sk.push(text("in:title", 0, -78, `${label(layer)} layer`, 22, INK));
-  sk.push(text("in:sub", 0, -46, "Grey boxes are other layers.", 13, MUTED));
+  sk.push(text("in:sub", 0, -46, "Faded boxes are other layers.", 13, MUTED));
   for (const it of items) {
     const [c, r] = cellOf(it.node);
     const x = colX.get(c) + (colW.get(c) - it.w) / 2;
+    const lc = colorOf(it.node);
     if (!it.g) {
-      // A component of another layer: closed, at its place.
+      // A component of another layer: closed, at its place, in its own layer's colors, faded.
       const y = rowY.get(r) + (rowH.get(r) - it.h) / 2;
       const id = `in:s:${it.node.id}`;
-      sk.push({ type: "rectangle", id, x, y, width: it.w, height: it.h, strokeColor: FAINT, backgroundColor: "#f8f9fa", fillStyle: "solid", roundness: { type: 3 }, ...crisp });
+      sk.push({ type: "rectangle", id, x, y, width: it.w, height: it.h, strokeColor: lc.stroke, backgroundColor: lc.fill, fillStyle: "solid", roundness: { type: 3 }, ...thin, opacity: 50 });
       sk.push(text(`${id}:n`, x, y, clip(it.node.name, 24), 13, MUTED, { _c: [x + it.w / 2, y + 17] }));
-      sk.push(text(`${id}:l`, x, y, `${label(layerOf(it.node))} ›`, 10, FAINT, { _c: [x + it.w / 2, y + 33] }));
+      sk.push(text(`${id}:l`, x, y, `${label(layerOf(it.node))} ›`, 11, lc.stroke, { _c: [x + it.w / 2, y + 33], opacity: 70 }));
       rects.set(`${it.node.id}/null`, { x, y, w: it.w, h: it.h });
       continue;
     }
     const { g } = it;
     const y = rowY.get(r);
     const gid = `in:g:${g.node.id}`;
-    sk.push({ type: "rectangle", id: gid, x, y, width: it.w, height: it.h, strokeColor: g.partial ? MUTED : INK, backgroundColor: "transparent", strokeStyle: "dashed", ...crisp });
+    // Its frame on its own layer's plate; one opened only for some of its parts, fainter.
+    sk.push({ type: "rectangle", id: gid, x, y, width: it.w, height: it.h, strokeColor: lc.stroke, backgroundColor: lc.fill, fillStyle: "solid", strokeStyle: "dashed", roundness: { type: 3 }, ...hand, opacity: g.partial ? 45 : 70 });
     sk.push(text(`${gid}:n`, x + IN.PAD, y + 10, g.node.name, 16, INK));
     sk.push(text(`${gid}:t`, x + IN.PAD, y + 31, g.partial ? `${C4_TYPE[g.node.kind] ?? "Container"} · only its ${label(layer)} parts` : c4Tag(g.node, 40), 11, MUTED));
     rects.set(`${g.node.id}/null`, { x, y, w: it.w, h: it.h });
@@ -185,24 +199,12 @@ export function drawInside(model, layer) {
       const pw = partW(p), ph = partH(p), px = x + (it.w - pw) / 2;
       const id = `in:p:${g.node.id}:${p.id}`;
       const pl = partLayer(model, p);
-      if (p.table) {
-        const t = p.table;
-        sk.push({ type: "rectangle", id, x: px, y: py, width: pw, height: ph, strokeColor: INK, backgroundColor: "#ffffff", fillStyle: "solid", ...crisp });
-        sk.push({ type: "rectangle", id: `${id}:h`, x: px, y: py, width: pw, height: ER.HEAD, strokeColor: INK, backgroundColor: LAYER_TINT.data, fillStyle: "solid", ...crisp });
-        sk.push(text(`${id}:n`, px, py, t.name, 15, INK, { _c: [px + pw / 2, py + ER.HEAD / 2] }));
-        const rowsAt = t.columns.map((col, i) => {
-          const cy = py + ER.HEAD + 4 + i * ER.ROW + ER.ROW / 2;
-          const key = [col.pk && "PK", col.fk && "FK", col.unique && !col.pk && "UK"].filter(Boolean).join(" ");
-          if (key) sk.push(text(`${id}:k${i}`, px + 8, cy - 7, key, 10, KEY));
-          sk.push(text(`${id}:c${i}`, px + 46, cy - 9, col.name, 13, INK));
-          if (col.type) sk.push(text(`${id}:y${i}`, px + pw - 10, cy - 8, col.type, 12, MUTED, { _r: px + pw - 10 }));
-          return cy;
-        });
-        tables.set(t.name, { x: px, y: py, w: pw, rows: rowsAt, t, id });
-      } else {
-        sk.push({ type: "rectangle", id, x: px, y: py, width: pw, height: ph, strokeColor: INK, backgroundColor: LAYER_TINT[pl] ?? "#ffffff", fillStyle: "solid", roundness: { type: 3 }, ...crisp });
+      const pc = LAYER_COLOR[pl] ?? NONE;
+      if (p.table) tables.set(p.table.name, { x: px, y: py, w: pw, rows: table(sk, id, p.table, px, py, pw, pc), t: p.table, id });
+      else {
+        sk.push({ type: "rectangle", id, x: px, y: py, width: pw, height: ph, strokeColor: pc.stroke, backgroundColor: pc.fill, fillStyle: "solid", roundness: { type: 3 }, ...hand });
         sk.push(text(`${id}:n`, px, py, clip(p.name, Math.floor((pw - 16) / 7.6)), 14, INK, { _c: [px + pw / 2, py + 18] }));
-        sk.push(text(`${id}:k`, px, py, [p.kind, pl !== own && label(pl)].filter(Boolean).join(" · "), 11, MUTED, { _c: [px + pw / 2, py + 36] }));
+        sk.push(text(`${id}:k`, px, py, [p.kind, pl !== own && label(pl)].filter(Boolean).join(" · "), 11, pc.stroke, { _c: [px + pw / 2, py + 36] }));
       }
       rects.set(`${g.node.id}/${p.id}`, { x: px, y: py, w: pw, h: ph });
       py += ph + IN.GAP;
@@ -219,7 +221,7 @@ export function drawInside(model, layer) {
       const pts = [[x + w, rs[i]], [out, rs[i]], [out, by], [b.x + b.w, by]];
       sk.push({
         type: "arrow", id: `${id}:fk${i}`, x: pts[0][0], y: pts[0][1], points: pts.map(([px, py]) => [px - pts[0][0], py - pts[0][1]]),
-        strokeColor: INK, startArrowhead: col.pk || col.unique ? "crowfoot_one" : "crowfoot_many", endArrowhead: "crowfoot_one", ...crisp,
+        strokeColor: INK, startArrowhead: col.pk || col.unique ? "crowfoot_one" : "crowfoot_many", endArrowhead: "crowfoot_one", ...hand,
       });
     });
   // The links. Between components: out of the side facing the other one (stacked in one column, out
@@ -274,8 +276,8 @@ export function drawInside(model, layer) {
     const down = e.sa === "b" || e.sa === "t";
     const what = e.l.what && clip(e.l.what, 26);
     sk.push({
-      type: "arrow", id: `in:l:${e.i}`, x: x0, y: y0, points: pts.map(([px, py]) => [px - x0, py - y0]), strokeColor: faint ? MUTED : INK, endArrowhead: "arrow", ...crisp,
-      ...(what && !down ? { label: { text: what, fontSize: 11, strokeColor: MUTED, fontFamily: SANS } } : {}),
+      type: "arrow", id: `in:l:${e.i}`, x: x0, y: y0, points: pts.map(([px, py]) => [px - x0, py - y0]), strokeColor: faint ? MUTED : INK, endArrowhead: "arrow", ...hand,
+      ...(what && !down ? { label: { text: what, fontSize: 12, strokeColor: MUTED } } : {}),
     });
     // Between two parts in a row the gap is short: the words go beside the arrow, not on it.
     if (what && down) sk.push(text(`in:l:${e.i}:w`, x0 + 7, (y0 + y1) / 2 - 7, what, 10.5, MUTED));

@@ -72,7 +72,7 @@ Diamonds (◇ D1, D2, …) are the agent's technical decisions. **Click one to s
 
 ![D1 clicked: its other options fan out beside it on the board, and the card lists them, each with Use this](../screenshots/tutorial/decision-options.png)
 
-**Use this** switches to that option (see section 5). Dashed diamonds are *proposed*: not approved yet.
+**Use this** switches to that option (see section 5). Dashed diamonds are *proposed*: not approved yet. The small circle on a diamond's corner is its check: a dashed **?** until it has run. **Point at a diamond** to see dotted lines to the other parts it shapes.
 
 ### Approve
 
@@ -82,13 +82,13 @@ When you're happy with the plan, press **Approve plan & build** (or **Approve wi
 
 ### It builds
 
-Now it edits files by itself. Parts turn **orange** while it changes them. In **Chat & log**, hover any sentence: the parts that sentence changed light up on the board. Under each part, small green and red blocks show how many lines it added and removed.
+Now it edits files by itself. Parts turn **orange** while it changes them, and the circle on each decision about them pulses orange. In **Chat & log**, hover any sentence: the parts that sentence changed light up on the board. Under each part, small green and red blocks show how many lines it added and removed.
 
 ![A part being built, in orange; the tour card points at Chat & log](../screenshots/tour/07-build-hover-a-line.png)
 
 ### It tests (verify)
 
-Each decision came with a check. When it runs the tests, each ◇ gets a ✓ (passed) or ✗ (failed). In the demo, D2 ("how PDFs are split") fails: the check wanted the right page for 45 of 50 questions, and it got 41. So the agent **changes D2** and tests again: 47 of 50, ✓.
+Each decision came with a check. While it tests, the circles still waiting for a result pulse; then each ◇'s circle shows ✓ (passed) or ✗ (failed). In the demo, D2 ("how PDFs are split") fails: the check wanted the right page for 45 of 50 questions, and it got 41. So the agent **changes D2** and tests again: 47 of 50, ✓.
 
 Open the **Reasoning** tab to see the reasoning as a chain: **evidence → decision → what it shapes → proof**. D2's row shows the failed check as the reason it changed.
 
@@ -166,12 +166,12 @@ The bar above the board shows the same plan other ways. It never changes the pla
 | Draw as | What you see |
 | --- | --- |
 | **Pictures** | The pictograms (the default) |
-| **C4** | The official C4 container diagram: each part's type and technology |
+| **C4** | A C4 container diagram: each part's type and technology |
 | **Data flow** | Processes, data stores and outside services, with the data on each arrow |
 | **Database** | The tables each data store holds: columns, keys, and how they relate (an ER diagram) |
 | **Sequence** | One request, step by step, as a sequence diagram (pick the flow under **Flows & export**) |
 
-Each part sits on a colored plate: that's its **layer** (blue Frontend, violet Backend, teal Data, orange ML, grey External; the key under the board says which is which).
+Each part sits on a colored plate: that's its **layer** (blue Frontend, violet Backend, teal Data, orange ML, grey External; the key under the board says which is which). The colors are the same in every view, and so is the hand-drawn look, so Backend is violet whether you read Pictures, C4, Database or Sequence.
 
 **Zoom into** opens one layer right there on the board, so you see what its parts are made of. Nothing moves: the other layers fade, and each of the layer's parts bursts into small pictures in the same color, joined by dashed lines: pages (a browser window), routes (a plug), steps (a gear), jobs (a clock), models (a sparkle), tables (a grid), stored files (a page), libraries (a parcel). The board zooms to fit. You can still edit it, and clicking a piece tells you about its part.
 
