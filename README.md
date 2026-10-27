@@ -112,6 +112,8 @@ It's the same board and the same steps. The differences:
 - Each run starts its own `codex app-server` and gives it the run's board as an MCP server (`/api/runs/<id>/mcp`, with a per-run token). Your own `~/.codex/config.toml` still applies.
 - If Codex can't connect to the board, the run stops before planning and says why.
 
+**What the board costs in tokens:** [docs/TOKEN_STUDY.md](docs/TOKEN_STUDY.md) compares it with a chat assistant and with the same agent without the board (counted with `scripts/token-study.mjs`; set `ANTHROPIC_API_KEY` for exact Claude counts).
+
 ## What happens in a run
 
 1. **Plan.** The agent starts in plan mode: it can read the repo but not change it. It draws the components the task involves (existing ones blue, new ones grey) and their connections, then asks to exit plan mode. That request waits for you: the board shows ⏸ on the Plan milestone.
