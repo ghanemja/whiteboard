@@ -10,9 +10,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { CodexRun } from "../server/codex-run.js";
-import { runsMiddleware } from "../server/runs.js";
 import { draw, fakeConfig, fakeProvider, fakeResponses, shell } from "./fixtures/fake-responses.js";
+
+// The recordings folder is resolved when recordings.js loads: keep this test's out of the repo.
+process.chdir(mkdtempSync(path.join(os.tmpdir(), "wb-codex-recordings-")));
+const { CodexRun } = await import("../server/codex-run.js");
+const { runsMiddleware } = await import("../server/runs.js");
 
 const CODEX = process.env.CODEX_BIN;
 
