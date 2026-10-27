@@ -9,6 +9,7 @@ import { buildReview, penMarks } from "./engine/review";
 import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour, stepOf, targets as tourTargets, tourLength, waiting as tourWaiting } from "./engine/tour";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 import { TourCard, TourSpotlight } from "./Tour";
+import { RepoField } from "./RepoPicker";
 
 // Tasks that fit the sample repo (sandbox/linkshort, created by `npm run sandbox`).
 const EXAMPLES = [
@@ -2371,10 +2372,7 @@ export default function App() {
                   A real coding agent works in the repo below. It reads the code, draws its plan on the board and waits for you. Once
                   you approve, it builds and tests while the board keeps up. Edit the board at any point to steer it.
                 </p>
-                <label className="field" htmlFor="repo">
-                  <span>Repository</span>
-                  <input id="repo" value={repo} onChange={(e) => setRepo(e.target.value)} spellCheck="false" />
-                </label>
+                <RepoField value={repo} onChange={setRepo} />
                 {repo === agent?.defaultRepo && (
                   <>
                     <p className="note">This is the sample repo, a tiny URL shortener with tests. Try one of these:</p>
