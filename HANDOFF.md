@@ -136,6 +136,7 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 
 ### Event protocol (`/api/runs`)
 
+- Every POST under `/api/runs` (start, control, the board's MCP server) must send `content-type: application/json`, or it gets `415 {"error": "Send JSON."}` before any route runs. A page on another site can send a "simple" cross-origin POST (`text/plain`, a form) with no CORS preflight, and Vite's CORS settings only shape the response, so without this check that page could start a run in any folder. `src/agent/live.js` `post()` sends the header (the keepalive stop on `pagehide` too); `test/runs-api.test.js` checks the 415.
 - `POST /api/runs {repo, brief}` → `{id}`. `GET /api/runs/status`.
 - `GET /api/runs/:id/events` → NDJSON stream, replays from the start. Each event has `t` (ms since run start). `activity-result` carries `tests: {pass, fail}` when the output printed per-test lines, and `ok` is false when TAP/spec totals (`# fail N`, `ℹ fail N`) or any per-test line failed (a piped `npm test | grep` exits 0).
 - `POST /api/runs/:id/control` with `type`: `approve` (optional `edits`), `revise`, `chat` (`text`), `edits`, `permission` (`requestId`, `decision`: allow | allow-all | deny), `stop`. Every control also carries `board_state` (the board snapshot).

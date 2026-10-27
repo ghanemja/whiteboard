@@ -19,6 +19,8 @@ import { layerOf, LAYERS, parseColumns, parseSteps, sentenceCase, toDfdMermaid, 
 //   POST /api/runs/:id/control     <- { type: approve | revise | chat | edits | permission | stop, ... }
 //   GET  /api/runs/recordings      -> saved runs, newest first
 //   GET  /api/runs/recordings/:id  -> a run's recorded events (JSONL); /decisions -> its decision log (markdown)
+//
+// Every POST must be `content-type: application/json` (415 otherwise; see runsMiddleware).
 
 // On globalThis so a dev-server reload (which re-imports this module) can't orphan running agents.
 const runs = (globalThis.__agentRuns ??= new Map());
@@ -956,6 +958,11 @@ const json = (res, status, body) => {
 
 export function runsMiddleware({ defaultRepo }) {
   return async function handleRuns(req, res, next) {
+    // Every POST here starts, steers or draws on a run, and all of them send JSON. A page on
+    // another site can't send JSON without a CORS preflight, but its "simple" requests (text/plain,
+    // a form) skip the preflight and reach this handler: Vite's CORS settings only shape the response.
+    if (req.method === "POST" && !/^application\/json\b/i.test(req.headers["content-type"] ?? "")) return json(res, 415, { error: "Send JSON." });
+
     const url = new URL(req.url, "http://local");
     const parts = url.pathname.split("/").filter(Boolean); // [] | [id, "events"] | [id, "control"]
 
