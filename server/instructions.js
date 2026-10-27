@@ -61,3 +61,19 @@ A message starting "About D2 …" questions that decision: answer the question i
 export const PLAN_INSTRUCTIONS = `
 Explore the repository read-only and work out a plan for the user's request. Draw the plan on the whiteboard with mcp__board__update_board as you go: project with its goal, phase planning, planning tasks, components with their paths, libraries and interfaces, connections with protocol and API, and a decision op for each non-obvious technical choice (what you chose, what you considered, why, the evidence in the repo, and the check that will prove it). Keep your written plan short, a few bullet points at most, since the board and its decisions show the structure and the reasoning. When the plan is complete and on the board, call ExitPlanMode.
 `.trim();
+
+// The same for Codex (codex-run.js). It reaches the board as the MCP server "board", and it has no
+// plan mode: its first turn runs read-only, the end of that turn is the plan, and the next message
+// approves it (or asks for changes).
+const forCodex = (text) =>
+  [
+    ["with the mcp__board__update_board tool", "with the update_board tool (the board MCP server)"],
+    ["with mcp__board__update_board", "with update_board"],
+    ["1. Planning (you start in plan mode):", "1. Planning (your first turn is read-only: don't change any files):"],
+    ["Then call ExitPlanMode. The user approves the plan from the board.", "Then end your turn with a two-line summary. The user approves the plan from the board, and the next message says so."],
+    ["2. If ExitPlanMode is denied with board edits or comments, apply them (to the board, the decisions and the plan), then call ExitPlanMode again.", "2. If the next message has board edits or comments instead of an approval, apply them (to the board, the decisions and the plan), then end your turn again."],
+    ["When the plan is complete and on the board, call ExitPlanMode.", "When the plan is complete and on the board, end your turn with a two-line summary, and don't change anything until the user approves."],
+  ].reduce((t, [from, to]) => t.replace(from, to), text);
+
+export const CODEX_BOARD_INSTRUCTIONS = forCodex(BOARD_INSTRUCTIONS);
+export const CODEX_PLAN_INSTRUCTIONS = forCodex(PLAN_INSTRUCTIONS);

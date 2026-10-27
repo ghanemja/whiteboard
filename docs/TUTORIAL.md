@@ -254,6 +254,8 @@ Now the start screen asks **What should the agent do?** The repository field sta
 
 A run costs about $0.20–0.40.
 
+To use OpenAI's Codex instead of Claude: install it (`npm i -g @openai/codex`), sign in (`codex login`), put `AGENT_ENGINE=codex` in `.env.local`, and restart. Everything works the same; the README's *Codex* section has the details.
+
 ## Tips
 
 - The yellow **tips** card always says which step you're on and what to do. **Hide tips** puts it away; the **?** button brings it back.

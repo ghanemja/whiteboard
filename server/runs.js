@@ -32,10 +32,15 @@ export function stopAllRuns() {
   runs.clear();
 }
 
-const settings = () => ({
-  model: process.env.AGENT_MODEL || process.env.ANTHROPIC_MODEL || "claude-opus-5-5",
-  effort: process.env.AGENT_EFFORT || "low",
-});
+// Which agent runs the task: Claude (the Claude Agent SDK, the default) or Codex (its app-server,
+// codex-run.js), from AGENT_ENGINE.
+export const engine = (env = process.env) => (String(env.AGENT_ENGINE ?? "").trim().toLowerCase() === "codex" ? "codex" : "claude");
+
+// Codex picks its own model and effort unless AGENT_MODEL / AGENT_EFFORT say otherwise.
+export const settings = (env = process.env) =>
+  engine(env) === "codex"
+    ? { model: env.AGENT_MODEL || null, effort: env.AGENT_EFFORT || null }
+    : { model: env.AGENT_MODEL || env.ANTHROPIC_MODEL || "claude-opus-5-5", effort: env.AGENT_EFFORT || "low" };
 
 // The agent's environment, from the three settings people set (README: "Models"):
 //   AGENT_URL    where the model is: any Anthropic-format endpoint (Ollama, LiteLLM, OpenRouter…);
@@ -61,6 +66,8 @@ export function agentEnv(env = process.env) {
 // Where the agent's model runs, for the top bar. null: nothing is configured, so the browser
 // plays the scripted demo.
 export function provider(raw = process.env) {
+  // Codex signs in by itself (`codex login`, or OPENAI_API_KEY): if it isn't, the run says so.
+  if (engine(raw) === "codex") return "Codex";
   const env = agentEnv(raw);
   const on = (v) => ["1", "true"].includes(String(env[v] ?? "").toLowerCase());
   if (on("CLAUDE_CODE_USE_BEDROCK") || on("CLAUDE_CODE_USE_MANTLE")) return "Amazon Bedrock";
@@ -180,10 +187,7 @@ export class Run {
     this.events = [];
     this.listeners = new Set();
     this.pending = new Map(); // requestId -> resolve(PermissionResult)
-    this.inbox = inbox();
-    this.abort = new AbortController();
     this.allowCommands = false; // "Allow all" for this run
-    this.autoApprovePlan = false; // set by "approve with changes"
     // A mirror of the board, from ops: what the decision log describes, and how edits find their component.
     this.nodes = new Map(); // component id -> { name, kind, paths, libs, api, status }
     this.edges = new Map(); // "from>to" -> { via, api }
@@ -195,14 +199,12 @@ export class Run {
     this.goal = null;
     this.tests = new Map(); // test name -> passed?, from the latest test output that printed it
     this.steer = null; // what the user asked this turn, so decisions it changes can say so
-    this.toolNames = new Map(); // tool_use id -> { name, input }
     this.turnText = ""; // what the agent has said since the last user turn
     this.git = null; // { base, head, tree, sent, files }: the repo as the run found it, and what it's changed since (changes.js)
     const { model, effort } = settings();
     this.recorder = new Recorder({ id: this.id, brief, repo, model, effort, startedAt: new Date(this.started).toISOString(), project: null });
     this.recorder.decide({ t: 0, who: "you", title: "Started a task", quote: brief });
-    this.inbox.push(userTurn(brief));
-    this.start();
+    this.brief = brief;
   }
 
   get now() {
@@ -540,18 +542,198 @@ export class Run {
     return [...this.events].reverse().find((e) => e.type === "gate" && this.pending.has(e.requestId))?.requestId;
   }
 
+  // The repo as the run found it, so its changes can be told from what was there before.
+  async trackRepo() {
+    try {
+      if (await isRepo(this.repo)) {
+        const base = await snapshot(this.repo);
+        this.git = { base, tree: base, head: await head(this.repo), sent: new Map(), files: [] };
+      }
+    } catch (err) {
+      console.warn("[runs] not tracking the repo's changes:", err.message);
+    }
+  }
+
+  // The plan, as the agent hands it over for the gate: a timeline entry.
+  recordPlan(title) {
+    this.steer = null; // the user's request has been folded into this plan
+    this.recorder.decide({ t: this.now, who: "agent", title, lines: this.planSummary(), quote: this.takeTurnText() });
+  }
+
+  // The agent edited a repo file: an activity row, and its component turns orange.
+  fileEdited(id, file, { write = false } = {}) {
+    // Claude Code keeps its plan in a file outside the repo; the board already shows the plan.
+    if (!file || file.startsWith("..")) return;
+    const activity = { kind: write ? "write" : "edit", label: file };
+    const owner = this.ownerOf(file);
+    if (owner) {
+      activity.node = owner;
+      // An edit means the component is being worked on, whatever it was before.
+      const n = this.nodes.get(owner);
+      if (n && n.status !== "building") this.emitOps([{ op: "status", id: owner, v: "building" }]);
+    }
+    this.emit({ type: "activity", toolUseId: id, ...activity });
+  }
+
+  // A command finished: its result row, and any test results it printed checked against the
+  // decisions' proofs.
+  commandOutput(id, raw, isError = false) {
+    const text = String(raw ?? "").replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").trim(); // terminal colors
+    // Last real output line; skip Claude Code's own bracketed notes.
+    const lines = text.split("\n").map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
+    const last = lines.at(-1) ?? "";
+    // Per-test results it printed: the Timeline's Tests lane counts them.
+    const results = testResults(text);
+    const fails = [...results.values()].filter((ok) => !ok).length;
+    // `cmd | tail` exits 0 even when cmd fails, so read the output too.
+    const failed =
+      /\b[1-9]\d* (failed|errors?)\b|no such file or directory|command not found|Traceback \(most recent call last\)/i.test(text) ||
+      /^FAILED\b/m.test(text) || // pytest's per-test failure lines
+      /^\s*(#|ℹ)\s*fail [1-9]/m.test(text) || // TAP and node's spec reporter totals
+      fails > 0;
+    this.emit({
+      type: "activity-result", toolUseId: id, ok: !isError && !failed, summary: last.slice(0, 120),
+      ...(results.size ? { tests: { pass: results.size - fails, fail: fails } } : {}),
+    });
+
+    // Tests the output names keep each decision's proof current: a check that starts
+    // failing crosses its diamond, a fixed one ticks it, without waiting for the agent.
+    if (!results.size) return;
+    for (const [name, ok] of results) this.tests.set(name, ok);
+    const ops = [];
+    for (const [did, d] of this.decisions) {
+      if (d.state === "rejected") continue;
+      // A check written as a test name counts too, if the name is specific enough.
+      const t = d.proof_by ? findTest(results, d.proof_by) : findTest(results, d.verify, 12);
+      const proof = t && (t.ok ? "pass" : "fail");
+      if (proof && proof !== d.proof) ops.push({ op: "decision", id: did, proof, proof_by: d.proof_by ?? t.name, fromTests: true });
+    }
+    if (ops.length) this.emitOps(ops);
+  }
+
+  // The agent's turn ended: the timeline entry and the "done" event, after the repo's last word
+  // (so the summary can be checked against it).
+  finishTurn({ ok, why = null, cost = null, turns = null }) {
+    const quote = this.takeTurnText();
+    this.idle = true; // between turns: a shutdown now interrupts nothing
+    this.steer = null;
+    this.turnEnd = this.refreshChanges().then(() => {
+      const statuses = [...this.nodes.values()].map((n) => `${n.name}: ${n.status}`);
+      const files = this.git?.files ?? [];
+      this.recorder.decide({
+        t: this.now,
+        who: "agent",
+        title: ok ? "Finished" : `Stopped early (${why})`,
+        lines: [
+          ...(statuses.length ? [`Board: ${statuses.join(", ")}`] : []),
+          ...(files.length ? [`Changed: ${files.map((f) => `\`${f.path}\` (+${f.add} −${f.del})`).join(", ")}`] : []),
+          ...(turns != null ? [`${turns} turns${cost != null ? `, $${cost.toFixed(2)}` : ""}`] : []),
+        ],
+        quote,
+      });
+      this.emit({ type: "done", ok, cost, turns, message: ok ? null : why });
+    });
+    return this.turnEnd;
+  }
+
+  // ---- control from the browser ----
+  control(body) {
+    this.touch();
+    const state = body.board_state ? `\n\n<board_state>${JSON.stringify(body.board_state)}</board_state>` : "";
+    const edits = body.edits?.length ? `<board_edits>${JSON.stringify(body.edits)}</board_edits>` : "";
+    const gate = this.gateId;
+    this.record(body);
+    if (["chat", "revise", "edits", "approve"].includes(body.type) && (body.text || body.edits?.length))
+      this.steer = gist(body.text || body.edits.map(describeEdit).join("; "));
+
+    if (body.type === "stop") {
+      this.stop();
+      return true;
+    }
+    return this.deliver(body, { state, edits, gate });
+  }
+
+  // The user's side of the run: an event so a replay can show it, and a line in the decision log.
+  record(body) {
+    const t = this.now;
+    const edits = body.edits ?? [];
+    const lines = edits.map(logEdit);
+    switch (body.type) {
+      case "approve":
+        for (const d of this.decisions.values()) if (d.state === "proposed") d.state = "accepted";
+        this.recorder.setPlan(this.planMarkdown());
+        this.recorder.decide({ t, who: "you", title: edits.length ? "Approved the plan with changes" : "Approved the plan", lines });
+        break;
+      case "revise":
+        this.recorder.decide({ t, who: "you", title: "Asked for changes to the plan", lines });
+        break;
+      case "edits":
+        this.recorder.decide({ t, who: "you", title: "Changed the board", lines });
+        break;
+      case "chat":
+        this.recorder.decide({ t, who: "you", title: this.gateId ? "Asked for changes to the plan" : "Said", quote: body.text });
+        break;
+      case "permission": {
+        const asked = this.events.find((e) => e.type === "permission" && e.requestId === body.requestId);
+        const title = { allow: "Allowed a command", "allow-all": "Allowed every command from here on", deny: "Denied a command" }[body.decision] ?? "Answered a request";
+        this.recorder.decide({ t, who: "you", title, ...(asked?.description ? { lines: [asked.description] } : {}), code: asked?.detail ?? "" });
+        this.emit({ type: "user", kind: "permission", decision: body.decision, detail: asked?.detail ?? "" });
+        return;
+      }
+      default:
+        return;
+    }
+    if (body.type !== "permission") this.turnText = "";
+    this.emit({ type: "user", kind: body.type, edits, text: body.text ?? "" });
+  }
+
+  stop(why = { reason: "user" }) {
+    if (this.stopped) return;
+    this.stopped = true;
+    clearTimeout(this.idleTimer);
+    clearTimeout(this.changesTimer);
+    const title = {
+      idle: `Stopped after ${why.minutes} idle minutes`,
+      server: "Stopped when the dev server shut down",
+      user: "Stopped the agent",
+    }[why.reason];
+    // A finished run closing on its own isn't part of the story; stopping work mid-turn is.
+    if (!this.idle || why.reason === "user") this.recorder.decide({ t: this.now, who: why.reason === "user" ? "you" : "agent", title });
+    this.emit({ type: "stopped", ...why });
+    for (const id of [...this.pending.keys()]) this.answer(id, this.stoppedAnswer);
+    this.halt();
+    runs.delete(this.id);
+  }
+
+  // What a question still waiting for the user resolves to when the run stops, and how the
+  // engine stops its agent.
+  get stoppedAnswer() {
+    return { stopped: true };
+  }
+  halt() {}
+}
+
+// ---- Claude: the Claude Agent SDK's query(), in plan mode until the plan is approved ----
+export class ClaudeRun extends Run {
+  constructor(opts) {
+    super(opts);
+    this.inbox = inbox(); // user turns, read by the SDK for as long as the run lives
+    this.abort = new AbortController();
+    this.autoApprovePlan = false; // set by "approve with changes"
+    this.toolNames = new Map(); // tool_use id -> { name, input }
+    this.inbox.push(userTurn(opts.brief));
+  }
+
   canUseTool = async (toolName, input, { mcpServer }) => {
     // Our own board tool, served in-process (source "sdk"; absent on older CLIs).
     if (toolName === "mcp__board__update_board" && (!mcpServer || mcpServer.source === "sdk")) return { behavior: "allow", updatedInput: input };
 
     if (toolName === "ExitPlanMode") {
-      this.steer = null; // the user's request has been folded into this plan
-      const plan ={ t: this.now, who: "agent", lines: this.planSummary(), quote: this.takeTurnText() };
       if (this.autoApprovePlan) {
-        this.recorder.decide({ ...plan, title: "Updated the plan with your changes" });
+        this.recordPlan("Updated the plan with your changes");
         return this.approvePlan(input);
       }
-      this.recorder.decide({ ...plan, title: "Proposed a plan" });
+      this.recordPlan("Proposed a plan");
       const result = await this.ask({ type: "gate" });
       return result.behavior === "allow" ? this.approvePlan(input) : result;
     }
@@ -575,15 +757,7 @@ export class Run {
 
   async start() {
     const { model, effort } = settings();
-    // The repo as the run found it, so its changes can be told from what was there before.
-    try {
-      if (await isRepo(this.repo)) {
-        const base = await snapshot(this.repo);
-        this.git = { base, tree: base, head: await head(this.repo), sent: new Map(), files: [] };
-      }
-    } catch (err) {
-      console.warn("[runs] not tracking the repo's changes:", err.message);
-    }
+    await this.trackRepo();
     const board = createSdkMcpServer({
       name: "board",
       version: "1.0.0",
@@ -655,35 +829,7 @@ export class Run {
       return;
     }
 
-    if (msg.type === "result") {
-      const ok = !msg.is_error;
-      const quote = this.takeTurnText();
-      this.idle = true; // between turns: a shutdown now interrupts nothing
-      this.steer = null;
-      // The turn's last word on the repo comes before "done", so the summary can be checked against it.
-      this.turnEnd = this.refreshChanges().then(() => {
-        const statuses = [...this.nodes.values()].map((n) => `${n.name}: ${n.status}`);
-        const files = this.git?.files ?? [];
-        this.recorder.decide({
-          t: this.now,
-          who: "agent",
-          title: ok ? "Finished" : `Stopped early (${msg.subtype})`,
-          lines: [
-            ...(statuses.length ? [`Board: ${statuses.join(", ")}`] : []),
-            ...(files.length ? [`Changed: ${files.map((f) => `\`${f.path}\` (+${f.add} −${f.del})`).join(", ")}`] : []),
-            `${msg.num_turns} turns${msg.total_cost_usd != null ? `, $${msg.total_cost_usd.toFixed(2)}` : ""}`,
-          ],
-          quote,
-        });
-        this.emit({
-          type: "done",
-          ok,
-          cost: msg.total_cost_usd,
-          turns: msg.num_turns,
-          message: msg.subtype === "success" ? null : msg.subtype,
-        });
-      });
-    }
+    if (msg.type === "result") this.finishTurn({ ok: !msg.is_error, why: msg.subtype, cost: msg.total_cost_usd, turns: msg.num_turns });
   }
 
   // Real work, as compact activity rows (in the panel) and, for edits, on the board.
@@ -705,19 +851,8 @@ export class Run {
       case "Edit":
       case "MultiEdit":
       case "Write":
-      case "NotebookEdit": {
-        activity = { kind: name === "Write" ? "write" : "edit", label: file };
-        // Claude Code keeps its plan in a file outside the repo; the board already shows the plan.
-        if (file.startsWith("..")) return;
-        const owner = this.ownerOf(file);
-        if (owner) {
-          activity.node = owner;
-          // An edit means the component is being worked on, whatever it was before.
-          const n = this.nodes.get(owner);
-          if (n && n.status !== "building") this.emitOps([{ op: "status", id: owner, v: "building" }]);
-        }
-        break;
-      }
+      case "NotebookEdit":
+        return this.fileEdited(id, file, { write: name === "Write" });
       case "Bash":
         activity = { kind: "command", label: input.command ?? "" };
         break;
@@ -736,49 +871,12 @@ export class Run {
     if (["Edit", "MultiEdit", "Write", "NotebookEdit", "Bash"].includes(used?.name)) this.scheduleChanges();
     if (!used || used.name !== "Bash") return;
     const raw = Array.isArray(block.content) ? block.content.map((c) => c.text ?? "").join("\n") : String(block.content ?? "");
-    const text = raw.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").trim(); // terminal colors
-    // Last real output line; skip Claude Code's own bracketed notes.
-    const lines = text.split("\n").map((l) => l.trim()).filter((l) => l && !/^\[.*\]$/.test(l));
-    const last = lines.at(-1) ?? "";
-    // Per-test results it printed: the Timeline's Tests lane counts them.
-    const results = testResults(text);
-    const fails = [...results.values()].filter((ok) => !ok).length;
-    // `cmd | tail` exits 0 even when cmd fails, so read the output too.
-    const failed =
-      /\b[1-9]\d* (failed|errors?)\b|no such file or directory|command not found|Traceback \(most recent call last\)/i.test(text) ||
-      /^FAILED\b/m.test(text) || // pytest's per-test failure lines
-      /^\s*(#|ℹ)\s*fail [1-9]/m.test(text) || // TAP and node's spec reporter totals
-      fails > 0;
-    this.emit({
-      type: "activity-result", toolUseId: block.tool_use_id, ok: !block.is_error && !failed, summary: last.slice(0, 120),
-      ...(results.size ? { tests: { pass: results.size - fails, fail: fails } } : {}),
-    });
-
-    // Tests the output names keep each decision's proof current: a check that starts
-    // failing crosses its diamond, a fixed one ticks it, without waiting for the agent.
-    if (!results.size) return;
-    for (const [name, ok] of results) this.tests.set(name, ok);
-    const ops = [];
-    for (const [id, d] of this.decisions) {
-      if (d.state === "rejected") continue;
-      // A check written as a test name counts too, if the name is specific enough.
-      const t = d.proof_by ? findTest(results, d.proof_by) : findTest(results, d.verify, 12);
-      const proof = t && (t.ok ? "pass" : "fail");
-      if (proof && proof !== d.proof) ops.push({ op: "decision", id, proof, proof_by: d.proof_by ?? t.name, fromTests: true });
-    }
-    if (ops.length) this.emitOps(ops);
+    this.commandOutput(block.tool_use_id, raw, block.is_error);
   }
 
-  // ---- control from the browser ----
-  control(body) {
-    this.touch();
-    const state = body.board_state ? `\n\n<board_state>${JSON.stringify(body.board_state)}</board_state>` : "";
-    const edits = body.edits?.length ? `<board_edits>${JSON.stringify(body.edits)}</board_edits>` : "";
-    const gate = this.gateId;
-    this.record(body);
-    if (["chat", "revise", "edits", "approve"].includes(body.type) && (body.text || body.edits?.length))
-      this.steer = gist(body.text || body.edits.map(describeEdit).join("; "));
-
+  // How the user's side reaches Claude: the plan gate is its ExitPlanMode call (allowed, or
+  // denied with what to change); anything else is a user turn on its inbox.
+  deliver(body, { state, edits, gate }) {
     switch (body.type) {
       case "approve":
         if (!gate) return false;
@@ -811,65 +909,17 @@ export class Run {
         const allow = body.decision === "allow" || body.decision === "allow-all";
         return this.answer(body.requestId, allow ? { behavior: "allow" } : { behavior: "deny", message: "The user declined. Find another way or ask them in your reply." });
       }
-      case "stop":
-        this.stop();
-        return true;
       default:
         return false;
     }
   }
 
-  // The user's side of the run: an event so a replay can show it, and a line in the decision log.
-  record(body) {
-    const t = this.now;
-    const edits = body.edits ?? [];
-    const lines = edits.map(logEdit);
-    switch (body.type) {
-      case "approve":
-        for (const d of this.decisions.values()) if (d.state === "proposed") d.state = "accepted";
-        this.recorder.setPlan(this.planMarkdown());
-        this.recorder.decide({ t, who: "you", title: edits.length ? "Approved the plan with changes" : "Approved the plan", lines });
-        break;
-      case "revise":
-        this.recorder.decide({ t, who: "you", title: "Asked for changes to the plan", lines });
-        break;
-      case "edits":
-        this.recorder.decide({ t, who: "you", title: "Changed the board", lines });
-        break;
-      case "chat":
-        this.recorder.decide({ t, who: "you", title: this.gateId ? "Asked for changes to the plan" : "Said", quote: body.text });
-        break;
-      case "permission": {
-        const asked = this.events.find((e) => e.type === "permission" && e.requestId === body.requestId);
-        const title = { allow: "Allowed a command", "allow-all": "Allowed every command from here on", deny: "Denied a command" }[body.decision] ?? "Answered a request";
-        this.recorder.decide({ t, who: "you", title, ...(asked?.description ? { lines: [asked.description] } : {}), code: asked?.detail ?? "" });
-        this.emit({ type: "user", kind: "permission", decision: body.decision, detail: asked?.detail ?? "" });
-        return;
-      }
-      default:
-        return;
-    }
-    if (body.type !== "permission") this.turnText = "";
-    this.emit({ type: "user", kind: body.type, edits, text: body.text ?? "" });
+  get stoppedAnswer() {
+    return { behavior: "deny", message: "Run stopped.", interrupt: true };
   }
-
-  stop(why = { reason: "user" }) {
-    if (this.stopped) return;
-    this.stopped = true;
-    clearTimeout(this.idleTimer);
-    clearTimeout(this.changesTimer);
-    const title = {
-      idle: `Stopped after ${why.minutes} idle minutes`,
-      server: "Stopped when the dev server shut down",
-      user: "Stopped the agent",
-    }[why.reason];
-    // A finished run closing on its own isn't part of the story; stopping work mid-turn is.
-    if (!this.idle || why.reason === "user") this.recorder.decide({ t: this.now, who: why.reason === "user" ? "you" : "agent", title });
-    this.emit({ type: "stopped", ...why });
-    for (const id of [...this.pending.keys()]) this.answer(id, { behavior: "deny", message: "Run stopped.", interrupt: true });
+  halt() {
     this.inbox.close();
     this.abort.abort();
-    runs.delete(this.id);
   }
 }
 
@@ -921,8 +971,10 @@ export function runsMiddleware({ defaultRepo }) {
       if (!repo || !existsSync(repo) || !statSync(repo).isDirectory()) return json(res, 400, { error: `Not a folder: ${repo}` });
       if (!body.brief?.trim()) return json(res, 400, { error: "Describe the task first." });
       // Where an agent on this machine reaches the run's board server: this server's own port.
-      const run = new Run({ repo, brief: body.brief.trim(), origin: `http://127.0.0.1:${req.socket.localPort}` });
+      const Engine = engine() === "codex" ? (await import("./codex-run.js")).CodexRun : ClaudeRun;
+      const run = new Engine({ repo, brief: body.brief.trim(), origin: `http://127.0.0.1:${req.socket.localPort}` });
       runs.set(run.id, run);
+      run.start();
       return json(res, 200, { id: run.id });
     }
 

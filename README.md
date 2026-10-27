@@ -70,7 +70,7 @@ npm run dev                  # http://localhost:5199
 - **With a model** ([Models](#models): a key for Anthropic's API, or a URL for anything else): the repo field starts at the sandbox (or `AGENT_REPO`); point it at any local folder, describe a task, start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
 - **Saved runs:** `cp fixtures/recordings/* recordings/` adds three real runs under "Saved boards".
 - **Tests:** `npm test`.
-- **Settings** (`.env.local`): `AGENT_URL`, `AGENT_KEY`, `AGENT_MODEL` ([Models](#models)), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo).
+- **Settings** (`.env.local`): `AGENT_URL`, `AGENT_KEY`, `AGENT_MODEL` ([Models](#models)), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo), `AGENT_ENGINE=codex` to run [Codex](#codex) instead of Claude.
 
 ## Models
 
@@ -94,7 +94,18 @@ Restart `npm run dev` after changing them; the top bar shows where the agent is 
 - **How it works:** the agent is the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) (the engine behind Claude Code): its file and shell tools, permission prompts, plan mode and the board's `update_board` tool. The server passes these three settings to it as the variables it reads. For a URL other than Anthropic's, the same model also does the SDK's background work.
 - **Non-Claude models are unofficial.** The board needs a model that calls tools reliably, because it draws only through `update_board`. A weaker model may write the code but draw little on the board. Use the strongest coding model you can run, with at least 64K of context. Only Anthropic's API has been tested with this app so far.
 - **Claude on Bedrock, Vertex AI or Foundry:** set Claude Code's own variables instead (`CLAUDE_CODE_USE_BEDROCK=1` and AWS credentials, `CLAUDE_CODE_USE_VERTEX=1` with `CLOUD_ML_REGION` and `ANTHROPIC_VERTEX_PROJECT_ID`, `CLAUDE_CODE_USE_FOUNDRY=1` with `ANTHROPIC_FOUNDRY_RESOURCE`); see the [Bedrock](https://code.claude.com/docs/en/amazon-bedrock), [Vertex AI](https://code.claude.com/docs/en/google-vertex-ai) and [Foundry](https://code.claude.com/docs/en/microsoft-foundry) guides. The `ANTHROPIC_*` variables Claude Code reads also work.
-- **Other coding agents (Codex, opencode, pi):** not supported yet. They're separate agents, not models; the likely path is a board MCP server any of them can add.
+- **Other coding agents:** Codex works (below). opencode and pi aren't wired in yet; each run already serves its board as an MCP server they could use.
+
+### Codex
+
+To run [OpenAI's Codex](https://developers.openai.com/codex) instead of Claude: install it and sign in (`npm i -g @openai/codex`, then `codex login`, or set `OPENAI_API_KEY`), and put `AGENT_ENGINE=codex` in `.env.local`. `AGENT_MODEL` and `AGENT_EFFORT` pick its model and effort (leave them empty for Codex's defaults); `CODEX_BIN` points at a `codex` that isn't on your PATH. Restart `npm run dev`: the top bar says Codex.
+
+It's the same board and the same steps. The differences:
+
+- **Planning:** Codex has no plan mode, so it plans in a read-only first turn, and the end of that turn is the plan you approve. Approving gives it write access to the repo.
+- **Commands:** it runs in Codex's sandbox and asks you only for commands that need more than that (network, files outside the repo). **Allow all** lets the rest through.
+- **Cost:** Codex reports tokens, not dollars, so the end of a run shows no price. Billing is your ChatGPT plan or your OpenAI key.
+- Each run starts its own `codex app-server` and gives it the run's board as an MCP server (`/api/runs/<id>/mcp`, with a per-run token). Your own `~/.codex/config.toml` still applies.
 
 ## What happens in a run
 
@@ -195,6 +206,7 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `server/runs.js` | One Agent SDK `query()` per run: the in-process `update_board` MCP tool, plan gate and permission prompts via `canUseTool`, activity events, `/api/runs` endpoints |
 | `server/recordings.js` | Writes each run to `recordings/` (events + decision log), lists and serves them |
 | `server/board-tool.js` | The `update_board` tool: its op schema and reply, shared by both ways of serving it |
+| `server/codex-run.js` | `CodexRun`: Codex as the agent, through `codex app-server` (JSON-RPC over stdio). Plans in a read-only turn (the gate), builds in a workspace-write one; its command approvals are the permission prompts |
 | `server/board-mcp.js` | The same tool as an MCP server over HTTP, for agents other than Claude (Codex, opencode): each run's board at `/api/runs/<id>/mcp`, behind that run's bearer token |
 | `server/changes.js` | What a run changed in the repo, from git: working-tree snapshots through a throwaway index, and their diff |
 | `server/instructions.js` | What the agent is told about the board (appended to the Claude Code system prompt) |

@@ -2,7 +2,7 @@
 // session, another agent) reads the plan there, diagrams included. Run with `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agentEnv, provider, Run } from "../server/runs.js";
+import { agentEnv, engine, provider, Run, settings } from "../server/runs.js";
 
 // A Run's mirror of the board without an agent behind it: ops in, decision log out.
 function mirror() {
@@ -64,6 +64,16 @@ test("renaming keeps sentence case, and a flow with no usable steps is left out"
   const plan = plans.at(-1);
   assert.match(plan, /\| Ingest worker \|/);
   assert.equal([...plan.matchAll(/```mermaid/g)].length, 2); // container view and data flow; no flow, no tables
+});
+
+test("AGENT_ENGINE=codex runs Codex, with its own model unless AGENT_MODEL names one", () => {
+  assert.equal(engine({}), "claude");
+  assert.equal(engine({ AGENT_ENGINE: " Codex " }), "codex");
+  assert.equal(engine({ AGENT_ENGINE: "gpt" }), "claude", "anything else is Claude");
+  assert.equal(provider({ AGENT_ENGINE: "codex" }), "Codex", "live without an Anthropic key: Codex signs in by itself");
+  assert.deepEqual(settings({ AGENT_ENGINE: "codex" }), { model: null, effort: null });
+  assert.deepEqual(settings({ AGENT_ENGINE: "codex", AGENT_MODEL: "gpt-5-codex", AGENT_EFFORT: "high" }), { model: "gpt-5-codex", effort: "high" });
+  assert.deepEqual(settings({}), { model: "claude-opus-5-5", effort: "low" });
 });
 
 test("which provider the agent runs on, from the variables Claude Code reads", () => {
