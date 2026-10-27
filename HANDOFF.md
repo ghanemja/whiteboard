@@ -53,6 +53,7 @@ Every run is recorded so it can be replayed, reopened, and read as a decision lo
 - **Less text, more board (4.15):** Plan details opens as a list of headings (Architecture, Connections, Data model, Flows, Code, Steps, then Decisions last with a bell counting the ones not approved, changed or failed); `Sec` is a closed `<details>`, and `reveal()` opens the sections round anything a click on the board or the review points into. The "Ask why" chips under the gate are gone. Stickers go to the agent as soon as they're dropped (App `runDiff`), and the answer is drawn in a speech bubble beside the sticker (`answer {el, text}` op, `Board.answerSticker`; tagged `customData.answers`, layered above diamonds, removed with its sticker by `tidyAnswers`; if the agent doesn't send one, `settleStickers` uses the start of its reply). **+ Pin this view** opens what the board shows in a draggable, resizable window over it (`PinnedView`): Pictures/C4/Data flow get a mirror `Board` in that style replaying `Session.opLog` (and following `opWatchers`), Database/Sequence/layers draw `Board.diagramScene()` from the main model.
 - **Headers:** the board's tabs are **Architecture**, **Reasoning** (was "Why · the reasons") and **Timeline**, with their counts and no subtitles (the tooltips explain). With no plan yet the header says "No plan yet" and "The agent draws its plan here." (was "Waiting for the agent…"). Code still calls the Reasoning view `why` (`whyApi`, `data-tour="why-tab"`).
 - **The panel is Plan details (4.16):** the user removed Chat & log. Replies to what you type, errors, and a line opened from the review or the Timeline show as small cards at the top of the panel; the review sits there too; **⇩** downloads the whole log as Markdown. The tour's build step now asks for a click on the orange part. Verified on the demo in headless Chromium (the whole tour via `scripts/tour-check.cjs`, a typed question's reply, the review and a quoted false claim, the download); not on a live run yet.
+- **The board is a living document (4.17):** **Done** on a replay keeps the board, and what you send next starts a new session on it: seeded from the saved run, with its decision log as the handover, recorded as carrying on from it. Verified with a dev server pointed at a dead model URL (the run starts, seeds and records `from`; the board stays; reopening the new run rebuilds the old board from the chain) and in demo mode; not on a live run with a real model yet: check the agent keeps the board's ids.
 - Next: the backlog in 8.7.
 
 ---
@@ -296,6 +297,16 @@ The user (2026-10-27): "remove the chat and log - the log artifacts can be downl
 - **Download** (⇩ in the playback toolbar, once there's a run): `logMarkdown()` in `src/engine/logfile.js` (pure, `test/logfile.test.js`) writes the transcript as Markdown: you (chat, approvals with their edits, permissions, board changes), the agent (phase headings, paragraphs with receipts, `- Ran \`cmd\` ✓: summary` rows), notices, then the review. File `<project>-log.md`. Live and replayed runs still have their decision log and `.jsonl` on the server.
 - **Tour:** the build step circles the orange part and waits for a click on a part (its card opens); the untrue step rings the ✗ row at the top of the panel. `scripts/tour-check.cjs` follows.
 
+### 4.17 Carrying on: the board is a living document
+
+The user (2026-10-27): "when i press done it completely removes my run. the idea is this is a living document for multiple sessions to manage handover as well as human interpretability".
+
+- **Done** (replay bar) is `Session.keepBoard({ live })`: plays the rest of the replay instantly, keeps the board, the panel and the Timeline (`events` = the replay's timeline), sets `parent = { id }` and the mode to agent (with a key) or demo. ↺ still starts over. ▶ on a kept board replays the run it came from (it used to start the task or the demo again, clearing the board).
+- **A live run that ends** (`stopped`, `closed`) does the same through `closeRun()`: `runOpen` goes false and `parent` is that run.
+- **Carrying on** (`Session.carriesOn`: agent mode, no open run, a parent): `sendChat` / `sendEdits` (so stickers too) call `carryOn({ text | decisions })` instead: a new transcript, Timeline and git changes (`board.setChanges([])`), the same board, then `startRun({ repo, brief, from, board_state, edits })`. The repo is the saved run's (`meta.repo`); a missing folder comes back as an error card.
+- **Server** (`POST /api/runs` with `from`): `readChain(from)` (recordings.js) loads that run and the runs it carried on from, oldest first (cycle- and depth-guarded); `Run.seed()` replays their ops and approvals into the mirror with `emit` and the recorder stubbed out (nothing sent or recorded twice), then sets `phase = null` so the new session's decisions start as proposed; the recorder's meta gets `from`, project and goal, and the plan. `Run.firstTurn` is the brief (or the edits it started with as `<board_edits>`) + `<handover from>` (the parent's decision log) + `<board_state>`; ClaudeRun and CodexRun send it as the first message. `instructions.js` has a "Carrying on from an earlier session" section: keep the ids, change what the task needs, plan first. `test/carry-on.test.js`.
+- **Replays of a run that carried on** (`startReplay`): `loadChain(id)` (live.js) and `drawBase(base)`: the ancestors' ops and approvals drawn at once (their words and timelines stay in their own recordings), again after a backwards seek. The saved list's rows carry `from`.
+
 ## 5. Data shapes
 
 ```js
@@ -471,7 +482,7 @@ Rules:
 - **Open questions** as "?" sticky notes the user answers by editing.
 - **ADR export:** each decision as `docs/adr/NNN-*.md` in the repo at the end of a run (opt-in).
 - **Run diff:** two recordings side by side.
-- **Resume an agent from a saved board** (the Agent SDK session id is already saved in `meta-update`).
+- ~~Resume an agent from a saved board~~: done as a handover instead (4.17). Resuming the SDK session itself (`sessionId` in `meta-update`) isn't used: it only works on the machine that ran it, and the decision log is meant to be the context the next session starts from.
 
 ---
 

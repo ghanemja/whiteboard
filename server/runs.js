@@ -6,7 +6,7 @@ import { commitsSince, diff, head, isRepo, snapshot } from "./changes.js";
 import { serveBoardMcp } from "./board-mcp.js";
 import { boardReply, UPDATE_BOARD } from "./board-tool.js";
 import { BOARD_INSTRUCTIONS, PLAN_INSTRUCTIONS } from "./instructions.js";
-import { listRecordings, readDecisions, readRecording, Recorder } from "./recordings.js";
+import { listRecordings, readChain, readDecisions, readRecording, Recorder } from "./recordings.js";
 import { layerOf, LAYERS, parseColumns, parseSteps, sentenceCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "../src/engine/views.js";
 
 // A run = one Claude Agent SDK session working in a real repo. Its board drawing
@@ -14,7 +14,8 @@ import { layerOf, LAYERS, parseColumns, parseSteps, sentenceCase, toDfdMermaid, 
 // turned into events the browser replays onto the whiteboard. The browser
 // answers the agent through control messages: plan approval, permissions, chat.
 //
-//   POST /api/runs                 <- { repo, brief }           -> { id }
+//   POST /api/runs                 <- { repo, brief, from?, board_state?, edits? } -> { id }
+//                                     (from: a saved run's id, to carry on from its board)
 //   GET  /api/runs/:id/events      -> NDJSON event stream (replays from the start)
 //   POST /api/runs/:id/control     <- { type: approve | revise | chat | edits | permission | stop, ... }
 //   GET  /api/runs/recordings      -> saved runs, newest first
@@ -177,7 +178,7 @@ const COMPONENT_STATUS = new Set(["planned", "building", "built", "verified", "f
 const DECISION_STATES = new Set(["proposed", "accepted", "changed", "rejected"]);
 
 export class Run {
-  constructor({ repo, brief, origin = "http://127.0.0.1:5199" }) {
+  constructor({ repo, brief, origin = "http://127.0.0.1:5199", from = null, boardState = null, edits = [] }) {
     this.id = randomUUID().slice(0, 8);
     // The board over MCP's HTTP transport, for agents that can't take Claude's in-process tool
     // (board-mcp.js). The token stays out of events and recordings.
@@ -202,9 +203,46 @@ export class Run {
     this.turnText = ""; // what the agent has said since the last user turn
     this.git = null; // { base, head, tree, sent, files }: the repo as the run found it, and what it's changed since (changes.js)
     const { model, effort } = settings();
-    this.recorder = new Recorder({ id: this.id, brief, repo, model, effort, startedAt: new Date(this.started).toISOString(), project: null });
-    this.recorder.decide({ t: 0, who: "you", title: "Started a task", quote: brief });
+    this.recorder = new Recorder({ id: this.id, brief, repo, model, effort, startedAt: new Date(this.started).toISOString(), project: null, ...(from ? { from: from.id } : {}) });
     this.brief = brief;
+    // A run that carries on from a saved board (a living document): that board is its starting
+    // point, and that run's decision log is the handover the agent reads first.
+    this.from = from;
+    this.boardState = boardState;
+    this.startEdits = edits;
+    if (from) {
+      this.seed(from.chain.flat());
+      if (this.project || this.goal) this.recorder.update({ ...(this.project ? { project: this.project } : {}), ...(this.goal ? { goal: this.goal } : {}) });
+      this.recorder.setPlan(this.planMarkdown());
+    }
+    this.recorder.decide({ t: 0, who: "you", title: from ? `Carried on from run ${from.id}` : "Started a task", quote: brief });
+  }
+
+  // The saved runs' ops (and approvals), oldest first, replayed into the mirror without being
+  // sent or recorded again: the browser's board already shows them.
+  seed(events) {
+    const recorder = this.recorder;
+    this.emit = () => {};
+    this.recorder = { decide() {}, update() {}, setPlan() {}, write() {} };
+    try {
+      for (const e of events) {
+        if (e.type === "op" && e.op) this.emitOps([e.op]);
+        else if (e.type === "user" && e.kind === "approve") for (const d of this.decisions.values()) if (d.state === "proposed") d.state = "accepted";
+      }
+    } finally {
+      delete this.emit;
+      this.recorder = recorder;
+    }
+    this.phase = null; // the new session plans first: its new decisions start as proposed
+  }
+
+  // What starts the session: the task; carrying on, the handover too (the last run's decision log
+  // and the board as it is now), and the board edits it started with, if that's how it started.
+  get firstTurn() {
+    if (!this.from) return this.brief;
+    const edits = this.startEdits.length ? `I changed the board:\n<board_edits>${JSON.stringify(this.startEdits)}</board_edits>\n\nRespond to these changes and update the code and the board to match.` : this.brief;
+    const state = this.boardState ? `\n\n<board_state>${JSON.stringify(this.boardState)}</board_state>` : "";
+    return `${edits}\n\n<handover from="${this.from.id}">\n${this.from.log ?? ""}\n</handover>${state}`;
   }
 
   get now() {
@@ -722,7 +760,7 @@ export class ClaudeRun extends Run {
     this.abort = new AbortController();
     this.autoApprovePlan = false; // set by "approve with changes"
     this.toolNames = new Map(); // tool_use id -> { name, input }
-    this.inbox.push(userTurn(opts.brief));
+    this.inbox.push(userTurn(this.firstTurn));
   }
 
   canUseTool = async (toolName, input, { mcpServer }) => {
@@ -978,8 +1016,16 @@ export function runsMiddleware({ defaultRepo }) {
       const repo = path.resolve(String(body.repo || defaultRepo || ""));
       if (!repo || !existsSync(repo) || !statSync(repo).isDirectory()) return json(res, 400, { error: `Not a folder: ${repo}` });
       if (!body.brief?.trim()) return json(res, 400, { error: "Describe the task first." });
+      // Carrying on from a saved run: its board (and the runs it carried on from) and its decision log.
+      let from = null;
+      if (body.from) {
+        const chain = readChain(String(body.from));
+        if (!chain.length) return json(res, 404, { error: `No saved run ${body.from} to carry on from.` });
+        from = { id: String(body.from), chain, log: readDecisions(String(body.from)) };
+      }
       const Engine = engine() === "codex" ? (await import("./codex-run.js")).CodexRun : ClaudeRun;
-      const run = new Engine({ repo, brief: body.brief.trim(), origin: localOrigin(req.socket) });
+      const edits = Array.isArray(body.edits) ? body.edits : [];
+      const run = new Engine({ repo, brief: body.brief.trim(), origin: localOrigin(req.socket), from, boardState: body.board_state ?? null, edits });
       runs.set(run.id, run);
       run.start();
       return json(res, 200, { id: run.id });

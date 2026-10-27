@@ -243,6 +243,10 @@ Every run is recorded. The start screen lists them under **Saved boards**. With 
 - **Open** shows the board as it ended.
 - **Decisions** opens the **decision log**: a readable file with the final plan (goal, parts, connections, each decision with why, its check and its proof) and a timeline of who decided what, and when. It's saved next to the recording as `recordings/<id>.decisions.md`, so you can paste it into a pull request.
 
+### Carry on from a board
+
+The board is a living document: the next session picks up where the last one stopped. Press **Done** on a saved run and its board stays (played to the end). With an API key, type what's next or edit the board: a **new session** starts from this board. The agent gets the last run's decision log as its handover and keeps the same parts and decisions, changing only what the new task needs. The new run is saved too, and its decision log says which run it carried on from; replaying it starts from this board. The same happens when a live run's agent has stopped: type below to carry on.
+
 ![A saved run reopened on its Timeline, with the Decision log button](../screenshots/tutorial/replay-timeline.png)
 
 ## 10. Your own task (needs an API key)

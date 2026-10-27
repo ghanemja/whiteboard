@@ -1595,6 +1595,7 @@ export default function App() {
   const reviewing = !!s?.awaitingApproval;
   const permission = replayMode ? null : s?.permission;
   const recording = s?.recording;
+  const lastRun = s?.runId ?? s?.parent?.id; // the run on the board, live or kept
 
   // Challenge a decision: prefill the message box and put the cursor after it, once it has rendered.
   const caretToEnd = useRef(false);
@@ -1738,8 +1739,15 @@ export default function App() {
     else if (st.paused) s.player.resume();
     else if (st.busy) s.player.pause();
     else if (s.awaitingApproval) approve();
+    else if (s.parent) replay(s.parent.id); // a kept board: watch the run it came from again
     else if (agentMode && s.brief) startTask(s.brief);
     else runDemo();
+  };
+  // Done: stop replaying and keep this board, to carry on from it (a living document).
+  const keepBoard = () => {
+    if (!s) return;
+    if (tour) exitTour();
+    s.keepBoard({ live: !!agent?.live });
   };
   const cycleSpeed = () => {
     const next = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
@@ -1781,6 +1789,7 @@ export default function App() {
   else if (awaitingTask) status = "Pick a repo and describe a task";
   else if (reviewing) status = "Plan ready. Review it on the board, then approve.";
   else if (decisions.length) status = "Your board changes are ready to send";
+  else if (s?.carriesOn) status = "Carry on: edit the board or type below. It starts a new session from this board.";
   else if (s?.result) status = `Done${s.result.cost != null ? ` · $${s.result.cost.toFixed(2)}` : ""}${s.result.turns ? ` · ${s.result.turns} turns` : ""}`;
   else if (phase === "complete") status = "Shipped. Edit the board to steer the next round.";
   else if (s && messages.length) status = "Idle";
@@ -1793,7 +1802,7 @@ export default function App() {
       ? {
           label: "Replay",
           title: st.replaying ? "You're watching a saved run" : "This saved run is over",
-          text: "Nothing here reaches an agent. On the Timeline tab, click any moment to jump there. Done goes back to the start.",
+          text: "Nothing here reaches an agent. On the Timeline tab, click any moment to jump there. Done keeps this board, so you can carry on from it.",
         }
       : awaitingTask
         ? {
@@ -2075,7 +2084,7 @@ export default function App() {
     : agentMode && st.busy ? "stop" : st.busy && !st.paused ? "pause" : "play";
   const playLabel = replayMode
     ? st.replaying ? (st.paused ? "Resume the replay" : "Pause the replay") : "Play the recording again"
-    : agentMode && st.busy ? "Stop the agent" : st.paused ? "Resume" : st.busy ? "Pause" : reviewing ? "Continue: approve the plan" : agentMode ? "Run the task again" : "Replay";
+    : agentMode && st.busy ? "Stop the agent" : st.paused ? "Resume" : st.busy ? "Pause" : reviewing ? "Continue: approve the plan" : s?.parent ? "Replay the run this board came from" : agentMode ? "Run the task again" : "Replay";
   const modeLabel = replayMode ? "Replay" : agentMode || awaitingTask ? "Agent" : "Demo";
   const modeTitle = agent?.live
     ? `Claude Agent SDK · ${agent.provider ?? "Anthropic API"} · ${agent.model} · effort ${agent.effort}`
@@ -2300,7 +2309,7 @@ export default function App() {
                 <a className="secondary" href={decisionsUrl(recording?.id)} target="_blank" rel="noreferrer">
                   Decision log
                 </a>
-                <button className="primary" onClick={restart}>
+                <button className="primary" onClick={keepBoard} title="Keep this board and carry on from it: edit it or type, and a new session starts from here">
                   Done
                 </button>
               </div>
@@ -2370,12 +2379,12 @@ export default function App() {
             <p className="hint">
               {/* One ask at a time: while the tour runs, its card is it. */}
               {!tour && <><b>Steer from the board:</b> use Edit the plan above it, click a ◇ to pick another option, or drop a sticker on a part. Then Submit.</>}
-              {agentMode && s?.runId && s?.result && (
+              {agentMode && lastRun && (s?.result || s?.carriesOn) && (
                 <span className="after-run">
-                  <button className="linkish" onClick={() => replay(s.runId)}>
+                  <button className="linkish" onClick={() => replay(lastRun)}>
                     Replay this run
                   </button>
-                  <a className="linkish" href={decisionsUrl(s.runId)} target="_blank" rel="noreferrer">
+                  <a className="linkish" href={decisionsUrl(lastRun)} target="_blank" rel="noreferrer">
                     Decision log
                   </a>
                 </span>
@@ -2387,7 +2396,7 @@ export default function App() {
               id="ask"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={awaitingTask ? "Describe a task for the agent…" : reviewing ? "Ask for changes to the plan…" : "Tell the agent something…"}
+              placeholder={awaitingTask ? "Describe a task for the agent…" : reviewing ? "Ask for changes to the plan…" : s?.carriesOn ? "What's next? A new session starts from this board…" : "Tell the agent something…"}
             />
             <button type="submit" disabled={!draft.trim()}>
               {awaitingTask ? "Start" : "Send"}

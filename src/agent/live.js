@@ -18,7 +18,8 @@ async function post(url, body) {
   return data;
 }
 
-export const startRun = ({ repo, brief }) => post("/api/runs", { repo, brief });
+// from: a saved run's id, to carry on from its board (with the board as it is now, and any edits that start it).
+export const startRun = ({ repo, brief, from, board_state, edits }) => post("/api/runs", { repo, brief, from, board_state, edits });
 
 // ---- saved runs ----
 export async function listRecordings() {
@@ -43,6 +44,19 @@ export async function loadRecording(id) {
         return []; // a line cut off by a crash
       }
     });
+}
+
+// A run that carried on from another, and so on back: each run's events, oldest first.
+export async function loadChain(id, depth = 50) {
+  const chain = [];
+  const seen = new Set();
+  for (let at = id; at && !seen.has(at) && chain.length < depth; ) {
+    seen.add(at);
+    const events = await loadRecording(at);
+    chain.unshift(events);
+    at = events.find((e) => e.type === "meta")?.from;
+  }
+  return chain;
 }
 
 export const decisionsUrl = (id) => `/api/runs/recordings/${encodeURIComponent(id)}/decisions`;
