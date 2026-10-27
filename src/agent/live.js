@@ -47,6 +47,8 @@ export async function loadRecording(id) {
 
 export const decisionsUrl = (id) => `/api/runs/recordings/${encodeURIComponent(id)}/decisions`;
 export const controlRun = (id, body) => post(`/api/runs/${id}/control`, body);
+// The board as it is now, answering the agent's read_board request (its id from the event stream).
+export const replyBoard = (id, body) => post(`/api/runs/${id}/board`, body);
 
 // Calls onEvent for every event of the run, from the beginning, until the run closes or signal aborts.
 export async function followRun(id, { onEvent, signal }) {

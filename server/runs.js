@@ -4,7 +4,7 @@ import path from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import { commitsSince, diff, head, isRepo, snapshot } from "./changes.js";
 import { serveBoardMcp } from "./board-mcp.js";
-import { boardReply, UPDATE_BOARD } from "./board-tool.js";
+import { boardReply, readBoardReply, READ_BOARD, UPDATE_BOARD } from "./board-tool.js";
 import { BOARD_INSTRUCTIONS, PLAN_INSTRUCTIONS } from "./instructions.js";
 import { listRecordings, readDecisions, readRecording, Recorder } from "./recordings.js";
 import { layerOf, LAYERS, parseColumns, parseSteps, sentenceCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "../src/engine/views.js";
@@ -26,6 +26,7 @@ const runs = (globalThis.__agentRuns ??= new Map());
 // or a command gets longer before their agent goes away.
 const IDLE_MS = 15 * 60 * 1000;
 const WAITING_ON_USER_MS = 60 * 60 * 1000;
+const BOARD_READ_MS = 5000; // how long read_board waits for the browser to answer
 
 export function stopAllRuns() {
   for (const run of runs.values()) run.stop({ reason: "server" });
@@ -187,6 +188,7 @@ export class Run {
     this.events = [];
     this.listeners = new Set();
     this.pending = new Map(); // requestId -> resolve(PermissionResult)
+    this.boardReads = new Map(); // read id -> resolve(board state), until the browser answers or the wait runs out
     this.allowCommands = false; // "Allow all" for this run
     // A mirror of the board, from ops: what the decision log describes, and how edits find their component.
     this.nodes = new Map(); // component id -> { name, kind, paths, libs, api, status }
@@ -217,6 +219,30 @@ export class Run {
     for (const fn of this.listeners) fn(e);
     this.recorder.write(e);
     this.touch();
+  }
+
+  // The board as the browser has it now. The browser is asked over the event stream, so its answer
+  // comes after every op already sent to it. Null when nobody answers (no browser is following).
+  // Live only: the request isn't kept in events or the recording.
+  readBoard() {
+    const id = randomUUID().slice(0, 8);
+    return new Promise((resolve) => {
+      const finish = (state) => {
+        clearTimeout(timer);
+        this.boardReads.delete(id);
+        resolve(state);
+      };
+      const timer = setTimeout(() => finish(null), BOARD_READ_MS);
+      this.boardReads.set(id, finish);
+      for (const fn of this.listeners) fn({ type: "board-read", id });
+    });
+  }
+
+  // The browser's answer to a readBoard request. False when no request is waiting for it.
+  answerBoardRead(id, state) {
+    const finish = this.boardReads.get(id);
+    finish?.(state);
+    return Boolean(finish);
   }
 
   // What the agent said this turn, for the decision log (the end of it, if it ran long).
@@ -639,7 +665,9 @@ export class Run {
   // ---- control from the browser ----
   control(body) {
     this.touch();
-    const state = body.board_state ? `\n\n<board_state>${JSON.stringify(body.board_state)}</board_state>` : "";
+    // Only what changed since the agent's last message: the user's edits, and the assumptions they
+    // confirmed in between. The rest of the board is there for the agent to read (read_board).
+    const confirmed = body.confirmed?.length ? `\n\n<board_confirmed>${JSON.stringify(body.confirmed)}</board_confirmed>` : "";
     const edits = body.edits?.length ? `<board_edits>${JSON.stringify(body.edits)}</board_edits>` : "";
     const gate = this.gateId;
     this.record(body);
@@ -650,7 +678,7 @@ export class Run {
       this.stop();
       return true;
     }
-    return this.deliver(body, { state, edits, gate });
+    return this.deliver(body, { confirmed, edits, gate });
   }
 
   // The user's side of the run: an event so a replay can show it, and a line in the decision log.
@@ -727,7 +755,7 @@ export class ClaudeRun extends Run {
 
   canUseTool = async (toolName, input, { mcpServer }) => {
     // Our own board tool, served in-process (source "sdk"; absent on older CLIs).
-    if (toolName === "mcp__board__update_board" && (!mcpServer || mcpServer.source === "sdk")) return { behavior: "allow", updatedInput: input };
+    if (["mcp__board__update_board", "mcp__board__read_board"].includes(toolName) && (!mcpServer || mcpServer.source === "sdk")) return { behavior: "allow", updatedInput: input };
 
     if (toolName === "ExitPlanMode") {
       if (this.autoApprovePlan) {
@@ -763,7 +791,10 @@ export class ClaudeRun extends Run {
       name: "board",
       version: "1.0.0",
       alwaysLoad: true, // the agent needs it from the first turn; don't hide it behind tool search
-      tools: [tool(UPDATE_BOARD.name, UPDATE_BOARD.description, UPDATE_BOARD.input, async ({ ops }) => boardReply(ops, this.emitOps(ops)))],
+      tools: [
+        tool(UPDATE_BOARD.name, UPDATE_BOARD.description, UPDATE_BOARD.input, async ({ ops }) => boardReply(ops, this.emitOps(ops))),
+        tool(READ_BOARD.name, READ_BOARD.description, READ_BOARD.input, async () => readBoardReply(await this.readBoard())),
+      ],
     });
 
     this.q = query({
@@ -877,7 +908,7 @@ export class ClaudeRun extends Run {
 
   // How the user's side reaches Claude: the plan gate is its ExitPlanMode call (allowed, or
   // denied with what to change); anything else is a user turn on its inbox.
-  deliver(body, { state, edits, gate }) {
+  deliver(body, { confirmed, edits, gate }) {
     switch (body.type) {
       case "approve":
         if (!gate) return false;
@@ -885,7 +916,7 @@ export class ClaudeRun extends Run {
         this.autoApprovePlan = true;
         return this.answer(gate, {
           behavior: "deny",
-          message: `The user approved the plan with these changes to the board:\n${edits}${state}\n\nApply them to the plan and the board with update_board, then call ExitPlanMode again; it will be approved.`,
+          message: `The user approved the plan with these changes to the board:\n${edits}${confirmed}\n\nApply them to the plan and the board with update_board, then call ExitPlanMode again; it will be approved.`,
         });
       case "revise":
       case "chat": {
@@ -893,15 +924,15 @@ export class ClaudeRun extends Run {
         if (gate)
           return this.answer(gate, {
             behavior: "deny",
-            message: `Not approved yet. ${said}${state}\n\nRevise the plan and the board with update_board to match, then call ExitPlanMode again.`,
+            message: `Not approved yet. ${said}${confirmed}\n\nRevise the plan and the board with update_board to match, then call ExitPlanMode again.`,
           });
-        this.inbox.push(userTurn(`${said}${state}`));
+        this.inbox.push(userTurn(`${said}${confirmed}`));
         this.idle = false;
         this.emit({ type: "turn" });
         return true;
       }
       case "edits":
-        this.inbox.push(userTurn(`I changed the board:\n${edits}${state}\n\nRespond to these changes and update the code and the board to match.`));
+        this.inbox.push(userTurn(`I changed the board:\n${edits}${confirmed}\n\nRespond to these changes and update the code and the board to match.`));
         this.idle = false;
         this.emit({ type: "turn" });
         return true;
@@ -957,7 +988,7 @@ const json = (res, status, body) => {
 export function runsMiddleware({ defaultRepo }) {
   return async function handleRuns(req, res, next) {
     const url = new URL(req.url, "http://local");
-    const parts = url.pathname.split("/").filter(Boolean); // [] | [id, "events"] | [id, "control"]
+    const parts = url.pathname.split("/").filter(Boolean); // [] | [id, "events"] | [id, "control"] | [id, "board"] | [id, "mcp"]
 
     if (req.method === "GET" && parts[0] === "status") {
       return json(res, 200, {
@@ -998,7 +1029,18 @@ export function runsMiddleware({ defaultRepo }) {
     if (!run) return parts.length ? json(res, 404, { error: "No such run." }) : next();
 
     // The run's board as an MCP server (POST, plus GET and DELETE per the transport).
-    if (parts[1] === "mcp" && parts.length === 2) return serveBoardMcp(req, res, { token: run.boardMcp.token, draw: (ops) => run.emitOps(ops) });
+    if (parts[1] === "mcp" && parts.length === 2) return serveBoardMcp(req, res, { token: run.boardMcp.token, draw: (ops) => run.emitOps(ops), read: () => run.readBoard() });
+
+    // The browser's answer to a read_board request on the event stream (Run.readBoard).
+    if (req.method === "POST" && parts[1] === "board") {
+      let body;
+      try {
+        body = await readJson(req);
+      } catch {
+        return json(res, 400, { error: "Request body must be JSON." });
+      }
+      return json(res, 200, { ok: run.answerBoardRead(body.id, body.board_state ?? null) });
+    }
 
     if (req.method === "GET" && parts[1] === "events") {
       res.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-cache", "x-accel-buffering": "no" });

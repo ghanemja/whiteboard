@@ -14,17 +14,17 @@
 //      approximation for Claude.
 //   3. Neither: characters / 4, a rough estimate.
 //
-// Nothing here calls a model. The texts are exact (the real instructions, tool schema, plan-gate
-// messages and board snapshots, and the scripted DocQA demo standing in for the agent's output);
-// only the counting and the request model (one request per user turn, plus one per update_board
-// call) are estimates.
+// Nothing here calls a model. The texts are exact (the real instructions, tool schemas, plan-gate
+// messages, and the board state that read_board returns, and the scripted DocQA demo standing in
+// for the agent's output); only the counting and the request model (one request per user turn, plus
+// one per tool call) are estimates.
 import { createRequire } from "node:module";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { BOARD_INSTRUCTIONS, CODEX_BOARD_INSTRUCTIONS, CODEX_PLAN_INSTRUCTIONS, PLAN_INSTRUCTIONS } from "../server/instructions.js";
-import { boardReply, Op, UPDATE_BOARD } from "../server/board-tool.js";
+import { boardReply, Op, READ_BOARD, UPDATE_BOARD } from "../server/board-tool.js";
 import { ClaudeRun, settings } from "../server/runs.js";
 import { createStreamParser } from "../src/engine/parser.js";
 import { BUILD_SCRIPT, PLAN_SCRIPT } from "../src/agent/script.js";
@@ -119,9 +119,9 @@ function loadTiktoken() {
 
 // ---- what the agent sees: the tool as the API gets it ----
 // zod → JSON Schema the way the MCP SDK does it (draft-7, input side). "$schema" is left out.
-function toolDef(name = `mcp__board__${UPDATE_BOARD.name}`) {
-  const { $schema, ...schema } = z.toJSONSchema(z.object(UPDATE_BOARD.input), { target: "draft-7", io: "input" });
-  return { name, description: UPDATE_BOARD.description, input_schema: schema };
+function toolDef(def = UPDATE_BOARD, name = `mcp__board__${def.name}`) {
+  const { $schema, ...schema } = z.toJSONSchema(z.object(def.input), { target: "draft-7", io: "input" });
+  return { name, description: def.description, input_schema: schema };
 }
 
 // ---- the demo's agent output, as a live agent sends it ----
@@ -157,8 +157,8 @@ function parseAgent(str) {
 const callJson = (ops) => JSON.stringify({ ops });
 const resultText = (ops) => boardReply(ops).content[0].text;
 
-// ---- the browser board's model, for <board_state> ----
-// Board.snapshot() (src/engine/board.js) is what the browser sends with every user turn, but
+// ---- the browser board's model, for read_board ----
+// Board.snapshot() (src/engine/board.js) is what the browser answers a read_board request with, but
 // board.js imports Excalidraw, so its model and snapshot are mirrored here.
 const KINDS = ["client", "service", "data", "external", "queue", "test", "user"];
 const STATUS = new Set(["planned", "building", "built", "verified", "failed", "live"]);
@@ -338,13 +338,14 @@ function serverMirror() {
 
 // The message the agent gets when the user sends this (runs.js control()): at the plan gate, the
 // answer to its ExitPlanMode call; otherwise a user turn. null when nothing is sent (a plain approve).
-function gateMessage(run, body, board, { gated = true } = {}) {
+// It carries only what changed; the board itself is read with read_board when the agent asks.
+function gateMessage(run, body, { gated = true } = {}) {
   let out = null;
   const keep = { events: run.events, pending: run.pending, inbox: run.inbox };
   run.events = gated ? [{ type: "gate", requestId: "gate" }] : [];
   run.pending = new Map([["gate", (r) => (out = r.message ?? null)]]);
   run.inbox = { push: (m) => (out = m.message.content) };
-  run.control({ ...body, board_state: board });
+  run.control(body);
   Object.assign(run, keep);
   return out;
 }
@@ -480,17 +481,21 @@ console.log("B and the whiteboard exclude what they share: Claude Code's own sys
 
 // 1. Fixed overhead: what the board adds to every request.
 const tool = toolDef();
+const readTool = toolDef(READ_BOARD);
 const fixedParts = {
   instructions: await tok.system(BOARD_INSTRUCTIONS),
   tool: await tok.tool(tool),
+  readTool: await tok.tool(readTool),
 };
-const FIXED = fixedParts.instructions + fixedParts.tool;
+const FIXED = fixedParts.instructions + fixedParts.tool + fixedParts.readTool;
 dump("tool.json", JSON.stringify(tool, null, 1));
+dump("read-board-tool.json", JSON.stringify(readTool, null, 1));
 const planInstr = await count(PLAN_INSTRUCTIONS);
 const codexParts = {
   instructions: await count(CODEX_BOARD_INSTRUCTIONS),
   plan: await count(CODEX_PLAN_INSTRUCTIONS),
-  tool: await tok.tool(toolDef(UPDATE_BOARD.name)),
+  tool: await tok.tool(toolDef(UPDATE_BOARD, UPDATE_BOARD.name)),
+  readTool: await tok.tool(toolDef(READ_BOARD, READ_BOARD.name)),
 };
 h("1. Fixed overhead per request (what the board adds to every model request)");
 table(
@@ -498,10 +503,12 @@ table(
   [
     ["BOARD_INSTRUCTIONS", "appended to the system prompt", fmt(fixedParts.instructions)],
     ["update_board tool definition", "tools (name, description, JSON schema)", fmt(fixedParts.tool)],
+    ["read_board tool definition", "tools (name, description, JSON schema)", fmt(fixedParts.readTool)],
     ["**Total, every request**", "cached prefix", `**${fmt(FIXED)}**`],
     ["PLAN_INSTRUCTIONS", "once, in plan mode (replaces Claude Code's default plan text; counted in full)", fmt(planInstr)],
     ["Codex: CODEX_BOARD_INSTRUCTIONS", "developer instructions, every request", fmt(codexParts.instructions)],
     ["Codex: update_board over MCP", "tools, every request", fmt(codexParts.tool)],
+    ["Codex: read_board over MCP", "tools, every request", fmt(codexParts.readTool)],
     ["Codex: CODEX_PLAN_INSTRUCTIONS", "once, in the first turn", fmt(codexParts.plan)],
   ],
 );
@@ -539,8 +546,7 @@ table(
 const corrections = [];
 async function correct({ label, typed, body, reply, local }) {
   local?.();
-  const snap = board.snapshot();
-  const message = gateMessage(run, body, snap);
+  const message = gateMessage(run, body);
   const r = parseAgent(reply());
   const before = md.at(-1);
   draw(run, board, r.ops);
@@ -549,9 +555,12 @@ async function correct({ label, typed, body, reply, local }) {
   const diff = lineDiff(before, after);
   const said = body.type === "chat" ? body.text : `<board_edits>${JSON.stringify(body.edits)}</board_edits>`;
   const n = corrections.length + 1;
+  // What read_board returns once the reply's ops are drawn: the whole board, if the agent asks.
+  const readResult = JSON.stringify(board.snapshot());
   dump(`correction-${n}-typed.txt`, typed);
   dump(`correction-${n}-board-message.txt`, message);
   dump(`correction-${n}-board-reply.txt`, `${r.text}\n\n${callJson(r.ops)}`);
+  dump(`correction-${n}-read-board-result.json`, readResult);
   dump(`correction-${n}-edit-old.md`, diff.removed);
   dump(`correction-${n}-edit-new.md`, diff.added);
   dump(`plan-${n}-prose.md`, after);
@@ -559,8 +568,9 @@ async function correct({ label, typed, body, reply, local }) {
     label,
     typed: await count(typed),
     said: await count(said),
-    snapshot: await count(`\n\n<board_state>${JSON.stringify(snap)}</board_state>`),
     message: await count(message),
+    readCall: await count(JSON.stringify({ name: READ_BOARD.name, input: {} })),
+    readResult: await count(readResult),
     wbOut: (await count(r.text)) + (await count(callJson(r.ops))),
     wbResult: await count(resultText(r.ops)),
     ops: r.ops.length,
@@ -597,11 +607,11 @@ await correct({
 
 h("3. Steering: one correction, typed vs. on the board");
 table(
-  ["Correction", "Typed sentence (A, B)", "Board: the edit or answer itself", "Board: <board_state>", "Board: whole message to the agent"],
-  corrections.map((c) => [c.label, fmt(c.typed), fmt(c.said), fmt(c.snapshot), fmt(c.message)]),
+  ["Correction", "Typed sentence (A, B)", "Board: the edit or answer itself", "Board: whole message to the agent", "Board: read_board result (only if the agent reads)"],
+  corrections.map((c) => [c.label, fmt(c.typed), fmt(c.said), fmt(c.message), fmt(c.readResult)]),
 );
-const snapShare = corrections.reduce((s, c) => s + c.snapshot / c.message, 0) / corrections.length;
-console.log(`The whole message is what runs.js sends at the plan gate: the edit, the snapshot, and its own wrapper sentence. The snapshot is ${Math.round(snapShare * 100)}% of it on average.\n`);
+const avg = (k) => corrections.reduce((s, c) => s + c[k], 0) / corrections.length;
+console.log(`The whole message is what runs.js sends at the plan gate: the edit or answer, and its own wrapper sentence, ${fmt(avg("message"))} tokens on average. The board itself isn't in it. The agent reads it with read_board when it needs it, for ${fmt(avg("readResult"))} tokens on average, plus ${fmt(avg("readCall"))} for the call.\n`);
 table(
   ["Correction", "A reply: rewrites the plan", "A reply: changes only", "B: Edit of its plan file (old + new)", "Whiteboard: text + update_board call"],
   corrections.map((c) => [c.label, fmt(c.aFull), fmt(c.aDelta), fmt(c.bEdit), `${fmt(c.wbOut)} (${c.ops} op${c.ops === 1 ? "" : "s"})`]),
@@ -618,12 +628,24 @@ const reqs = {
   wb: [
     { label: "Plan", input: brief + planInstr, output: planWb },
     { label: "Plan: tool result", input: planResult, output: 0 },
-    ...corrections.flatMap((c) => [
-      { label: c.label, input: c.message, output: c.wbOut, user: true },
-      { label: `${c.label}: tool result`, input: c.wbResult, output: 0 },
-    ]),
+    ...afterPlan(false),
   ],
 };
+// The whiteboard's requests after the plan. With reads, the agent also calls read_board after each
+// correction (the call, then the whole board): the most a message-only design can cost in reads.
+function afterPlan(reads) {
+  return corrections.flatMap((c) => [
+    { label: c.label, input: c.message, output: c.wbOut, user: true },
+    { label: `${c.label}: tool result`, input: c.wbResult, output: 0 },
+    ...(reads
+      ? [
+          { label: `${c.label}: read_board`, input: 0, output: c.readCall },
+          { label: `${c.label}: read result`, input: c.readResult, output: 0 },
+        ]
+      : []),
+  ]);
+}
+reqs.wbRead = [...reqs.wb.slice(0, 2), ...afterPlan(true)];
 const s1 = {
   a: simulate(reqs.aFull.slice(0, 1), { cached: false }),
   b: simulate(reqs.b.slice(0, 1)),
@@ -634,6 +656,7 @@ const s2 = {
   aDelta: simulate(reqs.aDelta, { cached: false }),
   b: simulate(reqs.b),
   wb: simulate(reqs.wb, { fixed: FIXED }),
+  wbRead: simulate(reqs.wbRead, { fixed: FIXED }),
 };
 
 // The build. Both agents make one request per file change and per command the demo shows (the
@@ -674,6 +697,7 @@ dump("build-ops.json", JSON.stringify(build.map((p) => p.ops), null, 1));
 const s3 = {
   b: simulate([...reqs.b, ...buildB]),
   wb: simulate([...reqs.wb, ...buildWb], { fixed: FIXED }),
+  wbRead: simulate([...reqs.wbRead, ...buildWb], { fixed: FIXED }),
 };
 
 // Cold cache: every user turn (the corrections, and the approval before the build) comes after
@@ -692,6 +716,7 @@ table(
     ["A: chat, changes only", cell(s1.a), cell(s2.aDelta), "n/a"],
     ["B: agent, no board", cell(s1.b), cell(s2.b), cell(s3.b)],
     ["Whiteboard", cell(s1.wb), cell(s2.wb), cell(s3.wb)],
+    ["Whiteboard, reads the board after each correction", cell(s1.wb), cell(s2.wbRead), cell(s3.wbRead)],
     ["**Whiteboard − B**", `**${plus(s1.wb, s1.b)}**`, `**${plus(s2.wb, s2.b)}**`, `**${plus(s3.wb, s3.b)}**`],
   ],
 );
@@ -709,8 +734,10 @@ table(
     split("2 · A chat, changes only", s2.aDelta, 4),
     split("2 · B agent, no board", s2.b, 4),
     split("2 · Whiteboard", s2.wb, 4),
+    split("2 · Whiteboard, reads after each correction", s2.wbRead, 4),
     split("3 · B agent, no board", s3.b, 5),
     split("3 · Whiteboard", s3.wb, 5),
+    split("3 · Whiteboard, reads after each correction", s3.wbRead, 5),
   ],
 );
 const sum = (k) => build.reduce((s, p) => s + p[k], 0);
@@ -735,7 +762,7 @@ const parts = (wb, wbNoFixed, b) => {
   return [money(fixed), money(out), money(wb.t.cost - b.t.cost - fixed - out), `**${money(wb.t.cost - b.t.cost)}**`];
 };
 table(
-  ["Scenario", "Fixed overhead", "Extra output", "Snapshots, results, bigger history", "Total"],
+  ["Scenario", "Fixed overhead", "Extra output", "Messages, results, bigger history", "Total"],
   [
     ["1. First plan", ...parts(s1.wb, simulate(reqs.wb.slice(0, 2)), s1.b)],
     ["2. Plan + 3 corrections", ...parts(s2.wb, simulate(reqs.wb), s2.b)],
@@ -815,7 +842,7 @@ for (const f of readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort()) {
     if (e.type === "gate") gated = true;
     if (e.type !== "user" || e.kind === "permission") continue;
     // What the agent got, less the user's own words (B gets those too).
-    const message = gateMessage(mirror, { type: e.kind, text: e.text, edits: e.edits }, b.snapshot(), { gated });
+    const message = gateMessage(mirror, { type: e.kind, text: e.text, edits: e.edits }, { gated });
     if (message) userAdded += (await count(message)) - (await count(e.text ?? ""));
     if (e.kind === "approve") b.acceptDecisions();
     gated = false;
@@ -840,7 +867,7 @@ table(
     `${money(r.low)}–${money(r.high)}`, `${Math.round((100 * r.low) / r.done.cost)}–${Math.round((100 * r.high) / r.done.cost)}%`,
   ]),
 );
-console.log("Measured cost and turns: the Agent SDK's result (total_cost_usd, num_turns). Board input added: fixed overhead per turn, plus tool results, snapshots and wrappers sent at the gate, and the plan-mode instructions.");
+console.log("Measured cost and turns: the Agent SDK's result (total_cost_usd, num_turns). These runs were recorded before read_board, so their measured cost includes the board snapshot in every message. Board input added here is counted as the new messages would be: fixed overhead per turn, plus tool results, the edits and wrappers sent at the gate, and the plan-mode instructions. No reads.");
 console.log("Low: every board token written to the cache once, the fixed overhead read on every turn. High: also every board token re-read on every later turn. Neither counts the re-reads of Claude Code's own context on the extra requests the calls cause.\n");
 
 h("10. Sizes, for reference");
@@ -848,8 +875,8 @@ table(
   ["Text", "Tokens"],
   [
     ["Task brief", fmt(brief)],
-    ["<board_state> at the plan gate (first correction)", fmt(corrections[0].snapshot)],
-    ["<board_state> after the third correction", fmt(await count(`\n\n<board_state>${JSON.stringify(board.snapshot())}</board_state>`))],
+    ["Message at the plan gate (first correction, edit only)", fmt(corrections[0].message)],
+    ["read_board result after the third correction (the whole board)", fmt(corrections.at(-1).readResult)],
     ["Tool result (\"Board updated (N changes).\")", fmt(planResult)],
     ["Prose plan after the three corrections", fmt(await count(md.at(-1)))],
   ],

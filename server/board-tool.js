@@ -60,3 +60,17 @@ export const UPDATE_BOARD = {
 export const boardReply = (ops, notes = []) => ({
   content: [{ type: "text", text: `Board updated (${ops.length} change${ops.length === 1 ? "" : "s"}).${notes.length ? `\n${notes.join("\n")}` : ""}` }],
 });
+
+// The board as it is now, for when the agent needs the whole picture. Messages only carry what the
+// user changed, so this is how the agent gets everything else back.
+export const READ_BOARD = {
+  name: "read_board",
+  description:
+    "Read the whiteboard the user is watching, as it is now: project, goal, phase, components (with status, libs, api and grid cell), connections, decisions (with their state and proof), tasks, questions and assumptions (with answers), free cells and the note count. Your messages carry only what the user changed, so call this when you need the whole picture, e.g. after a context reset, and not after each change.",
+  input: {},
+};
+
+// The board's state as JSON, or a plain line when no browser is showing the board to read it from.
+export const readBoardReply = (state) => ({
+  content: [{ type: "text", text: state ? JSON.stringify(state) : "The whiteboard isn't open in a browser, so its current state can't be read. Work from the messages and your own updates." }],
+});

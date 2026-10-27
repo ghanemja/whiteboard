@@ -3,7 +3,7 @@ import { createStreamParser } from "./parser";
 import { Player } from "./player";
 import { Transcript } from "./transcript";
 import { buildChatReply, buildEditsReply } from "../agent/replies";
-import { controlRun, followRun, loadRecording, startRun } from "../agent/live";
+import { controlRun, followRun, loadRecording, replyBoard, startRun } from "../agent/live";
 import { BUILD_SCRIPT, DEMO_CHANGES, PLAN_SCRIPT } from "../agent/script";
 import { areaOf, describeEdit, gist } from "./timeline";
 import { receipt } from "./claims";
@@ -100,6 +100,7 @@ export class Session {
     this.clock = null; // the demo's clock: { t, at }
     this.demoBusy = false;
     this.sentMsgs = []; // your messages waiting for the server to echo them as `user` events
+    this.confirmed = []; // assumptions you confirmed since the agent's last message: they go with the next one
     this.steerText = null; // what you asked this turn, for changes in recordings that don't say why
     this.failedSinceSteer = new Set(); // decisions whose check failed after that
     this.lastT = 0; // the latest live event's t
@@ -478,6 +479,8 @@ export class Session {
   }
 
   onAgentEvent(e) {
+    // A request for the board, not part of the run: answer it and keep it out of the timeline.
+    if (e.type === "board-read") return this.answerBoardRead(e.id);
     if (this.mode === "agent") {
       this.lastT = e.t ?? this.lastT;
       // Your messages come back from the server as `user` events; tie each to its bubble.
@@ -597,7 +600,18 @@ export class Session {
 
   send(body) {
     if (!this.runId) return;
-    controlRun(this.runId, { ...body, board_state: this.board.snapshot() }).catch((err) => this.agentError(err.message));
+    // The message carries only what changed: the edits, and the assumptions confirmed since the
+    // last message. The agent reads the rest of the board itself (read_board). A plain approve
+    // carries no message, so the confirmations wait for the next one.
+    const carries = body.type === "approve" ? body.edits?.length > 0 : ["chat", "revise", "edits"].includes(body.type);
+    const confirmed = carries ? this.confirmed.splice(0) : [];
+    controlRun(this.runId, { ...body, ...(confirmed.length ? { confirmed } : {}) }).catch((err) => this.agentError(err.message));
+  }
+
+  // The agent asked for the board (read_board). The event stream is in order, so every op it sent
+  // before the request has been applied by now: this is the board as the agent last drew it.
+  answerBoardRead(id) {
+    replyBoard(this.runId, { id, board_state: this.board.snapshot() }).catch(() => {}); // a read that timed out is gone already
   }
 
   answerPermission(decision) {
@@ -696,9 +710,10 @@ export class Session {
     this.sendChat(`About Q${q.n} (${q.text}): ${text}`);
   }
 
-  // A confirmed assumption needs no turn of its own: the agent sees it in the board state it gets next.
+  // A confirmed assumption needs no turn of its own: it goes to the agent with the next message.
   confirmAssumption(q) {
     this.logOp({ op: "assumption", id: q.id, state: "confirmed" }, { apply: true });
+    if (this.mode === "agent") this.confirmed.push({ id: q.id, text: q.text });
     this.sync();
   }
 

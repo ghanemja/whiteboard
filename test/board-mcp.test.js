@@ -6,7 +6,7 @@ import http from "node:http";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { serveBoardMcp } from "../server/board-mcp.js";
-import { localOrigin, runsMiddleware } from "../server/runs.js";
+import { ClaudeRun, localOrigin, Run, runsMiddleware } from "../server/runs.js";
 
 const listen = (handler) =>
   new Promise((resolve) => {
@@ -28,7 +28,7 @@ test("an MCP client lists update_board, draws with it, and gets the board's note
   try {
     const client = await connect(`${base}/mcp`, "s3cret");
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((t) => t.name), ["update_board"]);
+    assert.deepEqual(tools.map((t) => t.name), ["update_board", "read_board"]);
     assert.ok(tools[0].inputSchema.properties.ops, "its ops schema is published");
     assert.match(tools[0].description, /\bpart\b/);
 
@@ -90,6 +90,83 @@ test("each run's board is served at /api/runs/<id>/mcp, behind that run's token"
     runs.delete("r1");
     server.close();
   }
+});
+
+test("read_board hands the agent the board the browser reports, or says there isn't one", async () => {
+  const board = { project: "Links", nodes: [{ id: "api", name: "API server" }], decisions: [] };
+  let answer = board;
+  const { server, base } = await listen((req, res) => serveBoardMcp(req, res, { token: "s3cret", draw: () => [], read: async () => answer }));
+  try {
+    const client = await connect(`${base}/mcp`, "s3cret");
+    const r = await client.callTool({ name: "read_board", arguments: {} });
+    assert.deepEqual(JSON.parse(r.content[0].text), board);
+    answer = null;
+    const none = await client.callTool({ name: "read_board", arguments: {} });
+    assert.match(none.content[0].text, /isn't open in a browser/);
+    await client.close();
+  } finally {
+    server.close();
+  }
+});
+
+test("read_board asks the browser over the event stream, takes its answer once, and gives up after 5 seconds", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  // Only what readBoard touches: a run's listeners and its waiting reads. A real Run would also
+  // open a recording file, and the answer must not be kept in the run's events.
+  const run = { boardReads: new Map(), listeners: new Set() };
+  const asked = [];
+  run.listeners.add((e) => asked.push(e));
+
+  const board = Run.prototype.readBoard.call(run);
+  assert.deepEqual(asked.map((e) => e.type), ["board-read"]);
+  const { id } = asked[0];
+  assert.equal(Run.prototype.answerBoardRead.call(run, id, { nodes: [] }), true);
+  assert.deepEqual(await board, { nodes: [] });
+  assert.equal(Run.prototype.answerBoardRead.call(run, id, { nodes: [] }), false, "a second answer to the same read is refused");
+
+  const silent = Run.prototype.readBoard.call(run);
+  t.mock.timers.tick(5000);
+  assert.equal(await silent, null, "nobody answered: null, not an old board");
+  assert.equal(run.boardReads.size, 0);
+});
+
+test("the browser's answer to a read reaches the run, behind the run's route", async () => {
+  const runs = (globalThis.__agentRuns ??= new Map());
+  const answers = [];
+  runs.set("r2", { boardMcp: { url: "", token: "tok-r2" }, answerBoardRead: (id, state) => (answers.push([id, state]), true) });
+  const mw = runsMiddleware({ defaultRepo: "." });
+  const { server, base } = await listen((req, res) => {
+    req.url = req.url.replace(/^\/api\/runs/, "") || "/";
+    mw(req, res, () => ((res.statusCode = 404), res.end()));
+  });
+  try {
+    const r = await fetch(`${base}/api/runs/r2/board`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: "a1b2", board_state: { nodes: [] } }) });
+    assert.equal(r.status, 200);
+    assert.deepEqual(answers, [["a1b2", { nodes: [] }]]);
+  } finally {
+    runs.delete("r2");
+    server.close();
+  }
+});
+
+test("a message carries what the user changed and the assumptions they confirmed, never the whole board", () => {
+  const pushed = [];
+  // Only what control() and deliver() touch: the inbox the agent reads, and the run's bookkeeping.
+  const run = { inbox: { push: (m) => pushed.push(m.message.content) }, touch() {}, record() {}, gateId: null, steer: null, emit() {} };
+  run.deliver = ClaudeRun.prototype.deliver;
+  const board_state = { nodes: [{ id: "vdb", name: "Vector index" }], decisions: [{ id: "d1" }] };
+
+  Run.prototype.control.call(run, {
+    type: "edits",
+    edits: [{ kind: "rename", node: "api", from: "API server", to: "Backend" }],
+    confirmed: [{ id: "a1", text: "PDFs have a text layer" }],
+    board_state,
+  });
+
+  const [message] = pushed;
+  assert.match(message, /<board_edits>\[\{"kind":"rename".*?<\/board_edits>/);
+  assert.match(message, /<board_confirmed>\[\{"id":"a1","text":"PDFs have a text layer"\}\]<\/board_confirmed>/);
+  assert.doesNotMatch(message, /board_state|Vector index|"d1"/, "the board itself isn't sent with the message");
 });
 
 test("an agent is sent to the address the browser's request came in on, IPv6 included", () => {

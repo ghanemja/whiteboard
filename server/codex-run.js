@@ -50,10 +50,11 @@ export class CodexRun extends Run {
       [
         "app-server",
         ...this.codex.args,
-        // This run's board, with only its update_board tool approved in advance.
+        // This run's board, with only its own two tools approved in advance.
         ...["-c", `mcp_servers.board.url=${toml(this.boardMcp.url)}`],
         ...["-c", `mcp_servers.board.bearer_token_env_var=${toml("WHITEBOARD_BOARD_TOKEN")}`],
         ...["-c", `mcp_servers.board.tools.update_board.approval_mode=${toml("approve")}`],
+        ...["-c", `mcp_servers.board.tools.read_board.approval_mode=${toml("approve")}`],
       ],
       { cwd: this.repo, env: { ...this.codex.env, WHITEBOARD_BOARD_TOKEN: this.boardMcp.token }, stdio: ["pipe", "pipe", "pipe"] },
     );
@@ -273,26 +274,26 @@ export class CodexRun extends Run {
   }
 
   // ---- the user's side ----
-  deliver(body, { state, edits, gate }) {
+  deliver(body, { confirmed, edits, gate }) {
     switch (body.type) {
       case "approve":
         if (!gate) return false;
         return this.answer(gate, {
           approve: true,
           message: edits
-            ? `The user approved the plan with these changes to the board:\n${edits}${state}\n\nApply them to the plan and the board with update_board, then build it.`
+            ? `The user approved the plan with these changes to the board:\n${edits}${confirmed}\n\nApply them to the plan and the board with update_board, then build it.`
             : "The plan is approved. Build it now: phase implementation, then verification, as your instructions say.",
         });
       case "revise":
       case "chat": {
         const said = body.type === "chat" ? `The user says: ${body.text}` : `The user changed the board:\n${edits}`;
-        if (gate) return this.answer(gate, { approve: false, message: `Not approved yet. ${said}${state}\n\nRevise the plan and the board with update_board to match, then end your turn.` });
-        this.say(`${said}${state}`).catch((err) => this.emit({ type: "error", message: err.message }));
+        if (gate) return this.answer(gate, { approve: false, message: `Not approved yet. ${said}${confirmed}\n\nRevise the plan and the board with update_board to match, then end your turn.` });
+        this.say(`${said}${confirmed}`).catch((err) => this.emit({ type: "error", message: err.message }));
         this.emit({ type: "turn" });
         return true;
       }
       case "edits":
-        this.say(`I changed the board:\n${edits}${state}\n\nRespond to these changes and update the code and the board to match.`).catch((err) => this.emit({ type: "error", message: err.message }));
+        this.say(`I changed the board:\n${edits}${confirmed}\n\nRespond to these changes and update the code and the board to match.`).catch((err) => this.emit({ type: "error", message: err.message }));
         this.emit({ type: "turn" });
         return true;
       case "permission": {
