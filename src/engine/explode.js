@@ -120,8 +120,8 @@ export function explodeLayout(groups, boxes, obstacles = []) {
 }
 
 // Excalidraw skeletons for the laid-out items: a leader, the icon, the name and kind. Ids `ex:<item>…`,
-// each item's elements in one group. `look` is the board's line style (hand-drawn or crisp).
-export function explodeSkeletons(items, { look = { strokeWidth: 2, roughness: 1 }, font = {} } = {}) {
+// each item's elements in one group, in the board's hand font. `look` is the board's line style.
+export function explodeSkeletons(items, { look = { strokeWidth: 2, roughness: 1 } } = {}) {
   const sk = [];
   for (const it of items) {
     const c = LAYER_COLOR[it.layer] ?? LAYER_COLOR.backend;
@@ -134,8 +134,8 @@ export function explodeSkeletons(items, { look = { strokeWidth: 2, roughness: 1 
     const [fx, fy] = it.from, [tx, ty] = it.to;
     sk.push({ type: "line", id: `${id}:lead`, x: fx, y: fy, points: [[0, 0], [tx - fx, ty - fy]], ...line, strokeWidth: 1.5, strokeStyle: "dashed", opacity: 70 });
     sk.push(...icon(it.icon, id, cx, cy, { line, fill, solid }));
-    sk.push({ type: "text", id: `${id}:n`, x: cx, y: cy, text: clip(it.name, 20), fontSize: 13, strokeColor: "#1b1b1f", groupIds: g, ...font, _c: [cx, cy + EX.ICON / 2 + 14] });
-    if (it.kind) sk.push({ type: "text", id: `${id}:k`, x: cx, y: cy, text: clip(it.kind, 22), fontSize: 11, strokeColor: c.stroke, groupIds: g, ...font, _c: [cx, cy + EX.ICON / 2 + 31] });
+    sk.push({ type: "text", id: `${id}:n`, x: cx, y: cy, text: clip(it.name, 20), fontSize: 13, strokeColor: "#1b1b1f", groupIds: g, _c: [cx, cy + EX.ICON / 2 + 14] });
+    if (it.kind) sk.push({ type: "text", id: `${id}:k`, x: cx, y: cy, text: clip(it.kind, 22), fontSize: 11, strokeColor: c.stroke, groupIds: g, _c: [cx, cy + EX.ICON / 2 + 31] });
   }
   return sk;
 }

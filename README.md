@@ -21,11 +21,11 @@ The app walks a newcomer through a run without hiding anything. **Hide tips** tu
 ![The plan gate with tips: the coach card says step 2 of 4 and what to do, orange circles ring the first decision and an open question on the board, and the color key sits under it](screenshots/first-time-help/2-plan-gate-tips-on-the-board.png)
 
 - **Coach.** A yellow card at the top of the panel says which step you're on (Describe → Plan → Build → Check) and what to do now, in a sentence or two.
-- **Tips on the board.** The first time a plan waits for you, orange circles ring its first decision and its first open question; the coach card says what to do with them, so there's one ask at a time. Click one to dismiss them. They're never exported or sent to the agent.
-- **Glass.** The board sits behind glass: clicks explain, nothing moves. **Pull down to edit** shows Edit the plan; **Submit** sends your changes and puts the glass back. Use this, Rename and Remove pull it down for you.
-- **Edit the plan.** With the glass down, a toolbar with words above the board: Select, Rename, Add a part, Connect, Remove, Add a note. Each picks the matching Excalidraw tool and says what to do next; the gestures (double-click, Delete, drawing) still work. Excalidraw's full toolbar is behind **Drawing tools**.
+- **Tips on the board.** The first time a plan waits for you, orange circles ring its first decision and its first open question; the coach card says what to do with them, so there's one ask at a time. A click inside a circle reaches what it circles; they go once you approve. They're never exported or sent to the agent.
+- **Glass.** The board sits behind glass: clicks explain, nothing moves. **Pull down to edit** (first in Edit the plan, above the board) lowers it and becomes **Glass back up**, in the same spot; **Submit** sends your changes and puts the glass back. Any Edit the plan button, and Use this, Rename and Remove on a card, pull it down for you.
+- **Edit the plan.** A toolbar with words above the board: Select, Rename, Add a part, Connect, Remove, Add a note. Each picks the matching Excalidraw tool and says what to do next; the gestures (double-click, Delete, drawing) still work. Excalidraw's full toolbar is behind **Drawing tools**.
 - **Click to explain.** Select a part, a ◇, an arrow or a question and a card says what it is in plain words (what a service is, its status, routes, files, decisions, connections), with its actions as buttons: Rename, Remove, Ask about it, See the code; for a decision, **Use this** on each option, Ask why and Reject it; for a question, its answers.
-- **Plain words.** Symbols come with a word: receipts read "✓ checked", "✗ not true", "? can't tell"; the panel's tabs are **Chat & log** and **Plan details**, with counts like "2 for you"; a key under the Pictures board says what the colors mean; a command prompt says what the command is for and why you're asked.
+- **Plain words.** Symbols come with a word: receipts read "✓ checked", "✗ not true", "? can't tell"; the panel is **Plan details**, with counts like "2 for you"; a key under the Pictures board says what the colors mean; a command prompt says what the command is for and why you're asked.
 
 ## Views and exports
 
@@ -41,15 +41,15 @@ The bar above the board shows the same plan other ways:
   | Database | Each data store's tables (an ER diagram): columns and types, PK/FK/UK keys, crow's-foot relations | Read-only |
   | Sequence | One flow as a UML sequence diagram: lifelines, numbered messages, replies dashed | Read-only |
 
-  The editable ones redraw the same board, so steering works in all three. C4, Data flow, Database and Sequence use the official look: square boxes, 1 px lines, a plain typeface and a Key. Status is color everywhere.
-- **Color by layer.** On the whole board each part sits on a soft plate in its layer's color: Frontend blue, Backend violet, Data teal, ML orange, External grey (the key under the board has a Layers row). The pictogram keeps its status color.
+  The editable ones redraw the same board, so steering works in all three. Every notation keeps its own shapes (C4's boxes and tags, data flow's processes and stores, ER tables with crow's feet, sequence lifelines) and is drawn in Excalidraw's one hand-drawn look: the same sketchy lines and hand font as Pictures. C4 and Data flow draw their own key under the diagram. Status is color everywhere.
+- **Color by layer, in every view.** Each part has its layer's color wherever it's drawn: Frontend blue, Backend violet, Data teal, ML orange, External grey. In Pictures, C4 and Data flow it sits on a soft plate in that color (the pictogram or box on it keeps its status color); a data store's tables sit on its plate in Database; a participant and its lifeline take it in Sequence; Zoom into and a pinned view use it too, and so do the Mermaid exports. The key under the board has a Layers row (under Database and Sequence, it's the whole key).
 - **Zoom into** opens one **layer** (Frontend, Backend, Data, ML, External) in place, on the same board: nothing moves or swaps, the other layers fade, and each of its components bursts into what it's made of, as small icons in the layer's colors on dashed leader lines: a browser window for a page, a plug for a route, a gear for a step, a clock for a job, a sparkle for a model, a magnifier for an index, a grid for a table, a page for a stored file, a parcel for a library. The camera zooms to fit. **ML** gathers the model pipeline even where its steps live inside backend components (their pieces keep the ML color). It stays open while the agent works and in every editable notation (Pictures, C4, Data flow); click a piece to open its component's card. **Look inside** on a part's card opens its layer; **Whole system** closes it.
 
 ![Zoom into Backend, in place: the API server and the ingest worker burst into their routes, steps, job and libraries; the other layers fade](screenshots/zoom/4-backend-layer.png)
 
 - **+ Pin this view** (beside the board's tabs) keeps what the board shows open in its own window over it. Pin C4, switch the board to Pictures, pin Database: several views at once, each up to date with the plan. Drag a window by its title, resize it from its corner, close it with **−**.
 
-![C4 and Database pinned over the board, which shows Pictures](screenshots/views/pinned-c4-and-database.png)
+![C4 and Database pinned over the board, which shows Pictures: the same layer colors and the same hand-drawn look in all three](screenshots/views/pinned-c4-and-database.png)
 
 **Flows & export**, beside the board tabs:
 
@@ -72,7 +72,7 @@ npm run dev                  # http://localhost:5199
 ```
 
 - **Nothing set:** a scripted demo plays.
-- **With a model** ([Models](#models): a key for Anthropic's API, or a URL for anything else): the repo field starts at the sandbox (or `AGENT_REPO`); point it at any local folder, describe a task, start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
+- **With a model** ([Models](#models): a key for Anthropic's API, or a URL for anything else): the repo field starts at the sandbox (or `AGENT_REPO`); type any local folder, **Browse** for one (git repos are marked), or **Clone** a git URL into `sandbox/`; then describe a task and start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
 - **Saved runs:** `cp fixtures/recordings/* recordings/` adds three real runs under "Saved boards".
 - **Tests:** `npm test`.
 - **Settings** (`.env.local`): `AGENT_URL`, `AGENT_KEY`, `AGENT_MODEL` ([Models](#models)), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo), `AGENT_ENGINE=codex` to run [Codex](#codex) instead of Claude.
@@ -163,11 +163,11 @@ The board shows what is being built; the **Plan** tab shows why.
 - **Goal:** one line on what the task is for.
 - **Architecture:** each component with its libraries and versions, the interface it exposes (routes, functions, tables) and the files that own it. On the board, libraries are a small caption under the pictogram.
 - **Connections:** how two parts talk (HTTP, queue, SQL, call…) and the exact API on that edge. On the board, the protocol is a short tag on the arrow.
-- **Decisions:** the few technical choices that shaped the plan. Each says what was chosen, the real alternatives it beat, why (the deciding reason and the cost accepted), evidence from the repo, which components it affects and which earlier decisions it builds on. On the board each is a numbered diamond (D1, D2…) on the component it affects most, with dotted ties to the others: dashed while proposed, solid once you approve, blue when changed, grey when rejected.
+- **Decisions:** the few technical choices that shaped the plan. Each says what was chosen, the real alternatives it beat, why (the deciding reason and the cost accepted), evidence from the repo, which components it affects and which earlier decisions it builds on. On the board each is a numbered diamond (D1, D2…) on the component it affects most: dashed while proposed, solid once you approve, blue when changed, grey when rejected. A small circle on its shoulder is its check (below): a dashed **?** until it has run, then ✓ or ✗. The circle pulses orange while the decision is in progress: a part it shapes is being built, or the run is verifying and its check has no result yet. Point at a diamond (or select it) and dotted ties show the other components it affects; they go when you move away.
 
 To push back, **Ask why** on a decision starts a message ("About D1 …") for you to finish; on the board, pick another of its options or delete the diamond to reject it. When the agent changes a decision, because you challenged it or because verification proved it wrong, the card keeps the old choice struck through under **Before** and says what caused the change under **Because**. Selecting a component on the board scrolls Plan details to it.
 
-Every decision also names its **check**: how we'll know it was right, usually a test by name. Its result is drawn on the diamond: ✓ proven, ✗ failed. The agent reports proofs after running the tests, and the server compares them with the test runner's own output (node --test, Jest/Vitest, pytest -v, go test -v). Where the output disagrees, the output wins and the agent is told. Later test runs keep re-checking, so a regression crosses a diamond again. A decision whose choice changes goes back to unchecked.
+Every decision also names its **check**: how we'll know it was right, usually a test by name. Its result is drawn in the circle on the diamond: ✓ proven, ✗ failed (a dashed ? until then). The agent reports proofs after running the tests, and the server compares them with the test runner's own output (node --test, Jest/Vitest, pytest -v, go test -v). Where the output disagrees, the output wins and the agent is told. Later test runs keep re-checking, so a regression crosses a diamond again. A decision whose choice changes goes back to unchecked.
 
 The **Reasoning** tab draws each decision as a chain: evidence (files from the repo, facts, your request, a failed check) → the decision → the components it shapes → its proof. Dashed purple links show which decisions build on which. It's drawn from the decisions, so it's read-only: pan and zoom it, and click a row to open that decision in Plan details. The tab itself counts the decisions and how many are proven (✓) or failed (✗).
 
@@ -184,11 +184,11 @@ Waits longer than 15 seconds (reading the plan, a permission you hadn't answered
 
 Don't take the agent's word for it. Glyphs and counts, details on hover:
 
-- **Receipts.** After a checkable claim: ✓ checked, ✗ not true (with the one wrong thing, e.g. "✗ not true: README.md"), ? can't tell. Test claims vs the runner's counts, file claims vs git, "I ran X" vs the commands run. ✗ comes only from the runner or git. Chat & log tab: ✗ n not true.
+- **Receipts.** After a checkable claim: ✓ checked, ✗ not true (with the one wrong thing, e.g. "✗ not true: README.md"), ? can't tell. Test claims vs the runner's counts, file claims vs git, "I ran X" vs the commands run. ✗ comes only from the runner or git. They show on what it said wherever the panel shows it (its reply, a line you opened), and in the downloaded log.
 - **What it changed.** Git, not the agent's summary: the working tree vs how the run found it (untracked included, your index untouched). Components show +/− blocks; Plan details → **Code** has every diff by component, plus files **not on board**.
 - **Questions and assumptions.** "?" and "≈" sticky notes. Plan details → **For you**: pick an option or type (↵), confirm ✓ or correct ✎. Ones only said in prose: **In passing**.
-- **Highlights only.** Chat & log → Highlights only: keeps sentences that drew, claimed, asked or assumed; the rest fold to "⋯ n".
-- **Review.** When a run ends: failed/unchecked checks, false or unverified claims, open questions, changed and unowned files, commits, last test run, denied commands. Each chip links to its card, sentence or diff.
+- **The log.** The panel shows the plan, not a chat log. What it says to you shows at the top of the panel: its reply to what you typed ("⋯ n" opens a long one), and errors. **⇩** in the panel's toolbar downloads the whole log as Markdown: what you asked and changed, what it said (with receipts) and did, and the review.
+- **Review.** When a run ends, at the top of the panel: failed/unchecked checks, false or unverified claims, open questions, changed and unowned files, commits, last test run, denied commands. Each chip links to its card, the diff, or the sentence (shown above the review with its receipt).
 
 The demo shows all five, including a false claim (a README it never touched) and a question buried in its summary.
 
@@ -201,11 +201,15 @@ Every run is saved in `recordings/` (git-ignored) while it happens:
 
 The start screen lists saved boards. **Replay** plays a run back on the board at its own rhythm (long waits are shortened, and pause and speed work as usual). **Open** jumps straight to the finished board. **Decisions** opens the decision log. A finished live run also links to its replay and decision log.
 
+**The board is a living document.** **Done** on a saved run keeps its board (played to the end) instead of clearing it. With an API key, whatever you send next (a message, board edits, a sticker) starts a new session on that board: the server rebuilds the board for itself from the saved run, gives the agent that run's decision log as its handover (plus the board as it is now), and records the new run as carrying on from it (`from` in its recording, "Carries on from" in its decision log). The agent keeps the parts, decisions and ids and changes what the new task needs; new decisions continue the numbering. Replaying or opening the new run starts from the board it carried on from, all the way back. A live run whose agent has stopped (idle, ⏹, or an error) carries on the same way. ↺ still starts over from an empty board.
+
 In a replay the Timeline shows the whole run, with what hasn't happened yet faded and the now line following playback. It's a scrubber: click any moment (a mark, or anywhere along the axis) and the board, the phases and the panel jump to that point and pause there; play continues from it. Recordings made before the server recorded what caused a change still show it: a decision that changed right after you asked for something changed because of you (the Plan and Why tabs say so too), and a test run the agent said had failed counts as failed.
 
-The panel lists what the agent actually did (files read and edited, commands and whether they passed) and links each row to the component it touched. Hover a sentence or row to highlight it on the board; select a component to find what changed it.
+Select a component to see what changed it: its card lists its files with +/−, and **See the code** opens the diffs in Plan details. The downloaded log (**⇩**) lists everything the agent read, edited and ran, and whether each command passed.
 
-The agent loads the repo's project settings and `CLAUDE.md`, not your global Claude Code settings or hooks. It's told never to push, publish or deploy; "Ship" means tests pass and docs match.
+The agent loads the repo's project settings and `CLAUDE.md`, not your global Claude Code settings or hooks. A repo's own settings can run commands (hooks) as soon as the agent starts there, so only run it on, or clone, repos you trust. It's told never to push, publish or deploy; "Ship" means tests pass and docs match.
+
+**Clone** runs `git clone` with no shell and never waits for a password: a private repo works only if git is already signed in (an SSH key, or a saved login). It takes https://, ssh://, git:// and `git@host:path` URLs.
 
 ## How it fits together
 
@@ -217,8 +221,10 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `server/codex-run.js` | `CodexRun`: Codex as the agent, through `codex app-server` (JSON-RPC over stdio). Plans in a read-only turn (the gate), builds in a workspace-write one; its command approvals are the permission prompts |
 | `server/board-mcp.js` | The same tool as an MCP server over HTTP, for agents other than Claude (Codex, opencode): each run's board at `/api/runs/<id>/mcp`, behind that run's bearer token |
 | `server/changes.js` | What a run changed in the repo, from git: working-tree snapshots through a throwaway index, and their diff |
+| `server/repos.js` | Picking the repo: a folder's subfolders for Browse (names only, git repos marked), and Clone (`git clone` into `sandbox/`) |
 | `server/instructions.js` | What the agent is told about the board (appended to the Claude Code system prompt) |
-| `src/agent/live.js` | Browser side of `/api/runs`: start, follow the event stream, send approvals and messages |
+| `src/agent/live.js` | Browser side of `/api/runs`: start, follow the event stream, send approvals and messages, list folders, clone |
+| `src/RepoPicker.jsx` | The start screen's Repository field, with Browse and Clone |
 | `src/engine/session.js` | Routes agent events to the board and the transcript; plan gate and permission state; keeps the run's timed events for the Timeline and seeks replays |
 | `src/engine/board.js` | Owns the three Excalidraw canvases: the Architecture pictograms and decision diamonds, the Why chains, the Timeline, highlighter marks, and `diff()` of your edits |
 | `src/engine/timeline.js` | The Timeline as pure functions: `buildTimeline(events)` (lanes, marks, causes, the time axis with compressed waits), `timeToX`, `drawTimeline` (Excalidraw skeletons) |
@@ -236,7 +242,7 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `src/engine/parser.js`, `player.js`, `src/agent/script.js`, `replies.js` | The scripted demo (inline `<board/>` tags typed out at reading pace) |
 | `scripts/make-sandbox.mjs` | Creates the sample repo |
 | `scripts/tour-check.cjs` | Takes the tour end to end in headless Chromium (Playwright) with screenshots, then checks the plain demo is unchanged |
-| `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, stickers and the red pen, the tour's steps, the views and their Mermaid exports, the decision log's diagrams, and git change tracking on a throwaway repo |
+| `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, stickers and the red pen, the tour's steps, the views and their Mermaid exports, the decision log's diagrams, git change tracking on a throwaway repo, and picking the repo (folder listing, git URLs, clones from a throwaway repo) |
 
 Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node` (with `layer`), `part`, `edge`, `flow`, `table`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner, and `ask` (a command prompt) and `tour` (a checkpoint) that only do something during the tour.
 

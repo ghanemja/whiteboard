@@ -49,7 +49,7 @@ The rest of this guide covers the same run in more detail. Do the tour first, th
 ![The board on the left, the panel on the right, and the phase road along the top](../screenshots/first-time-help/2-plan-gate-tips-on-the-board.png)
 
 1. **The board (left).** The plan as a drawing. Each picture is a part of the system; arrows show which part talks to which.
-2. **The panel (right).** The agent talks here, and you answer. It has two tabs: **Chat & log** (what it said and did) and **Plan details** (the plan in words: open a section to read it; **Decisions** is last, with a bell when some need a look). The box at the bottom is for typing to it.
+2. **The panel (right).** **Plan details**: the plan in words (open a section to read it; **Decisions** is last, with a bell when some need a look). When the agent answers something you typed, its reply shows at the top. The box at the bottom is for typing to it. **⇩** at the top downloads the whole log (what it said and did) as a Markdown file.
 3. **The phase road (top).** Where the run is: **Plan → Build → Verify → Ship**, with a dot for each task.
 
 ### Legend
@@ -72,7 +72,7 @@ Diamonds (◇ D1, D2, …) are the agent's technical decisions. **Click one to s
 
 ![D1 clicked: its other options fan out beside it on the board, and the card lists them, each with Use this](../screenshots/tutorial/decision-options.png)
 
-**Use this** switches to that option (see section 5). Dashed diamonds are *proposed*: not approved yet.
+**Use this** switches to that option (see section 5). Dashed diamonds are *proposed*: not approved yet. The small circle on a diamond's corner is its check: a dashed **?** until it has run. **Point at a diamond** to see dotted lines to the other parts it shapes.
 
 ### Approve
 
@@ -82,13 +82,13 @@ When you're happy with the plan, press **Approve plan & build** (or **Approve wi
 
 ### It builds
 
-Now it edits files by itself. Parts turn **orange** while it changes them. In **Chat & log**, hover any sentence: the parts that sentence changed light up on the board. Under each part, small green and red blocks show how many lines it added and removed.
+Now it edits files by itself. Parts turn **orange** while it changes them, and the circle on each decision about them pulses orange. Click the orange part: its card says what it's changing, and **See the code** opens the diff. Under each part, small green and red blocks show how many lines it added and removed.
 
-![A part being built, in orange; the tour card points at Chat & log](../screenshots/tour/07-build-hover-a-line.png)
+![A part being built, in orange, circled; the tour card says to click it](../screenshots/tour/07-build-click-a-part.png)
 
 ### It tests (verify)
 
-Each decision came with a check. When it runs the tests, each ◇ gets a ✓ (passed) or ✗ (failed). In the demo, D2 ("how PDFs are split") fails: the check wanted the right page for 45 of 50 questions, and it got 41. So the agent **changes D2** and tests again: 47 of 50, ✓.
+Each decision came with a check. While it tests, the circles still waiting for a result pulse; then each ◇'s circle shows ✓ (passed) or ✗ (failed). In the demo, D2 ("how PDFs are split") fails: the check wanted the right page for 45 of 50 questions, and it got 41. So the agent **changes D2** and tests again: 47 of 50, ✓.
 
 Open the **Reasoning** tab to see the reasoning as a chain: **evidence → decision → what it shapes → proof**. D2's row shows the failed check as the reason it changed.
 
@@ -104,11 +104,11 @@ You don't have to type to change its mind. **Edit the board**, and your changes 
 
 ### Pull the glass down
 
-The board sits **behind glass**. You can click anything to learn what it is, but nothing moves by accident. To change the plan, press **Pull down to edit** at the top of the board: the glass slides away and **Edit the plan** appears. **Submit** sends your changes and puts the glass back. **Glass back up** puts it back without sending.
+The board sits **behind glass**. You can click anything to learn what it is, but nothing moves by accident. To change the plan, press **Pull down to edit**, the first button in **Edit the plan** above the board: the glass slides away and the same button turns into **Glass back up**, which puts it back without sending. **Submit** sends your changes and puts the glass back too.
 
-![The board behind glass, with the Pull down to edit tab](../screenshots/glass/1-behind-glass.png)
+![The board behind glass, with Pull down to edit at the left of Edit the plan](../screenshots/glass/1-behind-glass.png)
 
-Buttons on a card that change the plan (**Use this**, **Rename**, **Remove**) pull the glass down for you.
+Buttons that change the plan (**Use this**, **Rename**, **Remove** on a card, or any **Edit the plan** button) pull the glass down for you.
 
 ### Pick another option for a decision
 
@@ -118,7 +118,7 @@ Click a ◇, then press **Use this** next to one of the other options. Or drag o
 
 ### Use the Edit the plan toolbar
 
-With the glass down, **Edit the plan** above the board has buttons with words:
+**Edit the plan** above the board has buttons with words:
 
 | Button | What it does |
 | --- | --- |
@@ -166,12 +166,12 @@ The bar above the board shows the same plan other ways. It never changes the pla
 | Draw as | What you see |
 | --- | --- |
 | **Pictures** | The pictograms (the default) |
-| **C4** | The official C4 container diagram: each part's type and technology |
+| **C4** | A C4 container diagram: each part's type and technology |
 | **Data flow** | Processes, data stores and outside services, with the data on each arrow |
 | **Database** | The tables each data store holds: columns, keys, and how they relate (an ER diagram) |
 | **Sequence** | One request, step by step, as a sequence diagram (pick the flow under **Flows & export**) |
 
-Each part sits on a colored plate: that's its **layer** (blue Frontend, violet Backend, teal Data, orange ML, grey External; the key under the board says which is which).
+Each part sits on a colored plate: that's its **layer** (blue Frontend, violet Backend, teal Data, orange ML, grey External; the key under the board says which is which). The colors are the same in every view, and so is the hand-drawn look, so Backend is violet whether you read Pictures, C4, Database or Sequence.
 
 **Zoom into** opens one layer right there on the board, so you see what its parts are made of. Nothing moves: the other layers fade, and each of the layer's parts bursts into small pictures in the same color, joined by dashed lines: pages (a browser window), routes (a plug), steps (a gear), jobs (a clock), models (a sparkle), tables (a grid), stored files (a page), libraries (a parcel). The board zooms to fit. You can still edit it, and clicking a piece tells you about its part.
 
@@ -208,17 +208,15 @@ Agents can be wrong about their own work, and they say so confidently. So the ap
 
 ### Receipts
 
-Sentences that claim something checkable get a receipt in Chat & log:
+Sentences that claim something checkable get a receipt (in its reply at the top of the panel, on a line you open from the review, and in the downloaded log):
 
 - **✓ checked:** the record backs it up.
 - **? can't tell:** nothing in the record says either way.
 - **✗ not true:** the record contradicts it.
 
-The **Chat & log** tab shows how many are not true ("✗ 1 not true").
-
 ### The Review card
 
-When the run ends, a **Review** card at the end of Chat & log lists what to look at, worst first. In the demo, the agent says it "documented the setup in README.md", but no README.md changed. That's the ✗ **False claim** row. Click its link to jump to the sentence.
+When the run ends, a **Review** card at the top of the panel lists what to look at, worst first. In the demo, the agent says it "documented the setup in README.md", but no README.md changed. That's the ✗ **False claim** row. Click its link to see the sentence, with its receipt, above the review.
 
 ![The Review card with the False claim row ringed](../screenshots/tour/10-find-what-isnt-true.png)
 
@@ -245,6 +243,10 @@ Every run is recorded. The start screen lists them under **Saved boards**. With 
 - **Open** shows the board as it ended.
 - **Decisions** opens the **decision log**: a readable file with the final plan (goal, parts, connections, each decision with why, its check and its proof) and a timeline of who decided what, and when. It's saved next to the recording as `recordings/<id>.decisions.md`, so you can paste it into a pull request.
 
+### Carry on from a board
+
+The board is a living document: the next session picks up where the last one stopped. Press **Done** on a saved run and its board stays (played to the end). With an API key, type what's next or edit the board: a **new session** starts from this board. The agent gets the last run's decision log as its handover and keeps the same parts and decisions, changing only what the new task needs. The new run is saved too, and its decision log says which run it carried on from; replaying it starts from this board. The same happens when a live run's agent has stopped: type below to carry on.
+
 ![A saved run reopened on its Timeline, with the Decision log button](../screenshots/tutorial/replay-timeline.png)
 
 ## 10. Your own task (needs an API key)
@@ -257,6 +259,15 @@ To run a real agent instead of the demo:
 
 Now the start screen asks **What should the agent do?** The repository field starts at the practice repo (`sandbox/linkshort`, a tiny URL shortener with tests). Pick one of the example tasks, like "Let links expire after a given number of days", or describe your own. Everything from sections 4–9 works the same, except the commands are real now, so read each prompt. To reset the practice repo, run `npm run sandbox` again.
 
+To work on another repo, use the two buttons beside the field:
+
+- **Browse** shows your folders. Click one to go in, **Up** to go back; repos are marked **git**. **Use this folder** picks the one you're in.
+- **Clone** takes a git URL, like `https://github.com/octocat/Hello-World.git`, clones it into `sandbox/` and picks it. A private repo works only if git is already signed in (an SSH key or a saved login): the app never asks for a password.
+
+![The start screen with Browse open on sandbox/: a cloned repo and the practice repo, both marked git](../screenshots/tutorial/pick-a-repo.png)
+
+Only use repos you trust: the agent loads a repo's own settings, and those can run commands.
+
 A run costs about $0.20–0.40.
 
 To use OpenAI's Codex instead of Claude: install it (`npm i -g @openai/codex`), sign in (`codex login`), put `AGENT_ENGINE=codex` in `.env.local`, and restart. Everything works the same; the README's *Codex* section has the details.
@@ -265,7 +276,7 @@ To use OpenAI's Codex instead of Claude: install it (`npm i -g @openai/codex`), 
 
 - The yellow **tips** card always says which step you're on and what to do. **Hide tips** puts it away; the **?** button brings it back.
 - Click anything on the board to learn what it is. The legend (section 3) says what each color and mark means.
-- **Highlights only** (in Chat & log) hides the narration and keeps what matters.
+- **⇩** (top of the panel) downloads the whole log, if you want to read everything it said and did.
 - **Draw as** and **Zoom into** (above the board) show the plan other ways; **Flows & export** shows one flow's steps and exports the view as Mermaid, SVG or PNG.
 - The glass over the board keeps clicks safe: pull it down to change things.
 - The ▶ / ⏸ button pauses the demo; **2×** changes its speed.

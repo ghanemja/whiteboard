@@ -100,17 +100,19 @@ let page;
   if (!/with changes/.test(label)) fail(`expected Approve with changes, got ${label}`);
   await page.click('[data-tour="approve"]');
 
-  // 7 Build: it pauses for you; hover a log line.
+  // 7 Build: it pauses for you; click the circled part being built.
   await waitStep(7);
   await page.waitForFunction(() => window.__wb.held === "build", null, { timeout: 60000 });
   const typed = await S(() => window.__wb.transcript.messages.length);
   await page.waitForTimeout(1200);
   if ((await S(() => window.__wb.player.paused)) !== true) fail("the demo should wait at the build checkpoint");
-  await shot("07-build-hover-a-line");
-  await page.click('[data-tour="log-tab"]');
-  await page.hover(".msg.agent .s.has-ops >> nth=-1");
+  if (!(await S(() => window.__wb.board.tips?.length))) fail("a note should circle the part being built");
+  await shot("07-build-click-a-part");
+  const api = await boardPoint(await S(() => window.__wb.board.model.nodes.api.elId));
+  await page.mouse.click(api.x, api.y);
+  await page.waitForSelector(".explain", { timeout: 5000 });
   await page.waitForTimeout(300);
-  await shot("07b-hovered-line-lights-the-board");
+  await shot("07b-its-card");
 
   // 8 The command prompt.
   await waitStep(8);
@@ -131,12 +133,7 @@ let page;
   await waitStep(10);
   await page.waitForFunction(() => window.__wb.board.model.phase === "complete" && !window.__wb.player.busy, null, { timeout: 120000 });
   await page.waitForTimeout(600);
-  // The review is at the end of Chat & log; if Plan details is open, the tour points at the tab first.
-  if (!(await page.$('[data-tour="untrue"]'))) {
-    const tabRing = await page.$$eval(".tour-tag", (t) => t.map((x) => x.textContent));
-    if (!tabRing.includes("The review is in here")) fail(`no ring on Chat & log: ${tabRing}`);
-    await page.click('[data-tour="log-tab"]');
-  }
+  // The review is at the top of the panel.
   await page.waitForSelector('[data-tour="untrue"]', { timeout: 10000 });
   await page.waitForTimeout(800);
   await shot("10-find-what-isnt-true");

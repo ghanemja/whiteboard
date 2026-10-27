@@ -3,7 +3,7 @@ import { createStreamParser } from "./parser";
 import { Player } from "./player";
 import { Transcript } from "./transcript";
 import { buildChatReply, buildEditsReply } from "../agent/replies";
-import { controlRun, followRun, loadRecording, startRun } from "../agent/live";
+import { controlRun, followRun, loadChain, startRun } from "../agent/live";
 import { BUILD_SCRIPT, DEMO_CHANGES, PLAN_SCRIPT } from "../agent/script";
 import { areaOf, describeEdit, gist } from "./timeline";
 import { receipt } from "./claims";
@@ -82,6 +82,7 @@ export class Session {
 
   resetAgent() {
     this.runId = null;
+    this.runOpen = false; // the agent behind runId is still there to talk to
     this.follow?.abort();
     this.follow = null;
     this.agentBusy = false;
@@ -310,6 +311,7 @@ export class Session {
   async reset() {
     const g = ++this.gen;
     if (this.runId) controlRun(this.runId, { type: "stop" }).catch(() => {});
+    this.parent = null;
     clearTimeout(this.replay?.timer);
     this.replay = null;
     this.resetAgent();
@@ -355,6 +357,7 @@ export class Session {
       const { id } = await startRun({ repo, brief });
       if (g !== this.gen) return controlRun(id, { type: "stop" }).catch(() => {});
       this.runId = id;
+      this.runOpen = true;
       this.follow = new AbortController();
       followRun(id, { onEvent: (e) => g === this.gen && this.onAgentEvent(e), signal: this.follow.signal }).catch((err) => {
         if (err.name !== "AbortError" && g === this.gen) this.agentError(err.message);
@@ -370,13 +373,14 @@ export class Session {
   async startReplay(id, { instant = false } = {}) {
     if (!(await this.reset())) return;
     const g = this.gen;
-    let events;
+    let chain;
     try {
-      events = await loadRecording(id);
+      chain = await loadChain(id);
     } catch (err) {
       return this.agentError(err.message);
     }
     if (g !== this.gen) return;
+    const events = chain.at(-1);
     const meta = {};
     for (const e of events) if (e.type === "meta" || e.type === "meta-update") Object.assign(meta, e);
     this.mode = "replay";
@@ -384,8 +388,11 @@ export class Session {
     this.brief = meta.brief ?? "";
     this.repo = meta.repo ?? "";
     this.recording = { id, ...meta };
+    // A run that carried on from a saved board starts from that board.
+    const base = chain.slice(0, -1).flat();
+    this.drawBase(base);
     this.transcript.addUserMessage({ kind: "chat", text: this.brief });
-    this.replay = { events: events.filter((e) => !["meta", "meta-update", "decision"].includes(e.type)), i: 0, paused: false, done: false, timer: null };
+    this.replay = { events: events.filter((e) => !["meta", "meta-update", "decision"].includes(e.type)), base, i: 0, paused: false, done: false, timer: null };
     if (instant) {
       this.instant = true;
       while (this.replay.i < this.replay.events.length) this.onAgentEvent(this.replay.events[this.replay.i++]);
@@ -431,6 +438,7 @@ export class Session {
       await this.board.init();
       if (g !== this.gen || r !== this.replay) return;
       Object.assign(this, { stage: "planning", gate: null, permission: null, agentBusy: false, result: null, caption: "", steerText: null, replayT: 0, changes: null, commits: 0 });
+      this.drawBase(r.base);
       this.transcript.addUserMessage({ kind: "chat", text: this.brief });
       r.i = 0;
     }
@@ -452,6 +460,80 @@ export class Session {
     this.permission = null;
     this.transcript.endMessage();
     this.stateChanged();
+  }
+
+  // The board of the saved runs a replayed one carried on from, drawn at once: their ops and
+  // approvals (their words and timelines stay in their own recordings and logs).
+  drawBase(events) {
+    for (const e of events) {
+      try {
+        if (e.type === "op" && e.op) this.logOp(e.op, { apply: true });
+        else if (e.type === "user" && e.kind === "approve") this.board.acceptDecisions();
+      } catch (err) {
+        console.warn("board op failed", e.op, err);
+      }
+    }
+  }
+
+  // ---- carrying on: the board is a living document ----
+  // Done on a replay keeps its board (played to the end) instead of clearing it, and so does a
+  // live run whose agent has stopped. What you send next starts a new session on that board: the
+  // server seeds it from the saved run (its board, and its decision log as the handover) and
+  // records it as carrying on from it, so a replay of the new run starts from this board too.
+  keepBoard({ live }) {
+    const r = this.replay;
+    if (!r) return;
+    clearTimeout(r.timer);
+    if (!r.done) {
+      this.instant = true;
+      while (r.i < r.events.length) this.onAgentEvent(r.events[r.i++]);
+      this.instant = false;
+      this.finishReplay();
+    }
+    this.events = this.timelineEvents; // the Timeline keeps the run
+    this.replayT = 0;
+    this.replay = null;
+    this.parent = { id: this.recording.id };
+    this.mode = live ? "agent" : "demo";
+    this.drawTimeline();
+    this.stateChanged();
+  }
+
+  // Agent mode with no agent to talk to (it stopped, or the board came from a saved run).
+  get carriesOn() {
+    return this.mode === "agent" && !this.runOpen && !!this.parent;
+  }
+
+  // A new session on this board, started by what you sent: a message, or board edits.
+  async carryOn({ text = "", decisions = [] }) {
+    const g = ++this.gen;
+    const from = this.parent.id;
+    const brief = text || decisions.map(describeEdit).join("; ");
+    this.follow?.abort();
+    this.resetAgent();
+    this.resetTimeline();
+    this.transcript.clear();
+    this.board.setChanges([]); // the repo as this session finds it is its starting point
+    this.mode = "agent";
+    this.stage = "planning";
+    this.brief = brief;
+    const m = this.transcript.addUserMessage(text ? { kind: "chat", text } : { kind: "edits", decisions });
+    this.events = [{ t: 0, type: "start", text: brief, msg: m.id }];
+    this.drawTimeline();
+    this.beginTurn();
+    try {
+      const { id } = await startRun({ repo: this.repo, brief, from, board_state: this.board.snapshot(), edits: wire(decisions) });
+      if (g !== this.gen) return controlRun(id, { type: "stop" }).catch(() => {});
+      this.runId = id;
+      this.runOpen = true;
+      this.parent = null;
+      this.follow = new AbortController();
+      followRun(id, { onEvent: (e) => g === this.gen && this.onAgentEvent(e), signal: this.follow.signal }).catch((err) => {
+        if (err.name !== "AbortError" && g === this.gen) this.agentError(err.message);
+      });
+    } catch (err) {
+      this.agentError(err.message);
+    }
   }
 
   toggleReplay() {
@@ -575,17 +657,26 @@ export class Session {
         if (e.reason === "idle") {
           this.transcript.endMessage();
           this.transcript.addNotice(
-            `The agent ${e.waitingOnUser ? "waited" : "sat idle"} ${e.minutes} minutes${e.waitingOnUser ? " for your answer" : ""} and stopped. Start over (↺) to run the task again; the repo keeps anything it already changed.`,
+            `The agent ${e.waitingOnUser ? "waited" : "sat idle"} ${e.minutes} minutes${e.waitingOnUser ? " for your answer" : ""} and stopped. Type below to carry on from this board in a new session; the repo keeps anything it already changed.`,
           );
         }
+        this.closeRun();
         break;
       case "closed":
         this.agentBusy = false;
         this.gate = null;
         this.permission = null;
+        this.closeRun();
         break;
     }
     this.stateChanged();
+  }
+
+  // A live run's agent is gone: what you send next carries on from its board (carryOn).
+  closeRun() {
+    if (this.mode !== "agent" || !this.runOpen) return;
+    this.runOpen = false;
+    this.parent = { id: this.runId };
   }
 
   agentError(message) {
@@ -661,6 +752,7 @@ export class Session {
 
   sendEdits(decisions) {
     this.board.markSent(decisions);
+    if (this.carriesOn) return this.carryOn({ decisions });
     const m = this.transcript.addUserMessage({ kind: "edits", decisions });
     this.demoEvent({ type: "user", kind: this.awaitingApproval ? "revise" : "edits", edits: wire(decisions), msg: m.id });
     if (this.mode === "agent") {
@@ -677,6 +769,7 @@ export class Session {
   }
 
   sendChat(text) {
+    if (this.carriesOn) return this.carryOn({ text });
     const m = this.transcript.addUserMessage({ kind: "chat", text });
     this.demoEvent({ type: "user", kind: "chat", text, msg: m.id });
     if (this.mode === "agent") {

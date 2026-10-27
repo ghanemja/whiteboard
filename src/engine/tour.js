@@ -8,12 +8,12 @@
 // ctx: {
 //   started, stage, phase, gate,        the demo has begun; "planning" | "building"; board phase; plan waits for you
 //   selected: [lid],                    what's selected on the Architecture board
+//   partOpens,                          parts clicked on the board so far (each opens its card)
 //   explainUse,                         the explain card shows a decision's "Use this" options
 //   edits,                              changes queued to send (board edits, stickers, picks)
 //   answered,                           questions answered so far
 //   permission, permissions,            a command prompt is showing; prompts answered so far
-//   hovers,                             Chat & log sentences hovered (each lights up what it changed)
-//   view, tab,                          board tab: "board" | "why" | "timeline"; panel tab: "activity" | "plan"
+//   view,                               board tab: "board" | "why" | "timeline"
 //   testCaused,                         a decision was changed because its check failed
 //   finished, reviewOpens,              the run is over (review card); review rows / red pen opened
 //   firstDecision, firstQuestion, building: ids to point at (or null)
@@ -94,10 +94,10 @@ export const TOUR = [
   {
     id: "build",
     title: "It builds: orange means being built",
-    text: "It edits files by itself now. Hover a sentence in Chat & log: the parts it changed light up on the board. (The demo is paused for you.)",
-    done: (c, s) => c.hovers > s.hovers || past(c, LATE),
-    dom: () => [{ sel: '[data-tour="log-tab"]', label: "Chat & log" }],
-    spot: (c) => [...(c.tab === "activity" ? [".transcript"] : []), BOARD], // the sentences to hover, and where they light up
+    text: "It edits files by itself now. Click the circled orange part: its card says what it's changing. (The demo is paused for you.)",
+    done: (c, s) => c.partOpens > s.partOpens || past(c, LATE),
+    board: (c) => (c.building ? [{ lid: `node:${c.building}` }] : []),
+    spot: (c) => (c.selected.some((l) => l.startsWith("node:")) ? [".explain"] : []), // its card, once open
     release: "build",
     clearSelection: true,
   },
@@ -125,9 +125,8 @@ export const TOUR = [
     text: "Agents can be wrong about their own work. The Review compares what it said with git and the test output. It claims it documented README.md, but no file like that changed: click that ✗ row, or the red pen mark on the board.",
     wait: (c) => (c.finished ? null : "Shipping… the review comes when it's done."),
     done: (c, s) => c.finished && c.reviewOpens > s.reviewOpens,
-    // The review is at the end of Chat & log: open that tab first if Plan details is showing.
-    dom: (c) =>
-      !c.finished ? [] : c.tab === "activity" ? [{ sel: '[data-tour="untrue"]', label: "✗ not true" }] : [{ sel: '[data-tour="log-tab"]', label: "The review is in here" }],
+    // The review sits at the top of the panel once the run is over.
+    dom: (c) => (c.finished ? [{ sel: '[data-tour="untrue"]', label: "✗ not true" }] : []),
     spot: (c) => (c.finished && c.view === "board" ? [BOARD] : []), // its red pen marks, on the Architecture board
     skip: "review",
   },

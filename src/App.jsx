@@ -4,11 +4,13 @@ import { Board, PHASES, STATUS, STICKERS, stickerItems } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
 import { AREAS, areaOf, fmt, STICKER_WORD } from "./engine/timeline";
-import { LAYER_COLOR, LAYERS, layerOf, openableLayers, tagCase, toDfdMermaid, toErMermaid, toInsideMermaid, toMermaid, toSequence } from "./engine/views";
+import { busyDecisions, LAYER_COLOR, LAYERS, layerOf, openableLayers, tagCase, toDfdMermaid, toErMermaid, toInsideMermaid, toMermaid, toSequence } from "./engine/views";
 import { buildReview, penMarks } from "./engine/review";
+import { logMarkdown } from "./engine/logfile";
 import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour, stepOf, targets as tourTargets, tourLength, waiting as tourWaiting } from "./engine/tour";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 import { TourCard, TourSpotlight } from "./Tour";
+import { RepoField } from "./RepoPicker";
 
 // Tasks that fit the sample repo (sandbox/linkshort, created by `npm run sandbox`).
 const EXAMPLES = [
@@ -66,6 +68,7 @@ const ICONS = {
   restart: <path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3M3.5 2.5v2.7h2.7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />,
   fit: <path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />,
   tour: <path d="M4 14V2.5M4 3h7.5l-1.8 2.7L11.5 8.5H4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />,
+  download: <path d="M8 2.5v8M4.8 7.5L8 10.7l3.2-3.2M3 13.5h10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />,
   tips: (
     <g fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="8" cy="8" r="6.2" />
@@ -153,48 +156,6 @@ function EditList({ decisions }) {
 }
 const editKey = (d) => `${d.kind}:${d.node ?? d.decision ?? d.elId ?? ""}:${d.to ?? d.name ?? d.text ?? ""}`;
 
-const phaseState = (key, current) => {
-  const cur = current === "complete" ? PHASES.length : PHASES.findIndex((p) => p.key === current);
-  const i = PHASES.findIndex((p) => p.key === key);
-  return cur === -1 ? "todo" : i < cur ? "done" : i === cur ? "current" : "todo";
-};
-
-const ACT = {
-  read: { icon: "◔", verb: "Read" },
-  search: { icon: "⌕", verb: "Searched" },
-  edit: { icon: "✎", verb: "Edited" },
-  write: { icon: "+", verb: "Created" },
-  command: { icon: "$", verb: "" },
-  tool: { icon: "·", verb: "Used" },
-};
-
-// One row of real work: what the agent read, edited or ran.
-function Activity({ a, linked, onHover, onFocus }) {
-  const meta = ACT[a.kind] ?? ACT.tool;
-  const many = a.labels.length > 1;
-  const label =
-    a.kind === "command" ? a.labels[0] : many ? `${meta.verb} ${a.labels.length} ${a.kind === "read" ? "files" : "patterns"}` : `${meta.verb} ${a.labels[0]}`;
-  const hasIds = a.ids.size > 0;
-  return (
-    <div
-      id={a.id}
-      className={["act", `act-${a.kind}`, hasIds && "has-ops", linked.has(a.id) && "linked"].filter(Boolean).join(" ")}
-      title={many ? a.labels.join("\n") : undefined}
-      onMouseEnter={() => hasIds && onHover([...a.ids])}
-      onMouseLeave={() => onHover([])}
-      onClick={() => hasIds && onFocus([...a.ids])}
-    >
-      <span className="act-icon" aria-hidden="true">{meta.icon}</span>
-      <span className="act-body">
-        <span className="act-label">{label}</span>
-        {a.summary && <span className="act-summary">{a.summary}</span>}
-      </span>
-      {a.ok === true && <span className="act-ok" aria-label="succeeded">✓</span>}
-      {a.ok === false && <span className="act-bad" aria-label="failed">✗</span>}
-    </div>
-  );
-}
-
 // A sentence's receipt: what the run's record says about its claims (src/engine/claims.js).
 const RC = { ok: "✓", unknown: "?", bad: "✗" };
 const RC_WORD = { ok: "checked", unknown: "can't tell", bad: "not true" };
@@ -209,104 +170,61 @@ function Receipt({ r }) {
   );
 }
 
-// Skim mode keeps the sentences that carry weight: they drew on the board, claim something
-// checkable, ask you something or state an assumption (and the one being written).
-const weighty = (s) => s.live || s.ops > 0 || s.claims?.length > 0 || s.asks || s.assumes;
-
-function AgentMessage({ m, phase, linked, onHover, onFocus, receipts, skim }) {
-  const [opened, setOpened] = useState(() => new Set()); // paragraphs expanded in skim mode
-  // Paragraphs of sentences, with phase headings and activity rows in between.
-  const blocks = [];
-  let para = null;
-  for (const it of m.items) {
-    if (it.type === "br") para = null;
-    else if (it.type === "phase" || it.type === "act") {
-      blocks.push(it);
-      para = null;
-    } else if (it.text) {
-      if (!para) blocks.push((para = { type: "p", sentences: [] }));
-      para.sentences.push(it);
-    }
-  }
-  const lastP = blocks.findLastIndex((b) => b.type === "p");
-  // Skim: paragraphs with nothing worth keeping fold, and folds next to each other merge into one.
-  const keep = (s) => weighty(s) || linked.has(s.id);
-  const view = [];
-  blocks.forEach((b, bi) => {
-    if (b.type === "p" && skim && !opened.has(bi) && !b.sentences.some(keep)) {
-      const last = view.at(-1);
-      if (last?.type === "fold") {
-        last.n += b.sentences.length;
-        last.bis.push(bi);
-      } else view.push({ type: "fold", n: b.sentences.length, bis: [bi] });
-    } else view.push({ ...b, bi });
-  });
-
+// The panel shows the plan, not the log (⇩ downloads that). What the agent says still reaches you
+// here, at the top: its reply to what you typed last, an error, or the one line of the run you
+// opened from the review, the red pen, the Timeline or Plan details.
+function Said({ head, tone, onClose, children }) {
   return (
-    <div className="msg agent">
-      <div className="who">
-        <span className="avatar">A</span>Agent
-        {m.streaming && <span className="typing">working…</span>}
+    <div className={["said", tone && `said-${tone}`].filter(Boolean).join(" ")} role={tone === "bad" ? "alert" : "region"} aria-label={head}>
+      <div className="said-h">
+        <span>{head}</span>
+        <button className="linkish" onClick={onClose} aria-label="Close" title="Close">
+          ✕
+        </button>
       </div>
-      {view.map((b) => {
-        const bi = b.bi;
-        if (b.type === "fold")
-          return (
-            <p key={`fold-${b.bis[0]}`} className="skimmed">
-              <button className="skim-gap" onClick={() => setOpened((o) => new Set([...o, ...b.bis]))} title={`${b.n} sentence${b.n === 1 ? "" : "s"} skim folded away: show them`}>
-                ⋯ {b.n}
-              </button>
-            </p>
-          );
-        if (b.type === "phase") {
-          const i = PHASES.findIndex((p) => p.key === b.key);
-          const st = phaseState(b.key, phase);
-          return (
-            <div key={bi} className={`section ${st}`}>
-              <span className="num">{st === "done" ? "✓" : i + 1}</span>
-              {PHASES[i]?.label}
-            </div>
-          );
-        }
-        if (b.type === "act") return <Activity key={b.id} a={b} linked={linked} onHover={onHover} onFocus={onFocus} />;
-        // Inside a paragraph, a run of sentences that carry no weight folds into "⋯ n", which opens it.
-        const all = !skim || opened.has(bi);
-        const parts = [];
-        for (const s of b.sentences) {
-          if (all || keep(s)) parts.push(s);
-          else if (parts.at(-1)?.gap) parts.at(-1).gap++;
-          else parts.push({ gap: 1, id: `gap-${s.id}` });
-        }
-        return (
-          <p key={bi} className={skim && !all ? "skimmed" : undefined}>
-            {parts.map((s) =>
-              s.gap ? (
-                <span key={s.id}>
-                  <button className="skim-gap" onClick={() => setOpened((o) => new Set(o).add(bi))} title="Show the whole paragraph">
-                    ⋯ {s.gap}
-                  </button>{" "}
-                </span>
-              ) : (
-                <span key={s.id}>
-                  <span
-                    id={s.id}
-                    className={["s", s.live && "live", linked.has(s.id) && "linked", s.ops > 0 && "has-ops", s.asks && "asks", s.assumes && "assumes"].filter(Boolean).join(" ")}
-                    title={s.asks ? "The agent asked you this" : s.assumes ? "An assumption the agent is working from" : s.ops > 0 && !s.live ? "Hover to see what this changed on the board; click to jump there" : undefined}
-                    onMouseEnter={() => s.ids.size && onHover([...s.ids])}
-                    onMouseLeave={() => onHover([])}
-                    onClick={() => s.ids.size && onFocus([...s.ids])}
-                  >
-                    <Rich text={s.text} />
-                  </span>
-                  {receipts?.get(s.id) && <Receipt r={receipts.get(s.id)} />}{" "}
-                </span>
-              ),
-            )}
-            {m.streaming && bi === lastP && <span className="caret" />}
-          </p>
-        );
-      })}
+      {children}
     </div>
+  );
+}
+
+// Sentences, each with its receipt; a long reply shows its first few, "⋯ n" opens the rest.
+function Sentences({ items, receipts, first = 3 }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? items : items.slice(0, first);
+  return (
+    <p>
+      {shown.map((it) => (
+        <span key={it.id}>
+          <Rich text={it.text} />
+          {receipts.get(it.id) && <> <Receipt r={receipts.get(it.id)} /></>}{" "}
+        </span>
+      ))}
+      {shown.length < items.length && (
+        <button className="skim-gap" onClick={() => setAll(true)} title="Show the rest">
+          ⋯ {items.length - shown.length}
+        </button>
+      )}
+    </p>
+  );
+}
+
+// One line of the run, opened from elsewhere: a sentence, your message, or a command it ran.
+function SaidLine({ line, receipts }) {
+  if (line.type === "s") return <Sentences items={[line]} receipts={receipts} />;
+  if (line.type === "act")
+    return (
+      <p className="said-act">
+        <code>{line.labels.join(", ")}</code> {line.ok === true ? <span className="act-ok">✓</span> : line.ok === false ? <span className="act-bad">✗</span> : null}
+        {line.summary && <span className="act-summary">{line.summary}</span>}
+      </p>
+    );
+  if (line.kind === "chat") return <p>{line.text}</p>;
+  if (line.kind === "permission") return <p>{{ deny: "Denied", "allow-all": "Allowed every command, starting with" }[line.decision] ?? "Allowed"} <code>{line.detail}</code></p>;
+  return (
+    <>
+      <p className="sub">{line.kind === "approve" ? `Approved the plan${line.decisions.length ? " with changes:" : ""}` : "Changed the board:"}</p>
+      {line.decisions.length > 0 && <EditList decisions={line.decisions} />}
+    </>
   );
 }
 
@@ -1106,27 +1024,32 @@ function Explain({ lid, model, live, onClose, onRename, onRemove, onAsk, onChall
   );
 }
 
-// What the colors mean, under the Pictures board (C4 and data flow draw their own key).
+// What the colors mean, under the Pictures board (C4 and data flow draw their own key). Under the
+// database and sequence diagrams only the layers apply: they color those too.
 const KEY = [["planned", "New"], ["built", "Exists"], ["building", "Being built"], ["verified", "Tested ✓"], ["failed", "Failed ✗"], ["live", "Shipped ★"]];
-function BoardKey({ model }) {
+function BoardKey({ model, layersOnly = false }) {
   const layers = LAYERS.filter((l) => Object.values(model?.nodes ?? {}).some((n) => layerOf(n) === l.key));
   return (
     <div className="board-key" aria-label="Key" data-tour="key">
-      <b>Key</b>
-      {KEY.map(([k, label]) => (
-        <span key={k}>
-          <i className="sw" style={{ borderColor: STATUS[k].stroke, background: STATUS[k].fill }} />
-          {label}
-        </span>
-      ))}
-      <span>
-        <i className="sw sw-dia" />
-        Decision, dashed until you approve
-      </span>
-      <span>
-        <i className="sw" style={{ borderColor: "#f08c00", background: "#fff4e6" }} />
-        Question for you
-      </span>
+      {!layersOnly && (
+        <>
+          <b>Key</b>
+          {KEY.map(([k, label]) => (
+            <span key={k}>
+              <i className="sw" style={{ borderColor: STATUS[k].stroke, background: STATUS[k].fill }} />
+              {label}
+            </span>
+          ))}
+          <span title="Its circle is its check: ? not run yet, ✓ passed, ✗ failed. It pulses while the work is in progress. Point at a ◇ to see the other parts it shapes.">
+            <i className="sw sw-dia" />
+            Decision, dashed until you approve
+          </span>
+          <span>
+            <i className="sw" style={{ borderColor: "#f08c00", background: "#fff4e6" }} />
+            Question for you
+          </span>
+        </>
+      )}
       {layers.length > 0 && (
         <span className="bk-layers" title="The plate behind each part: which layer it's in. Zoom into one to open it up.">
           <b>Layers</b>
@@ -1138,6 +1061,45 @@ function BoardKey({ model }) {
           ))}
         </span>
       )}
+    </div>
+  );
+}
+
+// The decisions in progress (busyDecisions): each one's status circle on the board pulses.
+// Excalidraw doesn't animate, so a CSS ring sits over the circle and follows the board as it pans,
+// zooms or redraws (api.onChange), moved straight on the DOM so nothing re-renders. It's not part
+// of the scene, so exports and the undo history never see it. Reduced motion: a still ring.
+function DecisionPulse({ api, ids }) {
+  const box = useRef(null);
+  const key = ids.join();
+  useEffect(() => {
+    if (!api || !key) return;
+    let last = null;
+    const place = (els, st) => {
+      const root = box.current;
+      const now = [els, st.scrollX, st.scrollY, st.zoom.value, st.offsetLeft, st.offsetTop];
+      if (!root || (last && now.every((v, i) => v === last[i]))) return;
+      last = now;
+      const r = root.getBoundingClientRect(), z = st.zoom.value;
+      for (const ring of root.children) {
+        const el = els.find((e) => e.id === `dec-${ring.dataset.id}-pf` && !e.isDeleted);
+        // Faded by a layer or flow filter: no pulse either.
+        ring.hidden = !el || el.opacity <= 50;
+        if (ring.hidden) continue;
+        const x = (el.x + el.width / 2 + st.scrollX) * z + st.offsetLeft - r.left;
+        const y = (el.y + el.height / 2 + st.scrollY) * z + st.offsetTop - r.top;
+        ring.style.transform = `translate(${x}px, ${y}px) scale(${z})`;
+      }
+    };
+    place(api.getSceneElements(), api.getAppState());
+    return api.onChange(place);
+  }, [api, key]);
+  if (!ids.length) return null;
+  return (
+    <div className="dec-pulses" ref={box} aria-hidden="true">
+      {ids.map((id) => (
+        <span key={id} className="dec-pulse" data-id={id} />
+      ))}
     </div>
   );
 }
@@ -1280,31 +1242,14 @@ export default function App() {
   const [phase, setPhase] = useState(null);
   const [decisions, setDecisions] = useState([]);
   const [theme, setTheme] = useState("light");
-  const [linked, setLinked] = useState(() => new Set());
   const [ownSel, setOwnSel] = useState(false); // only the board's own drawing is selected: no style panel
   const [speed, setSpeed] = useState(1);
   const [draft, setDraft] = useState("");
   const [repo, setRepo] = useState("");
   const [agent, setAgent] = useState(null); // { live, provider, model, effort, defaultRepo } from the dev server
   const [recordings, setRecordings] = useState([]);
-  const [tab, setTab] = useState("activity"); // "activity" | "plan"
-  // Skim: only the sentences that carry weight. Remembered per browser.
-  const [skim, setSkim] = useState(() => {
-    try {
-      return localStorage.getItem("wb-skim") === "1";
-    } catch {
-      return false;
-    }
-  });
-  const toggleSkim = () =>
-    setSkim((v) => {
-      try {
-        localStorage.setItem("wb-skim", v ? "0" : "1");
-      } catch {
-        /* private window: just this page */
-      }
-      return !v;
-    });
+  const [quote, setQuote] = useState(null); // the line of the run opened at the top of the panel (Said)
+  const [closed, setClosed] = useState(() => new Set()); // replies and errors you closed
   // Tips (the coach card and the circles it draws on the board) and Excalidraw's own drawing
   // tools: on and hidden by default, so a first run shows only what it needs. Remembered per browser.
   const remembered = (key, fallback) => {
@@ -1349,7 +1294,7 @@ export default function App() {
   };
   const [autoTour, setAutoTour] = useState(false); // start the tour once the session is ready
   const reviewOpens = useRef(0); // review rows and red-pen marks opened (the tour waits for one)
-  const lineHovers = useRef(0); // Chat & log sentences hovered to light up the board (and this one)
+  const partOpens = useRef(0); // parts clicked on the board (the tour's build step waits for one)
   const [tools, setTools] = useState(() => remembered("wb-tools", false));
   const toggleTools = () =>
     setTools((v) => {
@@ -1487,21 +1432,17 @@ export default function App() {
     // A fresh board (start over, a replay) forgets the opened layer: open it again.
     else if (b && inside && !(b.focus?.explode && b.focus.layer === inside)) b.setFocus({ layer: inside, explode: true });
   });
-  const tabRef = useRef(tab);
-  tabRef.current = tab;
   const [selLids, setSelLids] = useState(() => new Set()); // board selection, as logical ids
   const sentKeys = useRef(new Set());
   const diffTimer = useRef(null);
   const lastSel = useRef("");
   const scroller = useRef(null);
-  const stick = useRef(true);
 
   useEffect(() => {
     if (!api || !whyApi || !timelineApi || !diagramApi) return;
     // Fresh session: clear UI state that belonged to the previous one (e.g. after a hot reload).
     setPhase(null);
     setDecisions([]);
-    setLinked(new Set());
     setSpeed(1);
     setFocus(null);
     const board = new Board(api, { whyApi, timelineApi, diagramApi, onPhase: setPhase, style: styleRef.current });
@@ -1533,12 +1474,6 @@ export default function App() {
     };
   }, [api, whyApi, timelineApi, diagramApi]);
 
-  // Keep the transcript pinned to the bottom while streaming, unless the user scrolled up.
-  useEffect(() => {
-    const el = scroller.current;
-    if (el && stick.current && tabRef.current === "activity" && sessionRef.current?.transcript.messages.length) el.scrollTop = el.scrollHeight;
-  });
-
   const runDiff = useCallback(() => {
     diffTimer.current = null;
     const s = sessionRef.current;
@@ -1558,7 +1493,6 @@ export default function App() {
     if (stickers.length && s.mode !== "replay") {
       stickers.forEach((d) => sentKeys.current.add(d.key));
       s.sendEdits(stickers);
-      stick.current = true;
       fresh = fresh.filter((d) => d.kind !== "sticker");
     }
     setDecisions((prev) => (prev.map((d) => d.key).join() === fresh.map((d) => d.key).join() ? prev : fresh));
@@ -1566,45 +1500,30 @@ export default function App() {
     s.board.tidyAnswers();
   }, []);
 
-  // Show what these logical ids touched: their sentences and activity, and their Plan entries.
+  // Light up these logical ids' entries in Plan details, and bring the first into view.
   const showLinked = useCallback((lids) => {
-    const s = sessionRef.current;
-    if (!s) return;
-    const ids = s.transcript.sentencesTouching(lids);
-    setLinked(new Set(ids));
     setSelLids(new Set(lids));
-    // Bring the matching sentence (Activity) or plan entry (Plan) into view.
-    const target = tabRef.current === "plan" ? lids[0] && `plan-${lids[0]}` : ids.at(-1);
-    if (target) reveal(document.getElementById(target));
+    if (lids[0]) reveal(document.getElementById(`plan-${lids[0]}`));
   }, []);
-  // From the Timeline: open the Activity tab at your message, or at the command that ran the tests.
-  const focusInActivity = useCallback((id) => {
-    tabRef.current = "activity";
-    setTab("activity");
-    stick.current = false; // don't snap back to the bottom
-    setLinked(new Set([id]));
-    setTimeout(() => document.getElementById(id.startsWith("m-") ? `msg-${id}` : id)?.scrollIntoView({ block: "center", behavior: "smooth" }), 30);
+  // From the Timeline, the review or Plan details: that line of the run (a sentence, your message,
+  // a command) at the top of the panel.
+  const showSaid = useCallback((id) => {
+    setQuote(id);
+    scroller.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
-  // From the review card: a sentence in Activity, the diff, or a card in the Plan tab.
+  // From the review card: what it said, the diff, or a card in Plan details.
   const goReview = (lid) => {
     if (!lid) return;
     reviewOpens.current++;
     const [k, v] = lid.split(/:(.*)/s);
-    if (k === "sentence") return focusInActivity(v);
-    if (k === "code") {
-      tabRef.current = "plan";
-      setTab("plan");
-      return setTimeout(() => reveal(document.getElementById(v ? `plan-code:${v}` : "plan-code"), "start"), 30);
-    }
+    if (k === "sentence") return showSaid(v);
+    if (k === "code") return reveal(document.getElementById(v ? `plan-code:${v}` : "plan-code"), "start");
     focusInPlan([lid]);
   };
-  // From the header or the Why canvas: open the Plan tab at it.
+  // From the header or the Why canvas: Plan details, at it.
   const focusInPlan = useCallback(
     (lids) => {
-      if (!lids.length) return;
-      tabRef.current = "plan";
-      setTab("plan");
-      setTimeout(() => showLinked(lids), 30); // once the Plan tab has rendered
+      if (lids.length) showLinked(lids);
     },
     [showLinked],
   );
@@ -1631,6 +1550,7 @@ export default function App() {
           return;
         }
         const lids = s.board.logicalIdsFor(sel ? sel.split(",") : []);
+        if (lids.some((l) => l.startsWith("node:"))) partOpens.current++;
         showLinked(lids);
         setBoardSel(lids);
         // Restyling what the board draws does nothing (it's redrawn), so its style panel would only cover
@@ -1646,6 +1566,9 @@ export default function App() {
     },
     [runDiff, showLinked],
   );
+  // The pointer over the board: a ◇ under it shows its ties (Board.hoverAt), but not mid-drag, so
+  // nothing redraws under a move. Stable, like onChange.
+  const onPointerUpdate = useCallback(({ pointer, button }) => button !== "down" && sessionRef.current?.board.hoverAt(pointer.x, pointer.y), []);
 
   const s = sessionRef.current;
   const st = s?.state ?? { busy: false, paused: false, playing: false, thinking: false, thinkingFor: 0 };
@@ -1678,6 +1601,15 @@ export default function App() {
     flush();
   }
   const openQuestions = Object.values(s?.board.model.questions ?? {}).filter((q) => q.state === "open").length;
+  // What the panel shows of the log (Said): its words since the last thing you typed (not the task
+  // itself), the latest error since you last did anything, and the line you opened.
+  const lastYou = messages.findLastIndex((m) => m.role === "you");
+  const lastChat = messages.findLastIndex((m) => m.role === "you" && m.kind === "chat");
+  const answering = lastChat > 0 && lastChat === lastYou ? messages[lastChat] : null;
+  const reply = answering ? messages.slice(lastChat + 1).flatMap((m) => (m.role === "agent" ? m.items.filter((it) => it.type === "s" && it.text.trim()) : [])) : [];
+  const notice = messages.slice(lastYou + 1).findLast((m) => m.role === "notice");
+  const quoted = quote && (messages.find((m) => m.id === quote && m.role === "you") ?? messages.flatMap((m) => m.items).find((it) => it.id === quote));
+  const close = (id) => setClosed((c) => new Set(c).add(id));
   // Once the run is over: what needs a look.
   const finishedRun = !!s && messages.length > 0 && (s.mode === "replay" ? !s.state.replaying : s.mode === "agent" ? !!s.result && !s.state.busy : s.board.model.phase === "complete" && !s.state.busy);
   const review =
@@ -1691,6 +1623,11 @@ export default function App() {
       lastTest: (s.board.tl?.tests ?? []).filter((k) => k.ok != null).at(-1) ?? null,
       denied: messages.filter((m) => m.role === "you" && m.kind === "permission" && m.decision === "deny").map((m) => m.detail),
     });
+  // Something new at the top of the panel (the review, a reply, an error): scroll up to it.
+  const fresh = `${!!review}|${answering?.id ?? ""}|${notice?.id ?? ""}`;
+  useEffect(() => {
+    if (fresh !== "false||") scroller.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [fresh]);
   // The review, marked on the board in red pen: the part behind a false claim, a failed check.
   const pen = review ? penMarks({ model: s.board.model, claims: [...receipts].map(([id, r]) => ({ id, ...r })), ownerOf: (f) => s.board.ownerOf(f) }) : null;
   useEffect(() => {
@@ -1699,7 +1636,6 @@ export default function App() {
     if (pen) b.showPen(pen);
     else b.hidePen();
   });
-  const contradicted = [...receipts.values()].filter((r) => r.verdict === "bad").length;
   const project = s?.board.model.project;
   const agentMode = s?.mode === "agent";
   const replayMode = s?.mode === "replay";
@@ -1707,21 +1643,7 @@ export default function App() {
   const reviewing = !!s?.awaitingApproval;
   const permission = replayMode ? null : s?.permission;
   const recording = s?.recording;
-
-  // A plan waiting for approval opens on the Plan tab, so its reasoning is what you review.
-  useEffect(() => {
-    if (reviewing) setTab("plan");
-  }, [reviewing]);
-  // A finished run shows its review card, at the end of the activity.
-  useEffect(() => {
-    if (!finishedRun) return;
-    setTab("activity");
-    stick.current = true;
-  }, [finishedRun]);
-  // A fresh start goes back to the activity view.
-  useEffect(() => {
-    if (messages.length === 0) setTab("activity");
-  }, [messages.length === 0]);
+  const lastRun = s?.runId ?? s?.parent?.id; // the run on the board, live or kept
 
   // Challenge a decision: prefill the message box and put the cursor after it, once it has rendered.
   const caretToEnd = useRef(false);
@@ -1753,8 +1675,8 @@ export default function App() {
   const clearUi = () => {
     sentKeys.current.clear();
     setDecisions([]);
-    setLinked(new Set());
-    stick.current = true;
+    setQuote(null);
+    setClosed(new Set());
   };
   const runDemo = () => {
     if (!s) return;
@@ -1806,7 +1728,6 @@ export default function App() {
     s.board.setView(view);
     if (view === "why") {
       s.board.fitWhy();
-      if (allDecisions.length && messages.length) setTab("plan");
     }
     // It may have grown while hidden; refit unless you've framed it yourself (⛶ fits it again).
     if (view === "timeline" && s.board.tlFollow) s.board.fitTimeline();
@@ -1837,9 +1758,9 @@ export default function App() {
     const hit = s.board.timelineHit(x, y);
     if (!hit) return;
     if (replayMode && hit.t != null) return s.seekReplay(hit.t);
-    if (hit.msg) return focusInActivity(hit.msg);
+    if (hit.msg) return showSaid(hit.msg);
     const act = hit.tool && messages.flatMap((m) => m.items).find((it) => it.type === "act" && it.toolUseIds.includes(hit.tool));
-    if (act) return focusInActivity(act.id);
+    if (act) return showSaid(act.id);
     focusInPlan(hit.lids);
   };
   const sendEdits = () => {
@@ -1848,7 +1769,6 @@ export default function App() {
     s.sendEdits(decisions);
     setDecisions([]);
     setGlassUp(true);
-    stick.current = true;
   };
   // Approve the plan; any pending board edits go along and get folded in before building.
   const approve = () => {
@@ -1857,7 +1777,6 @@ export default function App() {
     s.approve(decisions);
     setDecisions([]);
     setGlassUp(true);
-    stick.current = true;
   };
   const togglePlay = () => {
     if (!s) return;
@@ -1868,8 +1787,15 @@ export default function App() {
     else if (st.paused) s.player.resume();
     else if (st.busy) s.player.pause();
     else if (s.awaitingApproval) approve();
+    else if (s.parent) replay(s.parent.id); // a kept board: watch the run it came from again
     else if (agentMode && s.brief) startTask(s.brief);
     else runDemo();
+  };
+  // Done: stop replaying and keep this board, to carry on from it (a living document).
+  const keepBoard = () => {
+    if (!s) return;
+    if (tour) exitTour();
+    s.keepBoard({ live: !!agent?.live });
   };
   const cycleSpeed = () => {
     const next = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
@@ -1883,7 +1809,17 @@ export default function App() {
     if (awaitingTask) return startTask(text);
     s.sendChat(text);
     setDraft("");
-    stick.current = true;
+  };
+  // The whole log, as Markdown: what you asked and changed, what it said and did, the review.
+  const downloadLog = () => {
+    if (!s || !messages.length) return;
+    const title = project || s.brief || "Run";
+    const when = new Date(recording?.startedAt ?? Date.now()).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    const md = logMarkdown({ title, mode: modeLabel, when, messages, receipts, review: review || null });
+    const file = title.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "run";
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([md], { type: "text/markdown" })), download: `${file}-log.md` });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
 
   let status = "Getting the board ready";
@@ -1901,6 +1837,7 @@ export default function App() {
   else if (awaitingTask) status = "Pick a repo and describe a task";
   else if (reviewing) status = "Plan ready. Review it on the board, then approve.";
   else if (decisions.length) status = "Your board changes are ready to send";
+  else if (s?.carriesOn) status = "Carry on: edit the board or type below. It starts a new session from this board.";
   else if (s?.result) status = `Done${s.result.cost != null ? ` · $${s.result.cost.toFixed(2)}` : ""}${s.result.turns ? ` · ${s.result.turns} turns` : ""}`;
   else if (phase === "complete") status = "Shipped. Edit the board to steer the next round.";
   else if (s && messages.length) status = "Idle";
@@ -1913,7 +1850,7 @@ export default function App() {
       ? {
           label: "Replay",
           title: st.replaying ? "You're watching a saved run" : "This saved run is over",
-          text: "Nothing here reaches an agent. On the Timeline tab, click any moment to jump there. Done goes back to the start.",
+          text: "Nothing here reaches an agent. On the Timeline tab, click any moment to jump there. Done keeps this board, so you can carry on from it.",
         }
       : awaitingTask
         ? {
@@ -1970,7 +1907,7 @@ export default function App() {
   };
   useEffect(() => {
     if (!editable || !glassUp) return;
-    const onBoard = (t) => !!t?.closest?.(".canvas.arch") && !t.closest(".explain, .board-submit, .glass-handle, button, input, textarea, select");
+    const onBoard = (t) => !!t?.closest?.(".canvas.arch") && !t.closest(".explain, .board-submit, button, input, textarea, select");
     const typing = (t) => !!t?.closest?.("input, textarea, select, [contenteditable]");
     let down = false;
     const handlers = {
@@ -2038,9 +1975,8 @@ export default function App() {
     answered: Object.values(model.questions).filter((q) => q.kind === "question" && q.state === "answered").length,
     permission: !!permission,
     permissions: messages.filter((m) => m.role === "you" && m.kind === "permission").length,
-    hovers: lineHovers.current,
+    partOpens: partOpens.current,
     view: boardView,
-    tab,
     testCaused: allDecisions.some((d) => d.cause?.who === "test"),
     finished: !!review,
     reviewOpens: reviewOpens.current,
@@ -2196,7 +2132,7 @@ export default function App() {
     : agentMode && st.busy ? "stop" : st.busy && !st.paused ? "pause" : "play";
   const playLabel = replayMode
     ? st.replaying ? (st.paused ? "Resume the replay" : "Pause the replay") : "Play the recording again"
-    : agentMode && st.busy ? "Stop the agent" : st.paused ? "Resume" : st.busy ? "Pause" : reviewing ? "Continue: approve the plan" : agentMode ? "Run the task again" : "Replay";
+    : agentMode && st.busy ? "Stop the agent" : st.paused ? "Resume" : st.busy ? "Pause" : reviewing ? "Continue: approve the plan" : s?.parent ? "Replay the run this board came from" : agentMode ? "Run the task again" : "Replay";
   const modeLabel = replayMode ? "Replay" : agentMode || awaitingTask ? "Agent" : "Demo";
   const modeTitle = agent?.live
     ? `Claude Agent SDK · ${agent.provider ?? "Anthropic API"} · ${agent.model} · effort ${agent.effort}`
@@ -2267,6 +2203,11 @@ export default function App() {
               <button className="icon" onClick={() => s?.board.fit(true)} title="Fit board to screen" aria-label="Fit board to screen">
                 <Icon name="fit" />
               </button>
+              {messages.length > 0 && (
+                <button className="icon" onClick={downloadLog} title="Download the log: what it said and did, and what you sent it (Markdown)" aria-label="Download the log">
+                  <Icon name="download" />
+                </button>
+              )}
               {!tips && !tour && (
                 <button className="icon" onClick={takeTour} title="Take the tour: a guided run of the demo" aria-label="Take the tour">
                   <Icon name="tour" />
@@ -2291,77 +2232,51 @@ export default function App() {
           )}
         </header>
 
-        {messages.length > 0 && (
-          <div className="tabs" role="tablist" aria-label="Panel view">
-            <button role="tab" aria-selected={tab === "activity"} className="tab" data-tour="log-tab" onClick={() => setTab("activity")} title="What the agent said and did, and what you sent it">
-              Chat &amp; log
-              {contradicted > 0 && (
-                <span className="tab-count bad" title={`${contradicted} thing${contradicted === 1 ? "" : "s"} the agent said that git or the test output contradicts`}>
-                  ✗ {contradicted} not true
-                </span>
+        <div className="transcript" ref={scroller}>
+          {messages.length > 0 && s && (
+            <>
+              {notice && !closed.has(notice.id) && (
+                <Said head="⚠ It stopped" tone="bad" onClose={() => close(notice.id)}>
+                  <p>{notice.text}</p>
+                </Said>
               )}
-            </button>
-            <button role="tab" aria-selected={tab === "plan"} className="tab" data-tour="plan-tab" onClick={() => setTab("plan")} title="The plan in words: its goal, parts, decisions, questions and code changes">
-              Plan details
-              {openQuestions > 0 ? (
-                <span className="tab-count ask" title={`${openQuestions} open question${openQuestions === 1 ? "" : "s"} or assumption${openQuestions === 1 ? "" : "s"} for you`}>
-                  ? {openQuestions} for you
-                </span>
-              ) : (
-                Object.keys(s?.board.model.decisions ?? {}).length > 0 && (
-                  <span className="tab-count" title="Technical choices the agent made">
-                    ◇ {plural(Object.keys(s.board.model.decisions).length, "decision")}
-                  </span>
-                )
+              {quoted && (
+                <Said head={quoted.type === "s" ? "It said" : quoted.type === "act" ? "It ran" : "You"} onClose={() => setQuote(null)}>
+                  <SaidLine line={quoted} receipts={receipts} />
+                </Said>
               )}
-            </button>
-          </div>
-        )}
-        {tab === "activity" && messages.length > 0 && (
-          <div className="skim-row">
-            <button className={`skim ${skim ? "on" : ""}`} aria-pressed={skim} onClick={toggleSkim} title="Hide the narration: keep what drew on the board, made a claim, asked you something or assumed something">
-              {skim ? "✓ " : ""}Highlights only
-            </button>
-          </div>
-        )}
-
-        <div
-          className="transcript"
-          ref={scroller}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-          }}
-        >
-          {tab === "plan" && messages.length > 0 && s && (
-            <PlanView
-              model={s.board.model}
-              phase={phase}
-              selected={selLids}
-              onHover={(ids) => s.setHover(ids)}
-              onFocus={(ids) => s.board.scrollTo(ids)}
-              onChallenge={challenge}
-              onPick={(d, i) => {
-                showView("board");
-                s.board.pickAlternative(d.id, i);
-              }}
-              onShowFlow={(id) => {
-                showView("board");
-                chooseFocus({ flow: id });
-              }}
-              canChallenge={!replayMode}
-              changes={s.board.changes}
-              commits={s.commits}
-              passing={passing}
-              onAnswer={(q, text) => {
-                s.answerQuestion(q, text);
-                stick.current = true;
-              }}
-              onConfirm={(q) => s.confirmAssumption(q)}
-              onCorrect={(q) => prefill(`About A${q.n} (${q.text}): `)}
-              onReply={(p) => prefill(`About “${clip(p.text, 70)}”: `)}
-              onShow={(id) => focusInActivity(id)}
-            />
+              {reply.length > 0 && !closed.has(answering.id) && (
+                <Said head="Its reply" onClose={() => close(answering.id)}>
+                  <Sentences key={answering.id} items={reply} receipts={receipts} />
+                </Said>
+              )}
+              {review && <ReviewCard rows={review} onGo={goReview} />}
+              <PlanView
+                model={s.board.model}
+                phase={phase}
+                selected={selLids}
+                onHover={(ids) => s.setHover(ids)}
+                onFocus={(ids) => s.board.scrollTo(ids)}
+                onChallenge={challenge}
+                onPick={(d, i) => {
+                  showView("board");
+                  s.board.pickAlternative(d.id, i);
+                }}
+                onShowFlow={(id) => {
+                  showView("board");
+                  chooseFocus({ flow: id });
+                }}
+                canChallenge={!replayMode}
+                changes={s.board.changes}
+                commits={s.commits}
+                passing={passing}
+                onAnswer={(q, text) => s.answerQuestion(q, text)}
+                onConfirm={(q) => s.confirmAssumption(q)}
+                onCorrect={(q) => prefill(`About A${q.n} (${q.text}): `)}
+                onReply={(p) => prefill(`About “${clip(p.text, 70)}”: `)}
+                onShow={showSaid}
+              />
+            </>
           )}
           {messages.length === 0 &&
             (awaitingTask ? (
@@ -2371,10 +2286,7 @@ export default function App() {
                   A real coding agent works in the repo below. It reads the code, draws its plan on the board and waits for you. Once
                   you approve, it builds and tests while the board keeps up. Edit the board at any point to steer it.
                 </p>
-                <label className="field" htmlFor="repo">
-                  <span>Repository</span>
-                  <input id="repo" value={repo} onChange={(e) => setRepo(e.target.value)} spellCheck="false" />
-                </label>
+                <RepoField value={repo} onChange={setRepo} />
                 {repo === agent?.defaultRepo && (
                   <>
                     <p className="note">This is the sample repo, a tiny URL shortener with tests. Try one of these:</p>
@@ -2402,7 +2314,7 @@ export default function App() {
             ) : (
               <div className="empty">
                 <p className="hand">The board fills in as the agent works.</p>
-                <p>Watch it plan, build, verify and ship a small app. Hover any sentence afterwards to see what it changed.</p>
+                <p>Watch it plan, build, verify and ship a small app. Click any part afterwards to see what it changed.</p>
                 {!tour && (
                   <div className="start-demo">
                     <button className="secondary" onClick={takeTour} title="A guided run of the demo: it waits while you try each step">
@@ -2422,56 +2334,6 @@ export default function App() {
                 <SavedRuns recordings={recordings} onReplay={(id) => replay(id)} onOpen={(id) => replay(id, { instant: true })} />
               </div>
             ))}
-          {(tab === "activity" ? messages : []).map((m) =>
-            m.role === "notice" ? (
-              <div key={m.id} className="msg notice" role="alert">
-                {m.text}
-              </div>
-            ) : m.role === "agent" ? (
-              <AgentMessage
-                key={m.id}
-                m={m}
-                phase={phase}
-                linked={linked}
-                onHover={(ids) => {
-                  if (ids.length) lineHovers.current++;
-                  s?.setHover(ids);
-                }}
-                onFocus={(ids) => s?.board.scrollTo(ids)}
-                receipts={receipts}
-                skim={skim}
-              />
-            ) : (
-              <div key={m.id} id={`msg-${m.id}`} className={["msg you", linked.has(m.id) && "linked"].filter(Boolean).join(" ")}>
-                <div className="who">You</div>
-                {m.kind === "chat" ? (
-                  <p>{m.text}</p>
-                ) : m.kind === "approve" ? (
-                  <>
-                    <p className="approved">
-                      <span className="g g-approve">✓</span>
-                      Approved the plan{m.decisions.length ? " with changes:" : ""}
-                    </p>
-                    {m.decisions.length > 0 && <EditList decisions={m.decisions} />}
-                  </>
-                ) : m.kind === "permission" ? (
-                  <>
-                    <p className="approved">
-                      <span className={`g ${m.decision === "deny" ? "g-remove" : "g-approve"}`}>{m.decision === "deny" ? "✕" : "✓"}</span>
-                      {m.decision === "deny" ? "Denied" : m.decision === "allow-all" ? "Allowed all commands, starting with" : "Allowed"}
-                    </p>
-                    <pre className="cmd small">{m.detail}</pre>
-                  </>
-                ) : (
-                  <>
-                    <p className="sub">Changed the board:</p>
-                    <EditList decisions={m.decisions} />
-                  </>
-                )}
-              </div>
-            ),
-          )}
-          {tab === "activity" && review && <ReviewCard rows={review} onGo={goReview} />}
         </div>
 
         <footer className="composer">
@@ -2492,7 +2354,7 @@ export default function App() {
                 <a className="secondary" href={decisionsUrl(recording?.id)} target="_blank" rel="noreferrer">
                   Decision log
                 </a>
-                <button className="primary" onClick={restart}>
+                <button className="primary" onClick={keepBoard} title="Keep this board and carry on from it: edit it or type, and a new session starts from here">
                   Done
                 </button>
               </div>
@@ -2562,12 +2424,12 @@ export default function App() {
             <p className="hint">
               {/* One ask at a time: while the tour runs, its card is it. */}
               {!tour && <><b>Steer from the board:</b> use Edit the plan above it, click a ◇ to pick another option, or drop a sticker on a part. Then Submit.</>}
-              {agentMode && s?.runId && s?.result && (
+              {agentMode && lastRun && (s?.result || s?.carriesOn) && (
                 <span className="after-run">
-                  <button className="linkish" onClick={() => replay(s.runId)}>
+                  <button className="linkish" onClick={() => replay(lastRun)}>
                     Replay this run
                   </button>
-                  <a className="linkish" href={decisionsUrl(s.runId)} target="_blank" rel="noreferrer">
+                  <a className="linkish" href={decisionsUrl(lastRun)} target="_blank" rel="noreferrer">
                     Decision log
                   </a>
                 </span>
@@ -2579,7 +2441,7 @@ export default function App() {
               id="ask"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={awaitingTask ? "Describe a task for the agent…" : reviewing ? "Ask for changes to the plan…" : "Tell the agent something…"}
+              placeholder={awaitingTask ? "Describe a task for the agent…" : reviewing ? "Ask for changes to the plan…" : s?.carriesOn ? "What's next? A new session starts from this board…" : "Tell the agent something…"}
             />
             <button type="submit" disabled={!draft.trim()}>
               {awaitingTask ? "Start" : "Send"}
@@ -2699,39 +2561,48 @@ export default function App() {
             </div>
           </div>
         )}
-        {editable && !glassUp && (
+        {editable && (
+          // Always there while the plan is editable, glass up or down, so neither the glass switch
+          // (first, a fixed width) nor the board below moves when you flip it. A tool pressed with
+          // the glass up pulls it down first, like Rename on a card.
           <div className="edit-bar" role="toolbar" aria-label="Edit the plan">
+            <button
+              className={`glass-toggle ${glassUp ? "up" : "down"}`}
+              data-tour="glass"
+              aria-pressed={!glassUp}
+              onClick={glassUp ? lowerGlass : raiseGlass}
+              title={glassUp ? "Pull the glass down to move, rename, remove or add things, then Submit" : "Back to looking: your changes stay in the list until you Submit"}
+            >
+              <span aria-hidden="true">{glassUp ? "⇣" : "⇡"}</span> {glassUp ? "Pull down to edit" : "Glass back up"}
+            </button>
             <span className="eb-label">Edit the plan:</span>
-            <button onClick={() => useTool("selection", null)} title="Select, move and double-click things on the board">
+            <button onClick={() => (lowerGlass(), useTool("selection", null))} title="Select, move and double-click things on the board">
               <ToolIcon name="select" />
               Select
             </button>
-            <button onClick={toolRename} title="Rename the selected part (or double-click any name)">
+            <button onClick={() => (lowerGlass(), toolRename())} title="Rename the selected part (or double-click any name)">
               <ToolIcon name="rename" />
               Rename
             </button>
-            <button onClick={() => useTool("rectangle", "Draw a box on the board, then type its name.")} title="Ask for a new part: draw a box and name it">
+            <button onClick={() => (lowerGlass(), useTool("rectangle", "Draw a box on the board, then type its name."))} title="Ask for a new part: draw a box and name it">
               <ToolIcon name="add" />
               Add a part
             </button>
-            <button onClick={() => useTool("arrow", "Drag from one part to another.")} title="Ask for a new connection: draw an arrow between two parts">
+            <button onClick={() => (lowerGlass(), useTool("arrow", "Drag from one part to another."))} title="Ask for a new connection: draw an arrow between two parts">
               <ToolIcon name="connect" />
               Connect
             </button>
-            <button onClick={toolRemove} title="Remove the selected part or connection, or reject the selected ◇ decision">
+            <button onClick={() => (lowerGlass(), toolRemove())} title="Remove the selected part or connection, or reject the selected ◇ decision">
               <ToolIcon name="remove" />
               Remove
             </button>
-            <button onClick={() => useTool("text", "Click an empty spot and type a note, like “English PDFs only”.")} title="Add a note that narrows what it builds">
+            <button onClick={() => (lowerGlass(), useTool("text", "Click an empty spot and type a note, like “English PDFs only”."))} title="Add a note that narrows what it builds">
               <ToolIcon name="note" />
               Add a note
             </button>
-            <button className={`eb-tools ${tools ? "on" : ""}`} aria-pressed={tools} onClick={toggleTools} title="Show or hide Excalidraw's full drawing tools">
+            <button className={`eb-tools ${tools ? "on" : ""}`} aria-pressed={tools} onClick={() => (tools || lowerGlass(), toggleTools())} title="Show or hide Excalidraw's full drawing tools">
               <ToolIcon name="tools" />
               Drawing tools
-            </button>
-            <button className="gb-raise" onClick={raiseGlass} title="Back to looking: your changes stay in the list until you Submit">
-              <span aria-hidden="true">⇡</span> Glass back up
             </button>
           </div>
         )}
@@ -2740,19 +2611,16 @@ export default function App() {
             className={`canvas arch ${boardView === "board" && !readOnlyView ? "on" : ""} ${ownSel ? "own-sel" : ""} ${tools ? "tools-on" : "tools-off"}`}
             role="tabpanel"
             aria-label="Architecture"
+            onPointerLeave={() => s?.board.hoverAt(null)}
           >
-            <Excalidraw excalidrawAPI={setApi} initialData={INITIAL_DATA} onChange={onChange} UIOptions={UI_OPTIONS} />
+            <Excalidraw excalidrawAPI={setApi} initialData={INITIAL_DATA} onChange={onChange} onPointerUpdate={onPointerUpdate} UIOptions={UI_OPTIONS} />
+            {boardView === "board" && !readOnlyView && model && <DecisionPulse api={api} ids={busyDecisions(model)} />}
             {editable && (
               <div className={`glass ${glassUp ? "up" : "down"}`} aria-hidden="true">
                 <span className="glass-glint" />
               </div>
             )}
             {editable && <StickerTray onDropped={lowerGlass} />}
-            {editable && glassUp && (
-              <button className="glass-handle" data-tour="glass" onClick={lowerGlass} title="Pull the glass down to move, rename, remove or add things, then Submit">
-                <span aria-hidden="true">⇣</span> Pull down to edit
-              </button>
-            )}
             {toolHint && editable && (
               <p className="tool-hint" role="status">
                 {toolHint}
@@ -2773,10 +2641,7 @@ export default function App() {
                 onOpen={(lid) => focusInPlan([lid])}
                 onCode={(id) => goReview(`code:${id}`)}
                 onInside={chooseInside}
-                onAnswer={(q, text) => {
-                  s.answerQuestion(q, text);
-                  stick.current = true;
-                }}
+                onAnswer={(q, text) => s.answerQuestion(q, text)}
                 onConfirm={(q) => s.confirmAssumption(q)}
                 onCorrect={(q) => prefill(`About A${q.n} (${q.text}): `)}
               />
@@ -2850,7 +2715,7 @@ export default function App() {
               />
             ))}
         </div>
-        {boardView === "board" && diagram === "pictures" && nodeCount > 0 && <BoardKey model={model} />}
+        {boardView === "board" && (diagram === "pictures" || readOnlyDiagram) && nodeCount > 0 && <BoardKey model={model} layersOnly={readOnlyDiagram} />}
       </main>
     </div>
   );

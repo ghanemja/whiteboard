@@ -67,6 +67,7 @@ export function renderDecisions(m, decisions, plan) {
     `- **Task:** ${m.brief}`,
     `- **Repo:** \`${m.repo}\``,
     `- **Started:** ${m.startedAt} · ${m.model} (effort ${m.effort})`,
+    ...(m.from ? [`- **Carries on from:** \`recordings/${m.from}.decisions.md\` (its board is where this run started)`] : []),
     ...(m.sessionId ? [`- **Agent session:** \`${m.sessionId}\``] : []),
     `- **Recording:** \`recordings/${m.id}.jsonl\` (replay or reopen it in Agent Whiteboard)`,
     "",
@@ -103,6 +104,22 @@ export function readRecording(id) {
   return existsSync(file) ? readFileSync(file, "utf8") : null;
 }
 
+// A run that carries on from another starts from that run's board, which may carry on from
+// another: each run's events, oldest first, back to the one that started from nothing.
+export function readChain(id, depth = 50) {
+  const chain = [];
+  const seen = new Set();
+  for (let at = id; at && !seen.has(at) && chain.length < depth; ) {
+    seen.add(at);
+    const text = readRecording(at);
+    if (text == null) break;
+    const events = parse(text);
+    chain.unshift(events);
+    at = events.find((e) => e.type === "meta")?.from;
+  }
+  return chain;
+}
+
 export function readDecisions(id) {
   if (!ID.test(id)) return null;
   const file = path.join(REC_DIR, `${id}.decisions.md`);
@@ -126,6 +143,7 @@ export function listRecordings(limit = 20) {
         brief: meta.brief,
         repo: meta.repo,
         project: meta.project ?? null,
+        from: meta.from ?? null,
         startedAt: meta.startedAt,
         duration: events.at(-1)?.t ?? 0,
         phase,
