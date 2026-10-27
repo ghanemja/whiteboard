@@ -1013,7 +1013,6 @@ export class Board {
   // unless you're moving or typing in one, or there's a pick waiting to be sent.
   onSelect(ids, st = {}) {
     if (st.editingTextElement || st.selectedElementsAreBeingDragged) return;
-    if (this.tips && ids.some((id) => this.tips.includes(id))) return this.hideTips(); // clicking a tip dismisses them
     const did = this.logicalIdsFor(ids).find((l) => l.startsWith("decision:"))?.slice("decision:".length);
     if (did) return this.showAlternatives(did);
     if (!this.alt) return;
@@ -1684,7 +1683,8 @@ export class Board {
   // ---- the coach's tips: circles on the board, the way a teacher circles what to look at ----
   // tips: [{ lid }]. The words stay on the coach's or the tour's card, so the board never asks a
   // second thing. They're the board's own drawing (remembered, so diff() skips them), never
-  // exported, and they go when you click one, approve, or hide tips.
+  // exported, and they go when you approve or hide tips. Locked, so a click inside one reaches
+  // what it circles: the click it asks for.
   showTips(tips) {
     this.hideTips();
     const els = this.scene();
@@ -1696,7 +1696,7 @@ export class Board {
     if (!targets.length) return;
     const out = targets.map((el, i) => {
       const [x1, y1, x2, y2] = getCommonBounds([el]);
-      return { type: "ellipse", id: `tip-${i}`, x: x1 - 18, y: y1 - 16, width: x2 - x1 + 36, height: y2 - y1 + 32, strokeColor: TIP_RING, backgroundColor: "transparent", strokeWidth: 2.5, roughness: 2 };
+      return { type: "ellipse", id: `tip-${i}`, x: x1 - 18, y: y1 - 16, width: x2 - x1 + 36, height: y2 - y1 + 32, strokeColor: TIP_RING, backgroundColor: "transparent", strokeWidth: 2.5, roughness: 2, locked: true };
     });
     const conv = this.remember(this.convert(out));
     for (const e of conv) e.seed = seedOf(e.id);

@@ -21,11 +21,11 @@ The app walks a newcomer through a run without hiding anything. **Hide tips** tu
 ![The plan gate with tips: the coach card says step 2 of 4 and what to do, orange circles ring the first decision and an open question on the board, and the color key sits under it](screenshots/first-time-help/2-plan-gate-tips-on-the-board.png)
 
 - **Coach.** A yellow card at the top of the panel says which step you're on (Describe → Plan → Build → Check) and what to do now, in a sentence or two.
-- **Tips on the board.** The first time a plan waits for you, orange circles ring its first decision and its first open question; the coach card says what to do with them, so there's one ask at a time. Click one to dismiss them. They're never exported or sent to the agent.
+- **Tips on the board.** The first time a plan waits for you, orange circles ring its first decision and its first open question; the coach card says what to do with them, so there's one ask at a time. A click inside a circle reaches what it circles; they go once you approve. They're never exported or sent to the agent.
 - **Glass.** The board sits behind glass: clicks explain, nothing moves. **Pull down to edit** (first in Edit the plan, above the board) lowers it and becomes **Glass back up**, in the same spot; **Submit** sends your changes and puts the glass back. Any Edit the plan button, and Use this, Rename and Remove on a card, pull it down for you.
 - **Edit the plan.** A toolbar with words above the board: Select, Rename, Add a part, Connect, Remove, Add a note. Each picks the matching Excalidraw tool and says what to do next; the gestures (double-click, Delete, drawing) still work. Excalidraw's full toolbar is behind **Drawing tools**.
 - **Click to explain.** Select a part, a ◇, an arrow or a question and a card says what it is in plain words (what a service is, its status, routes, files, decisions, connections), with its actions as buttons: Rename, Remove, Ask about it, See the code; for a decision, **Use this** on each option, Ask why and Reject it; for a question, its answers.
-- **Plain words.** Symbols come with a word: receipts read "✓ checked", "✗ not true", "? can't tell"; the panel's tabs are **Chat & log** and **Plan details**, with counts like "2 for you"; a key under the Pictures board says what the colors mean; a command prompt says what the command is for and why you're asked.
+- **Plain words.** Symbols come with a word: receipts read "✓ checked", "✗ not true", "? can't tell"; the panel is **Plan details**, with counts like "2 for you"; a key under the Pictures board says what the colors mean; a command prompt says what the command is for and why you're asked.
 
 ## Views and exports
 
@@ -184,11 +184,11 @@ Waits longer than 15 seconds (reading the plan, a permission you hadn't answered
 
 Don't take the agent's word for it. Glyphs and counts, details on hover:
 
-- **Receipts.** After a checkable claim: ✓ checked, ✗ not true (with the one wrong thing, e.g. "✗ not true: README.md"), ? can't tell. Test claims vs the runner's counts, file claims vs git, "I ran X" vs the commands run. ✗ comes only from the runner or git. Chat & log tab: ✗ n not true.
+- **Receipts.** After a checkable claim: ✓ checked, ✗ not true (with the one wrong thing, e.g. "✗ not true: README.md"), ? can't tell. Test claims vs the runner's counts, file claims vs git, "I ran X" vs the commands run. ✗ comes only from the runner or git. They show on what it said wherever the panel shows it (its reply, a line you opened), and in the downloaded log.
 - **What it changed.** Git, not the agent's summary: the working tree vs how the run found it (untracked included, your index untouched). Components show +/− blocks; Plan details → **Code** has every diff by component, plus files **not on board**.
 - **Questions and assumptions.** "?" and "≈" sticky notes. Plan details → **For you**: pick an option or type (↵), confirm ✓ or correct ✎. Ones only said in prose: **In passing**.
-- **Highlights only.** Chat & log → Highlights only: keeps sentences that drew, claimed, asked or assumed; the rest fold to "⋯ n".
-- **Review.** When a run ends: failed/unchecked checks, false or unverified claims, open questions, changed and unowned files, commits, last test run, denied commands. Each chip links to its card, sentence or diff.
+- **The log.** The panel shows the plan, not a chat log. What it says to you shows at the top of the panel: its reply to what you typed ("⋯ n" opens a long one), and errors. **⇩** in the panel's toolbar downloads the whole log as Markdown: what you asked and changed, what it said (with receipts) and did, and the review.
+- **Review.** When a run ends, at the top of the panel: failed/unchecked checks, false or unverified claims, open questions, changed and unowned files, commits, last test run, denied commands. Each chip links to its card, the diff, or the sentence (shown above the review with its receipt).
 
 The demo shows all five, including a false claim (a README it never touched) and a question buried in its summary.
 
@@ -203,7 +203,7 @@ The start screen lists saved boards. **Replay** plays a run back on the board at
 
 In a replay the Timeline shows the whole run, with what hasn't happened yet faded and the now line following playback. It's a scrubber: click any moment (a mark, or anywhere along the axis) and the board, the phases and the panel jump to that point and pause there; play continues from it. Recordings made before the server recorded what caused a change still show it: a decision that changed right after you asked for something changed because of you (the Plan and Why tabs say so too), and a test run the agent said had failed counts as failed.
 
-The panel lists what the agent actually did (files read and edited, commands and whether they passed) and links each row to the component it touched. Hover a sentence or row to highlight it on the board; select a component to find what changed it.
+Select a component to see what changed it: its card lists its files with +/−, and **See the code** opens the diffs in Plan details. The downloaded log (**⇩**) lists everything the agent read, edited and ran, and whether each command passed.
 
 The agent loads the repo's project settings and `CLAUDE.md`, not your global Claude Code settings or hooks. It's told never to push, publish or deploy; "Ship" means tests pass and docs match.
 

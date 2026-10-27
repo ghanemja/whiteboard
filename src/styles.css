@@ -688,151 +688,8 @@ button.icon.speed {
 .linkish:hover {
   color: var(--accent-ink);
 }
-.msg.notice {
-  padding: 9px 12px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
-  background: color-mix(in srgb, var(--red) 8%, var(--panel));
-  color: var(--ink);
-  font-size: 14.5px;
-  line-height: 1.5;
-}
-.msg p {
-  margin: 0 0 10px;
-  font-size: 16px;
-  line-height: 1.62;
-}
-.msg p:last-child {
-  margin-bottom: 0;
-}
-.who {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--soft);
-  margin-bottom: 6px;
-}
-.avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-family: var(--display);
-  font-weight: 800;
-  font-size: 14px;
-}
-.typing {
-  font-weight: 600;
-  color: var(--orange);
-}
 
-/* Phase headings inside the agent's message, colored like the phase bar. */
-.section {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 18px 0 8px;
-  font-family: var(--display);
-  font-weight: 800;
-  font-size: 18px;
-  color: var(--faint);
-}
-.who + .section {
-  margin-top: 6px;
-}
-.section::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: currentColor;
-  opacity: 0.3;
-}
-.section .num {
-  width: 21px;
-  height: 21px;
-  display: grid;
-  place-items: center;
-  border: 1.5px solid currentColor;
-  border-radius: 50%;
-  font-family: var(--ui);
-  font-size: 13px;
-  font-weight: 800;
-}
-.section.current {
-  color: var(--orange);
-}
-.section.done {
-  color: var(--green);
-}
-.section.done .num {
-  background: var(--green);
-  border-color: var(--green);
-  color: var(--panel);
-}
 
-.s {
-  border-radius: 3px;
-  transition:
-    background-color 0.5s,
-    box-shadow 0.5s;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-.s.has-ops {
-  cursor: pointer;
-}
-.s.has-ops:hover {
-  background: var(--marker-soft);
-  transition-duration: 0.1s;
-}
-.s.live {
-  background: linear-gradient(
-    transparent 14%,
-    var(--marker) 14%,
-    var(--marker) 90%,
-    transparent 90%
-  );
-}
-.s.linked {
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-.caret {
-  display: inline-block;
-  width: 2px;
-  height: 1.05em;
-  margin-left: 1px;
-  background: var(--ink);
-  vertical-align: -2px;
-  animation: blink 1s steps(1) infinite;
-}
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
-}
-.msg.you {
-  align-self: flex-end;
-  max-width: 88%;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 12px 12px 4px 12px;
-  padding: 10px 12px;
-}
-.msg.you.linked {
-  border-color: var(--accent-ink);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-.msg.you .sub {
-  font-size: 14.5px;
-  color: var(--soft);
-  margin-bottom: 6px;
-}
 
 /* ---- edit lists ---- */
 .edits {
@@ -1018,143 +875,7 @@ button.secondary:active:not(:disabled) {
   transform: translate(2px, 2px);
   box-shadow: 1px 1px 0 var(--ink);
 }
-/* Real work the agent did: compact rows between its sentences. */
-.act {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 2px 0 6px;
-  padding: 4px 8px;
-  border-radius: 7px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: var(--ink);
-  background: var(--panel-2);
-  transition: background-color 0.3s;
-}
-.act.has-ops {
-  cursor: pointer;
-}
-.act.has-ops:hover {
-  background: var(--marker-soft);
-}
-.act.linked {
-  background: var(--accent-soft);
-}
-.act-icon {
-  flex-shrink: 0;
-  width: 14px;
-  text-align: center;
-  color: var(--faint);
-  font-weight: 700;
-}
-.act-edit .act-icon,
-.act-write .act-icon {
-  color: var(--orange);
-}
-.act-command .act-icon {
-  color: var(--accent-ink);
-}
-.act-body {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-.act-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.act-command .act-label {
-  color: var(--ink);
-}
-.act-summary {
-  color: var(--faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.act-ok {
-  color: var(--green);
-  font-weight: 700;
-}
-.act-bad {
-  color: var(--red);
-  font-weight: 700;
-}
-.msg code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.88em;
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: var(--panel-2);
-}
 
-/* Activity | Plan */
-.tabs {
-  display: flex;
-  gap: 4px;
-  padding: 8px 18px 0;
-  border-bottom: 1px solid var(--line);
-}
-.tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px 9px;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  background: none;
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-bottom: -1px;
-}
-.tab[aria-selected="true"] {
-  font-weight: 800;
-  border-bottom-color: var(--accent);
-}
-.tab-count {
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-  font-size: 12.5px;
-}
-.tab-count.bad {
-  background: color-mix(in srgb, var(--red) 14%, transparent);
-  color: var(--red);
-}
-/* Skim: hide the narration. */
-.skim-row {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: flex-end;
-  padding: 5px 18px;
-  border-bottom: 1px solid var(--line);
-}
-.tab,
-.tab-count {
-  white-space: nowrap;
-}
-.skim-row .skim {
-  padding: 3px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink);
-  font-size: 13.5px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.skim-row .skim.on {
-  border-color: var(--accent-ink);
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-}
 .skim-gap {
   padding: 0 7px;
   border: 1px dashed var(--line);
@@ -1195,39 +916,6 @@ button.secondary:active:not(:disabled) {
 }
 .rcpt-why {
   font-weight: 600;
-}
-/* Things the agent asked you or assumed, said in passing. */
-.s.asks {
-  text-decoration: underline dotted #c2255c;
-  text-underline-offset: 3px;
-}
-.s.asks::after {
-  content: "?";
-  display: inline-block;
-  margin-left: 4px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #c2255c;
-  color: #fff;
-  font-size: 12.5px;
-  font-weight: 700;
-  line-height: 1.5;
-}
-.s.assumes {
-  text-decoration: underline dotted #7048e8;
-  text-underline-offset: 3px;
-}
-.s.assumes::after {
-  content: "≈";
-  display: inline-block;
-  margin-left: 4px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #7048e8;
-  color: #fff;
-  font-size: 12.5px;
-  font-weight: 700;
-  line-height: 1.5;
 }
 
 /* The development plan: goal, architecture, connections, decisions, steps. */
@@ -1418,6 +1106,62 @@ button.secondary:active:not(:disabled) {
   overflow-wrap: anywhere;
 }
 /* The end of a run: what needs a look. */
+/* What the agent said, at the top of the panel (the log itself downloads): its reply to what you
+   typed, an error, or the line you opened. */
+.said {
+  padding: 10px 14px 12px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--sh);
+}
+.said-bad {
+  background: color-mix(in srgb, var(--red) 8%, var(--panel));
+}
+.said-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--soft);
+}
+.said p {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.55;
+}
+.said p + .edits,
+.said .sub {
+  margin-bottom: 6px;
+}
+.said code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.88em;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--panel-2);
+}
+.said-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+.act-ok {
+  color: var(--green);
+  font-weight: 700;
+}
+.act-bad {
+  color: var(--red);
+  font-weight: 700;
+}
+.act-summary {
+  color: var(--faint);
+  font-size: 14px;
+}
 .review {
   margin-top: 4px;
   padding: 12px 14px;
@@ -1516,10 +1260,6 @@ button.secondary:active:not(:disabled) {
 }
 
 /* What it asked you, and what it's assuming. */
-.tab-count.ask {
-  background: color-mix(in srgb, #f08c00 16%, transparent);
-  color: #e8590c;
-}
 .qmark {
   display: inline-grid;
   place-items: center;
@@ -2178,19 +1918,6 @@ button.secondary:hover,
 a.secondary:hover {
   background: var(--accent-soft);
 }
-.msg.you .approved {
-  display: flex;
-  align-items: center;
-  font-weight: 700;
-  font-size: 15px;
-}
-.g-approve {
-  background: color-mix(in srgb, var(--green) 18%, transparent);
-  color: var(--green);
-}
-.msg.you .approved + .edits {
-  margin-top: 6px;
-}
 
 .ask {
   display: flex;
@@ -2256,12 +1983,8 @@ button:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .caret,
   .status.on .dot {
     animation: none;
-  }
-  .s {
-    transition: none;
   }
 }
 

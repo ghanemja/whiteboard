@@ -49,7 +49,7 @@ The rest of this guide covers the same run in more detail. Do the tour first, th
 ![The board on the left, the panel on the right, and the phase road along the top](../screenshots/first-time-help/2-plan-gate-tips-on-the-board.png)
 
 1. **The board (left).** The plan as a drawing. Each picture is a part of the system; arrows show which part talks to which.
-2. **The panel (right).** The agent talks here, and you answer. It has two tabs: **Chat & log** (what it said and did) and **Plan details** (the plan in words: open a section to read it; **Decisions** is last, with a bell when some need a look). The box at the bottom is for typing to it.
+2. **The panel (right).** **Plan details**: the plan in words (open a section to read it; **Decisions** is last, with a bell when some need a look). When the agent answers something you typed, its reply shows at the top. The box at the bottom is for typing to it. **⇩** at the top downloads the whole log (what it said and did) as a Markdown file.
 3. **The phase road (top).** Where the run is: **Plan → Build → Verify → Ship**, with a dot for each task.
 
 ### Legend
@@ -82,9 +82,9 @@ When you're happy with the plan, press **Approve plan & build** (or **Approve wi
 
 ### It builds
 
-Now it edits files by itself. Parts turn **orange** while it changes them. In **Chat & log**, hover any sentence: the parts that sentence changed light up on the board. Under each part, small green and red blocks show how many lines it added and removed.
+Now it edits files by itself. Parts turn **orange** while it changes them. Click the orange part: its card says what it's changing, and **See the code** opens the diff. Under each part, small green and red blocks show how many lines it added and removed.
 
-![A part being built, in orange; the tour card points at Chat & log](../screenshots/tour/07-build-hover-a-line.png)
+![A part being built, in orange, circled; the tour card says to click it](../screenshots/tour/07-build-click-a-part.png)
 
 ### It tests (verify)
 
@@ -208,17 +208,15 @@ Agents can be wrong about their own work, and they say so confidently. So the ap
 
 ### Receipts
 
-Sentences that claim something checkable get a receipt in Chat & log:
+Sentences that claim something checkable get a receipt (in its reply at the top of the panel, on a line you open from the review, and in the downloaded log):
 
 - **✓ checked:** the record backs it up.
 - **? can't tell:** nothing in the record says either way.
 - **✗ not true:** the record contradicts it.
 
-The **Chat & log** tab shows how many are not true ("✗ 1 not true").
-
 ### The Review card
 
-When the run ends, a **Review** card at the end of Chat & log lists what to look at, worst first. In the demo, the agent says it "documented the setup in README.md", but no README.md changed. That's the ✗ **False claim** row. Click its link to jump to the sentence.
+When the run ends, a **Review** card at the top of the panel lists what to look at, worst first. In the demo, the agent says it "documented the setup in README.md", but no README.md changed. That's the ✗ **False claim** row. Click its link to see the sentence, with its receipt, above the review.
 
 ![The Review card with the False claim row ringed](../screenshots/tour/10-find-what-isnt-true.png)
 
@@ -265,7 +263,7 @@ To use OpenAI's Codex instead of Claude: install it (`npm i -g @openai/codex`), 
 
 - The yellow **tips** card always says which step you're on and what to do. **Hide tips** puts it away; the **?** button brings it back.
 - Click anything on the board to learn what it is. The legend (section 3) says what each color and mark means.
-- **Highlights only** (in Chat & log) hides the narration and keeps what matters.
+- **⇩** (top of the panel) downloads the whole log, if you want to read everything it said and did.
 - **Draw as** and **Zoom into** (above the board) show the plan other ways; **Flows & export** shows one flow's steps and exports the view as Mermaid, SVG or PNG.
 - The glass over the board keeps clicks safe: pull it down to change things.
 - The ▶ / ⏸ button pauses the demo; **2×** changes its speed.

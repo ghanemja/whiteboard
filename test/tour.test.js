@@ -7,7 +7,7 @@ import { BOARD, TOUR, advance, back, holds, isFresh, next, startTour, stepOf, ta
 // The run before anything happens; each step below changes what the person or the demo did.
 const base = {
   started: false, stage: null, phase: null, gate: false, selected: [], explainUse: false, edits: 0, answered: 0,
-  permission: false, permissions: 0, hovers: 0, view: "board", tab: "activity", testCaused: false, finished: false, reviewOpens: 0,
+  permission: false, permissions: 0, partOpens: 0, view: "board", testCaused: false, finished: false, reviewOpens: 0,
   firstDecision: null, firstQuestion: null, building: null,
 };
 const at = (tour) => stepOf(tour).id;
@@ -67,9 +67,10 @@ test("a whole tour: each step waits for its action, then moves on by itself", ()
   c = { ...c, gate: false, stage: "building", phase: "implementation", edits: 0, building: "api" };
   t = advance(t, c);
   assert.equal(at(t), "build");
-  assert.deepEqual(targets(t, c).board, [], "one place to look: Chat & log");
+  assert.deepEqual(targets(t, c).board, [{ lid: "node:api" }], "circled: the part being built");
+  assert.equal(advance(t, c), t, "waits for a click on a part");
 
-  c = { ...c, hovers: 3 };
+  c = { ...c, selected: ["node:api"], partOpens: 1 };
   t = advance(t, c);
   assert.equal(at(t), "permission");
   c = { ...c, permission: true };
@@ -86,10 +87,8 @@ test("a whole tour: each step waits for its action, then moves on by itself", ()
   c = { ...c, phase: "complete" };
   assert.equal(advance(t, c), t, "not before the review shows");
   assert.deepEqual(targets(t, c).dom, []);
-  c = { ...c, finished: true, tab: "plan" };
-  assert.deepEqual(targets(t, c).dom.map((d) => d.sel), ['[data-tour="log-tab"]'], "the review is in Chat & log");
-  c = { ...c, tab: "activity" };
-  assert.deepEqual(targets(t, c).dom.map((d) => d.sel), ['[data-tour="untrue"]']);
+  c = { ...c, finished: true };
+  assert.deepEqual(targets(t, c).dom.map((d) => d.sel), ['[data-tour="untrue"]'], "the review is at the top of the panel");
   assert.equal(advance(t, c), t, "waits for you to open a row or a pen mark");
   c = { ...c, reviewOpens: 1 };
   t = advance(t, c);
@@ -150,7 +149,7 @@ test("the demo holds at a checkpoint only while its step waits for you", () => {
   while (at(t) !== "build") t = next(t, c);
   assert.ok(holds(t, "build", c));
   assert.ok(!holds(t, "verify", c), "another step's checkpoint plays through");
-  assert.ok(!holds(t, "build", { ...c, hovers: 1 }), "done already: no wait");
+  assert.ok(!holds(t, "build", { ...c, partOpens: 1 }), "done already: no wait");
   assert.ok(!holds(null, "build", c), "no tour, no wait");
   while (at(t) !== "why") t = next(t, c);
   const v = { ...c, phase: "verification", testCaused: true };
@@ -182,8 +181,8 @@ test("what stays lit, and where the card goes", () => {
   assert.deepEqual(go("approve", { ...plan, gate: false }).spot, [BOARD], "waiting with nothing to click: the board is where it's happening");
 
   const built = { ...plan, gate: false, stage: "building", phase: "implementation", building: "api" };
-  assert.deepEqual(go("build", built).spot, [".transcript", BOARD]);
-  assert.deepEqual(go("build", { ...built, tab: "plan" }).spot, [BOARD]);
+  assert.deepEqual(go("build", built).spot, [BOARD], "the circled part");
+  assert.deepEqual(go("build", { ...built, selected: ["node:api"] }).spot, [".explain", BOARD], "then its card");
   assert.deepEqual(go("why", { ...built, testCaused: true }).spot, [], "just the Reasoning tab");
   assert.deepEqual(go("untrue", { ...built, phase: "complete", finished: true }).spot, [BOARD], "the red pen marks");
   assert.deepEqual(go("untrue", { ...built, phase: "complete", finished: true, view: "why" }).spot, [], "no pen marks on the Reasoning tab");
