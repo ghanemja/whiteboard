@@ -4,9 +4,16 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BOARD } from "./engine/tour";
 import { placeCard } from "./engine/spotlight";
 
+// A step's "◇", drawn the way the board draws a decision: D in a purple diamond, dashed until
+// the plan is approved.
+const marked = (s, proposed) =>
+  typeof s === "string" && s.includes("◇")
+    ? s.split("◇").flatMap((part, i) => (i ? [<span key={i} className={`dmark${proposed ? " proposed" : ""}`} role="img" aria-label="decision">D</span>, part] : [part]))
+    : s;
+
 // The step's card: the same yellow note as the coach, with a step count and a way out.
 // A step that waits for the run (it's still planning, say) says so instead of offering Next.
-export function TourCard({ step, n, total, wait, manual, onBack, onNext, onSkip, onExit, finish }) {
+export function TourCard({ step, proposed, n, total, wait, manual, onBack, onNext, onSkip, onExit, finish }) {
   return (
     <div className="coach tour" role="region" aria-label="Tour">
       <div className="coach-top">
@@ -20,11 +27,11 @@ export function TourCard({ step, n, total, wait, manual, onBack, onNext, onSkip,
       <div className="tour-bar" aria-hidden="true">
         <i style={{ width: `${(n / total) * 100}%` }} />
       </div>
-      <b className="coach-title">{step.title}</b>
-      <p>{step.text}</p>
+      <b className="coach-title">{marked(step.title, proposed)}</b>
+      <p>{marked(step.text, proposed)}</p>
       {wait && (
         <p className="tour-wait" role="status">
-          <span className="dot" /> {wait}
+          <span className="dot" /> {marked(wait, proposed)}
         </p>
       )}
       <div className="tour-actions">
@@ -177,7 +184,7 @@ export function TourSpotlight({ targets, spots, center, note, children }) {
           const where = tall ? "inside" : b.y < 40 ? "below" : "";
           return (
             <div key={b.key} className="tour-ring" style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
-              {b.label && <span className={`tour-tag ${where}`}>{b.label}</span>}
+              {b.label && <span className={`tour-tag ${where}`}>{marked(b.label)}</span>}
             </div>
           );
         })}

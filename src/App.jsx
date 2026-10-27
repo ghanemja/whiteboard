@@ -1814,6 +1814,7 @@ export default function App() {
 
   // ---- the guided tour: the demo as a lesson that waits for you at each step ----
   // What the tour's steps check (tour.js): the run's state and what you've done so far.
+  const firstDecision = allDecisions.filter((d) => d.state !== "rejected").sort((a, b) => a.n - b.n)[0];
   const tourCtx = s && {
     started: messages.length > 0,
     stage: s.stage,
@@ -1831,7 +1832,8 @@ export default function App() {
     testCaused: allDecisions.some((d) => d.cause?.who === "test"),
     finished: !!review,
     reviewOpens: reviewOpens.current,
-    firstDecision: allDecisions.filter((d) => d.state !== "rejected").sort((a, b) => a.n - b.n)[0]?.id ?? null,
+    firstDecision: firstDecision?.id ?? null,
+    firstDecisionN: firstDecision?.n ?? null,
     firstQuestion: Object.values(model.questions).find((q) => q.kind === "question" && q.state === "open")?.id ?? null,
     building: Object.values(model.nodes).find((n) => n.status === "building")?.id ?? null,
   };
@@ -1995,6 +1997,7 @@ export default function App() {
           <TourCard
             key={tour.i}
             step={tourStep}
+            proposed={tourCtx.stage !== "building"}
             n={tour.i + 1}
             total={tourLength}
             wait={tourWaiting(tourStep, tourCtx)}

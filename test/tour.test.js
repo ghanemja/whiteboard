@@ -38,7 +38,7 @@ test("a whole tour: each step waits for its action, then moves on by itself", ()
   c = { ...c, gate: true };
   t = advance(t, c);
   assert.equal(at(t), "decision");
-  assert.deepEqual(targets(t, c).board, [{ lid: "decision:d1", text: "Click this ◇" }]);
+  assert.deepEqual(targets(t, c).board, [{ lid: "decision:d1", text: "Click D1" }], "named as the board labels it");
 
   c = { ...c, selected: ["node:api"] };
   assert.equal(at(advance(t, c)), "decision", "a part isn't a decision");

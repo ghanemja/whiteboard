@@ -60,7 +60,7 @@ export const TOUR = [
     title: "Click a ◇ decision",
     text: "A ◇ is a technical choice it made, like “a background worker”. Click one on the board: a card opens with what it chose, the other options, and why.",
     done: (c) => c.selected.some((l) => l.startsWith("decision:")) || c.stage === "building",
-    board: (c) => (c.firstDecision ? [{ lid: `decision:${c.firstDecision}`, text: "Click this ◇" }] : []),
+    board: (c) => (c.firstDecision ? [{ lid: `decision:${c.firstDecision}`, text: `Click D${c.firstDecisionN ?? 1}` }] : []),
   },
   {
     id: "steer",
@@ -72,7 +72,7 @@ export const TOUR = [
       { sel: '[data-tour="glass"]', label: "Pull the glass down" },
       { sel: '[data-tour="stickers"]', label: "Or a sticker" },
     ].filter(Boolean),
-    board: (c) => (!c.explainUse && c.firstDecision ? [{ lid: `decision:${c.firstDecision}`, text: "Click a ◇ for its options" }] : []),
+    board: (c) => (!c.explainUse && c.firstDecision ? [{ lid: `decision:${c.firstDecision}`, text: `Click D${c.firstDecisionN ?? 1} for its options` }] : []),
     spot: (c) => (c.explainUse ? [".explain"] : []), // the options, on the decision's card
     skip: "pick",
   },

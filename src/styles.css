@@ -1631,7 +1631,7 @@ button.primary {
   background: var(--marker-soft);
 }
 /* "D1" in a diamond, matching the board: only the background shape is rotated. */
-.decision .dmark {
+.dmark {
   position: relative;
   isolation: isolate;
   flex-shrink: 0;
@@ -1643,7 +1643,7 @@ button.primary {
   font-weight: 800;
   color: #6741d9;
 }
-.decision .dmark::before {
+.dmark::before {
   content: "";
   position: absolute;
   inset: 5px;
@@ -1651,6 +1651,23 @@ button.primary {
   background: #e5dbff;
   border: 1.5px solid #6741d9;
   transform: rotate(45deg);
+}
+/* The same mark in a line of words (the tour's ◇), in the board's hand. */
+.coach .dmark,
+.tour-tag .dmark {
+  width: 24px;
+  height: 24px;
+  margin: -5px 0;
+  font: 400 12px/1 var(--hand);
+  vertical-align: middle;
+}
+.coach .dmark::before,
+.tour-tag .dmark::before {
+  inset: 4px;
+}
+.dmark.proposed::before {
+  border-style: dashed;
+  background: #f3f0ff;
 }
 .decision.ds-proposed .dmark::before {
   border-style: dashed;
