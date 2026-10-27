@@ -4,7 +4,7 @@ import { Board, PHASES, STATUS, STICKERS, stickerItems } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
 import { AREAS, areaOf, fmt, STICKER_WORD } from "./engine/timeline";
-import { LAYER_COLOR, LAYERS, layerOf, openableLayers, tagCase, toDfdMermaid, toErMermaid, toInsideMermaid, toMermaid, toSequence } from "./engine/views";
+import { busyDecisions, LAYER_COLOR, LAYERS, layerOf, openableLayers, tagCase, toDfdMermaid, toErMermaid, toInsideMermaid, toMermaid, toSequence } from "./engine/views";
 import { buildReview, penMarks } from "./engine/review";
 import { logMarkdown } from "./engine/logfile";
 import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour, stepOf, targets as tourTargets, tourLength, waiting as tourWaiting } from "./engine/tour";
@@ -1024,27 +1024,32 @@ function Explain({ lid, model, live, onClose, onRename, onRemove, onAsk, onChall
   );
 }
 
-// What the colors mean, under the Pictures board (C4 and data flow draw their own key).
+// What the colors mean, under the Pictures board (C4 and data flow draw their own key). Under the
+// database and sequence diagrams only the layers apply: they color those too.
 const KEY = [["planned", "New"], ["built", "Exists"], ["building", "Being built"], ["verified", "Tested ✓"], ["failed", "Failed ✗"], ["live", "Shipped ★"]];
-function BoardKey({ model }) {
+function BoardKey({ model, layersOnly = false }) {
   const layers = LAYERS.filter((l) => Object.values(model?.nodes ?? {}).some((n) => layerOf(n) === l.key));
   return (
     <div className="board-key" aria-label="Key" data-tour="key">
-      <b>Key</b>
-      {KEY.map(([k, label]) => (
-        <span key={k}>
-          <i className="sw" style={{ borderColor: STATUS[k].stroke, background: STATUS[k].fill }} />
-          {label}
-        </span>
-      ))}
-      <span>
-        <i className="sw sw-dia" />
-        Decision, dashed until you approve
-      </span>
-      <span>
-        <i className="sw" style={{ borderColor: "#f08c00", background: "#fff4e6" }} />
-        Question for you
-      </span>
+      {!layersOnly && (
+        <>
+          <b>Key</b>
+          {KEY.map(([k, label]) => (
+            <span key={k}>
+              <i className="sw" style={{ borderColor: STATUS[k].stroke, background: STATUS[k].fill }} />
+              {label}
+            </span>
+          ))}
+          <span title="Its circle is its check: ? not run yet, ✓ passed, ✗ failed. It pulses while the work is in progress. Point at a ◇ to see the other parts it shapes.">
+            <i className="sw sw-dia" />
+            Decision, dashed until you approve
+          </span>
+          <span>
+            <i className="sw" style={{ borderColor: "#f08c00", background: "#fff4e6" }} />
+            Question for you
+          </span>
+        </>
+      )}
       {layers.length > 0 && (
         <span className="bk-layers" title="The plate behind each part: which layer it's in. Zoom into one to open it up.">
           <b>Layers</b>
@@ -1056,6 +1061,45 @@ function BoardKey({ model }) {
           ))}
         </span>
       )}
+    </div>
+  );
+}
+
+// The decisions in progress (busyDecisions): each one's status circle on the board pulses.
+// Excalidraw doesn't animate, so a CSS ring sits over the circle and follows the board as it pans,
+// zooms or redraws (api.onChange), moved straight on the DOM so nothing re-renders. It's not part
+// of the scene, so exports and the undo history never see it. Reduced motion: a still ring.
+function DecisionPulse({ api, ids }) {
+  const box = useRef(null);
+  const key = ids.join();
+  useEffect(() => {
+    if (!api || !key) return;
+    let last = null;
+    const place = (els, st) => {
+      const root = box.current;
+      const now = [els, st.scrollX, st.scrollY, st.zoom.value, st.offsetLeft, st.offsetTop];
+      if (!root || (last && now.every((v, i) => v === last[i]))) return;
+      last = now;
+      const r = root.getBoundingClientRect(), z = st.zoom.value;
+      for (const ring of root.children) {
+        const el = els.find((e) => e.id === `dec-${ring.dataset.id}-pf` && !e.isDeleted);
+        // Faded by a layer or flow filter: no pulse either.
+        ring.hidden = !el || el.opacity <= 50;
+        if (ring.hidden) continue;
+        const x = (el.x + el.width / 2 + st.scrollX) * z + st.offsetLeft - r.left;
+        const y = (el.y + el.height / 2 + st.scrollY) * z + st.offsetTop - r.top;
+        ring.style.transform = `translate(${x}px, ${y}px) scale(${z})`;
+      }
+    };
+    place(api.getSceneElements(), api.getAppState());
+    return api.onChange(place);
+  }, [api, key]);
+  if (!ids.length) return null;
+  return (
+    <div className="dec-pulses" ref={box} aria-hidden="true">
+      {ids.map((id) => (
+        <span key={id} className="dec-pulse" data-id={id} />
+      ))}
     </div>
   );
 }
@@ -1522,6 +1566,9 @@ export default function App() {
     },
     [runDiff, showLinked],
   );
+  // The pointer over the board: a ◇ under it shows its ties (Board.hoverAt), but not mid-drag, so
+  // nothing redraws under a move. Stable, like onChange.
+  const onPointerUpdate = useCallback(({ pointer, button }) => button !== "down" && sessionRef.current?.board.hoverAt(pointer.x, pointer.y), []);
 
   const s = sessionRef.current;
   const st = s?.state ?? { busy: false, paused: false, playing: false, thinking: false, thinkingFor: 0 };
@@ -2564,8 +2611,10 @@ export default function App() {
             className={`canvas arch ${boardView === "board" && !readOnlyView ? "on" : ""} ${ownSel ? "own-sel" : ""} ${tools ? "tools-on" : "tools-off"}`}
             role="tabpanel"
             aria-label="Architecture"
+            onPointerLeave={() => s?.board.hoverAt(null)}
           >
-            <Excalidraw excalidrawAPI={setApi} initialData={INITIAL_DATA} onChange={onChange} UIOptions={UI_OPTIONS} />
+            <Excalidraw excalidrawAPI={setApi} initialData={INITIAL_DATA} onChange={onChange} onPointerUpdate={onPointerUpdate} UIOptions={UI_OPTIONS} />
+            {boardView === "board" && !readOnlyView && model && <DecisionPulse api={api} ids={busyDecisions(model)} />}
             {editable && (
               <div className={`glass ${glassUp ? "up" : "down"}`} aria-hidden="true">
                 <span className="glass-glint" />
@@ -2666,7 +2715,7 @@ export default function App() {
               />
             ))}
         </div>
-        {boardView === "board" && diagram === "pictures" && nodeCount > 0 && <BoardKey model={model} />}
+        {boardView === "board" && (diagram === "pictures" || readOnlyDiagram) && nodeCount > 0 && <BoardKey model={model} layersOnly={readOnlyDiagram} />}
       </main>
     </div>
   );

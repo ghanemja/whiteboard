@@ -3160,3 +3160,75 @@ button:focus-visible {
   border-width: 1px;
   border-radius: 4px;
 }
+/* Under the database and sequence diagrams the layers are the whole key. */
+.board-key .bk-layers:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+/* A decision in progress: its status circle on the board flashes, and a ring spreads from it
+   (DecisionPulse, over the canvas; moved with the board by transform). Orange, like "Being built". */
+.dec-pulses {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dec-pulse {
+  position: absolute;
+  left: -10px;
+  top: -10px;
+  width: 20px;
+  height: 20px;
+  --pulse: #e8590c;
+}
+.dec-pulse::before,
+.dec-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+.dec-pulse::before {
+  background: var(--pulse);
+  animation: dec-flash 1.4s ease-in-out infinite;
+}
+.dec-pulse::after {
+  border: 2.5px solid var(--pulse);
+  animation: dec-ring 1.4s ease-out infinite;
+}
+@keyframes dec-flash {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes dec-ring {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+.app[data-theme="dark"] .dec-pulse {
+  --pulse: #ff922b;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dec-pulse::before,
+  .dec-pulse::after {
+    animation: none;
+  }
+  .dec-pulse::before {
+    opacity: 0.3;
+  }
+  .dec-pulse::after {
+    transform: scale(1.45);
+  }
+}

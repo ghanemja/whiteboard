@@ -1,8 +1,9 @@
 // The board's views (src/engine/views.js): C4 labels, layers and what's inside them, flows, names, and the Mermaid exports (run with `npm test`).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { c4Tag, dfdIds, dfdRole, insideOf, layerOf, openableLayers, parseColumns, parseLinks, parseSteps, partsOf, sentenceCase, tagCase, toDfdMermaid, toErMermaid, toInsideMermaid, toMermaid, toSequence } from "../src/engine/views.js";
-import { drawEr, drawInside, drawSequence } from "../src/engine/diagrams.js";
+import { busyDecisions, c4Tag, dfdIds, dfdRole, insideOf, LAYER_COLOR, layerOf, openableLayers, parseColumns, parseLinks, parseSteps, partsOf, sentenceCase, tagCase, toDfdMermaid, toErMermaid, toInsideMermaid, toMermaid, toSequence } from "../src/engine/views.js";
+import { drawEr, drawInside, drawSequence, SEQ } from "../src/engine/diagrams.js";
+import { YOU } from "../src/engine/palette.js";
 
 const model = {
   project: 'Link "shortener"',
@@ -55,6 +56,18 @@ test("Mermaid: links carry protocol and API, async ones dashed, and nothing brea
   assert.match(m, /subgraph system\["Link 'shortener'"\]/);
   assert.ok(!m.includes("gone")); // a link to a component that's gone is left out
   assert.match(m, /class n_llm external/);
+});
+
+test("Mermaid exports carry the board's layer colors: one class per layer, people in pink", () => {
+  const classes = (m) => Object.fromEntries([...m.matchAll(/^ {2}class (\S+) (\w+)$/gm)].map(([, ids, k]) => [k, ids.split(",")]));
+  for (const m of [toMermaid(model), toDfdMermaid(model)]) {
+    assert.deepEqual(classes(m), { frontend: ["n_web"], backend: ["n_api"], data: ["n_db", "n_q_1"], external: ["n_llm"], person: ["n_user"] });
+    assert.ok(m.includes(`classDef frontend fill:${LAYER_COLOR.frontend.fill},stroke:${LAYER_COLOR.frontend.stroke},color:#1e1e1e`));
+    assert.ok(m.includes(`classDef person fill:${YOU.fill},stroke:${YOU.stroke}`));
+    assert.ok(!m.includes("#438dd5"), "not C4's usual blue");
+  }
+  // A layer's export colors only what it holds.
+  assert.deepEqual(Object.keys(classes(toMermaid(model, { only: new Set(["api", "db"]) }))), ["backend", "data"]);
 });
 
 test("names in sentence case, except file names, code and one-word names", () => {
@@ -166,6 +179,42 @@ test("drawn diagrams: crow's feet on a foreign key, and a reply dashed in a sequ
   assert.deepEqual(drawSequence(m, null), []);
 });
 
+test("drawn diagrams: each part in its layer's color, in the board's hand-drawn look", () => {
+  const m = {
+    nodes: { pg: { id: "pg", name: "Postgres", kind: "data" }, web: { id: "web", name: "Web", kind: "client" }, api: { id: "api", name: "API", kind: "service" }, you: { id: "you", name: "You", kind: "user" } },
+    edges: {},
+    tables: { documents: { id: "documents", name: "documents", of: "pg", columns: parseColumns("id uuid pk") }, loose: { id: "loose", name: "loose", columns: parseColumns("id uuid pk") } },
+  };
+  const er = drawEr(m);
+  const by = (sk, id) => sk.find((e) => e.id === id);
+  // A data store's tables sit on its plate, their headers and keys in its color; a table no store holds gets a plain frame.
+  assert.equal(by(er, "er:g:pg").backgroundColor, LAYER_COLOR.data.fill);
+  assert.equal(by(er, "er:t:documents:h").backgroundColor, LAYER_COLOR.data.fill);
+  assert.equal(by(er, "er:t:documents:k0").strokeColor, LAYER_COLOR.data.stroke);
+  assert.equal(by(er, "er:g:other").strokeStyle, "dashed");
+  assert.ok(er.indexOf(by(er, "er:g:pg")) < er.indexOf(by(er, "er:t:documents")), "the plate is under its tables");
+  const seq = drawSequence(m, { name: "Ask", steps: parseSteps("you>web: ask; web>api: POST /ask; api>pg: SELECT; api>web: answer") });
+  assert.deepEqual(["web", "api", "pg"].map((id) => by(seq, `sq:p:${id}`).backgroundColor), [LAYER_COLOR.frontend.fill, LAYER_COLOR.backend.fill, LAYER_COLOR.data.fill]);
+  assert.equal(by(seq, "sq:l:api").strokeColor, LAYER_COLOR.backend.stroke, "a lifeline in its participant's color");
+  assert.equal(by(seq, "sq:p:you").backgroundColor, YOU.fill);
+  // One look everywhere: hand-drawn lines, and the hand font (no font named).
+  for (const e of [...er, ...seq, ...drawInside(rag, "ml")]) {
+    assert.equal(e.fontFamily, undefined, e.id);
+    if (e.type !== "text") assert.equal(e.roughness, 1, e.id);
+  }
+});
+
+test("a sequence message's label sits over the first gap from its sender, clear of the lifelines it passes", () => {
+  const m = { nodes: { a: { id: "a", name: "A", kind: "client" }, b: { id: "b", name: "B", kind: "service" }, c: { id: "c", name: "C", kind: "data" } }, edges: {} };
+  const seq = drawSequence(m, { name: "f", steps: parseSteps("a>b: next door; a>c: skips b; c>a: back") });
+  const x = (id) => seq.find((e) => e.id === `sq:l:${id}`).x;
+  const label = (i) => seq.find((e) => e.id === `sq:m:${i}:t`)._c[0];
+  assert.deepEqual([x("b") - x("a"), x("c") - x("b")], [SEQ.GAP, SEQ.GAP]);
+  assert.equal(label(0), (x("a") + x("b")) / 2);
+  assert.equal(label(1), (x("a") + x("b")) / 2);
+  assert.equal(label(2), (x("c") + x("b")) / 2);
+});
+
 // A small RAG app: the worker's chunk and embed steps are ML, though the worker is backend.
 const rag = {
   nodes: {
@@ -237,4 +286,25 @@ test("inside a layer, drawn and exported: frames, parts, closed neighbours, and 
   assert.match(mm, /subgraph n_worker\["Ingest worker \(ML parts\)"\]/);
   assert.match(mm, /p_worker_chunk -->\|"chunks"\| p_worker_embed/);
   assert.match(mm, /class n_api,n_vdb stub/);
+  // Colored as on the board: ML parts orange, the backend worker's frame violet, a closed neighbour in its own layer's color.
+  assert.match(mm, /class p_worker_chunk,p_worker_embed ml/);
+  assert.ok(mm.includes(`style n_worker fill:${LAYER_COLOR.backend.fill},stroke:${LAYER_COLOR.backend.stroke}`));
+  assert.equal(sk.find((e) => e.id === "in:p:worker:worker.embed").strokeColor, LAYER_COLOR.ml.stroke);
+  assert.equal(sk.find((e) => e.id === "in:g:worker").strokeColor, LAYER_COLOR.backend.stroke);
+  const stub = sk.find((e) => e.id === "in:s:vdb");
+  assert.deepEqual([stub.backgroundColor, stub.opacity < 100], [LAYER_COLOR.data.fill, true], "faded, not grey: grey is External");
+});
+
+test("the decisions in progress: a part they shape being built, or a check still to come while it verifies", () => {
+  const nodes = { api: { id: "api", status: "planned" }, db: { id: "db", status: "planned" } };
+  const d = (id, state, affects, proof = null) => ({ id, state, affects, proof });
+  const decisions = { d1: d("d1", "accepted", ["api"]), d2: d("d2", "changed", ["db", "api"]), d3: d("d3", "accepted", ["db"], "pass"), d4: d("d4", "rejected", ["api"]), d5: d("d5", "proposed", ["api"]) };
+  const busy = (phase, statuses) => busyDecisions({ phase, decisions, nodes: Object.fromEntries(Object.entries(nodes).map(([k, n]) => [k, { ...n, status: statuses[k] ?? n.status }])) });
+  assert.deepEqual(busy("planning", {}), [], "nothing is in progress at the plan gate");
+  assert.deepEqual(busy("planning", { api: "building" }), ["d1", "d2"], "a proposed decision waits for approval; a rejected one is done");
+  assert.deepEqual(busy("implementation", { db: "building" }), ["d2", "d3"]);
+  assert.deepEqual(busy("implementation", { api: "built" }), []);
+  assert.deepEqual(busy("verification", {}), ["d1", "d2"], "its check hasn't a result yet");
+  assert.deepEqual(busy("complete", {}), []);
+  assert.deepEqual(busyDecisions({ phase: "verification" }), []);
 });
