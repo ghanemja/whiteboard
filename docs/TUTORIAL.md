@@ -104,11 +104,11 @@ You don't have to type to change its mind. **Edit the board**, and your changes 
 
 ### Pull the glass down
 
-The board sits **behind glass**. You can click anything to learn what it is, but nothing moves by accident. To change the plan, press **Pull down to edit** at the top of the board: the glass slides away and **Edit the plan** appears. **Submit** sends your changes and puts the glass back. **Glass back up** puts it back without sending.
+The board sits **behind glass**. You can click anything to learn what it is, but nothing moves by accident. To change the plan, press **Pull down to edit**, the first button in **Edit the plan** above the board: the glass slides away and the same button turns into **Glass back up**, which puts it back without sending. **Submit** sends your changes and puts the glass back too.
 
-![The board behind glass, with the Pull down to edit tab](../screenshots/glass/1-behind-glass.png)
+![The board behind glass, with Pull down to edit at the left of Edit the plan](../screenshots/glass/1-behind-glass.png)
 
-Buttons on a card that change the plan (**Use this**, **Rename**, **Remove**) pull the glass down for you.
+Buttons that change the plan (**Use this**, **Rename**, **Remove** on a card, or any **Edit the plan** button) pull the glass down for you.
 
 ### Pick another option for a decision
 
@@ -118,7 +118,7 @@ Click a ◇, then press **Use this** next to one of the other options. Or drag o
 
 ### Use the Edit the plan toolbar
 
-With the glass down, **Edit the plan** above the board has buttons with words:
+**Edit the plan** above the board has buttons with words:
 
 | Button | What it does |
 | --- | --- |

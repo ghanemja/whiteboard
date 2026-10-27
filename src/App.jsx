@@ -1970,7 +1970,7 @@ export default function App() {
   };
   useEffect(() => {
     if (!editable || !glassUp) return;
-    const onBoard = (t) => !!t?.closest?.(".canvas.arch") && !t.closest(".explain, .board-submit, .glass-handle, button, input, textarea, select");
+    const onBoard = (t) => !!t?.closest?.(".canvas.arch") && !t.closest(".explain, .board-submit, button, input, textarea, select");
     const typing = (t) => !!t?.closest?.("input, textarea, select, [contenteditable]");
     let down = false;
     const handlers = {
@@ -2699,39 +2699,48 @@ export default function App() {
             </div>
           </div>
         )}
-        {editable && !glassUp && (
+        {editable && (
+          // Always there while the plan is editable, glass up or down, so neither the glass switch
+          // (first, a fixed width) nor the board below moves when you flip it. A tool pressed with
+          // the glass up pulls it down first, like Rename on a card.
           <div className="edit-bar" role="toolbar" aria-label="Edit the plan">
+            <button
+              className={`glass-toggle ${glassUp ? "up" : "down"}`}
+              data-tour="glass"
+              aria-pressed={!glassUp}
+              onClick={glassUp ? lowerGlass : raiseGlass}
+              title={glassUp ? "Pull the glass down to move, rename, remove or add things, then Submit" : "Back to looking: your changes stay in the list until you Submit"}
+            >
+              <span aria-hidden="true">{glassUp ? "⇣" : "⇡"}</span> {glassUp ? "Pull down to edit" : "Glass back up"}
+            </button>
             <span className="eb-label">Edit the plan:</span>
-            <button onClick={() => useTool("selection", null)} title="Select, move and double-click things on the board">
+            <button onClick={() => (lowerGlass(), useTool("selection", null))} title="Select, move and double-click things on the board">
               <ToolIcon name="select" />
               Select
             </button>
-            <button onClick={toolRename} title="Rename the selected part (or double-click any name)">
+            <button onClick={() => (lowerGlass(), toolRename())} title="Rename the selected part (or double-click any name)">
               <ToolIcon name="rename" />
               Rename
             </button>
-            <button onClick={() => useTool("rectangle", "Draw a box on the board, then type its name.")} title="Ask for a new part: draw a box and name it">
+            <button onClick={() => (lowerGlass(), useTool("rectangle", "Draw a box on the board, then type its name."))} title="Ask for a new part: draw a box and name it">
               <ToolIcon name="add" />
               Add a part
             </button>
-            <button onClick={() => useTool("arrow", "Drag from one part to another.")} title="Ask for a new connection: draw an arrow between two parts">
+            <button onClick={() => (lowerGlass(), useTool("arrow", "Drag from one part to another."))} title="Ask for a new connection: draw an arrow between two parts">
               <ToolIcon name="connect" />
               Connect
             </button>
-            <button onClick={toolRemove} title="Remove the selected part or connection, or reject the selected ◇ decision">
+            <button onClick={() => (lowerGlass(), toolRemove())} title="Remove the selected part or connection, or reject the selected ◇ decision">
               <ToolIcon name="remove" />
               Remove
             </button>
-            <button onClick={() => useTool("text", "Click an empty spot and type a note, like “English PDFs only”.")} title="Add a note that narrows what it builds">
+            <button onClick={() => (lowerGlass(), useTool("text", "Click an empty spot and type a note, like “English PDFs only”."))} title="Add a note that narrows what it builds">
               <ToolIcon name="note" />
               Add a note
             </button>
-            <button className={`eb-tools ${tools ? "on" : ""}`} aria-pressed={tools} onClick={toggleTools} title="Show or hide Excalidraw's full drawing tools">
+            <button className={`eb-tools ${tools ? "on" : ""}`} aria-pressed={tools} onClick={() => (tools || lowerGlass(), toggleTools())} title="Show or hide Excalidraw's full drawing tools">
               <ToolIcon name="tools" />
               Drawing tools
-            </button>
-            <button className="gb-raise" onClick={raiseGlass} title="Back to looking: your changes stay in the list until you Submit">
-              <span aria-hidden="true">⇡</span> Glass back up
             </button>
           </div>
         )}
@@ -2748,11 +2757,6 @@ export default function App() {
               </div>
             )}
             {editable && <StickerTray onDropped={lowerGlass} />}
-            {editable && glassUp && (
-              <button className="glass-handle" data-tour="glass" onClick={lowerGlass} title="Pull the glass down to move, rename, remove or add things, then Submit">
-                <span aria-hidden="true">⇣</span> Pull down to edit
-              </button>
-            )}
             {toolHint && editable && (
               <p className="tool-hint" role="status">
                 {toolHint}

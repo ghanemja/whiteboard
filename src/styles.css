@@ -2513,41 +2513,28 @@ button:focus-visible {
 .app[data-theme="dark"] .glass::after {
   opacity: 0.3;
 }
-.glass-handle {
-  position: absolute;
-  top: 6px;
-  left: 50%;
-  z-index: 5;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 14px 6px;
-  border: 1.5px solid rgba(120, 160, 205, 0.65);
-  border-top: 0;
-  border-radius: 0 0 12px 12px;
-  background: rgba(240, 247, 255, 0.94);
-  color: #34506e;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(60, 90, 130, 0.15);
-}
-.glass-handle:hover {
-  background: #ffffff;
-  color: var(--accent-ink);
-}
-.app[data-theme="dark"] .glass-handle {
-  background: rgba(43, 50, 66, 0.94);
-  color: #c5d6f0;
-}
 @media (prefers-reduced-motion: reduce) {
   .glass {
     transition: none;
   }
 }
-.edit-bar .gb-raise {
+/* The glass switch: first in Edit the plan, one width for both labels, so it stays put.
+   Tinted like the glass while it's up; dashed once it's down (the glass is out of the way). */
+.edit-bar .glass-toggle {
+  justify-content: center;
+  min-width: 11.5em;
+  font-weight: 800;
+}
+.edit-bar .glass-toggle.up {
+  border-color: rgba(90, 135, 185, 0.9);
+  background: rgba(225, 238, 252, 0.95);
+  color: #34506e;
+}
+.app[data-theme="dark"] .edit-bar .glass-toggle.up {
+  background: rgba(55, 70, 95, 0.95);
+  color: #c5d6f0;
+}
+.edit-bar .glass-toggle.down {
   border-style: dashed;
 }
 
