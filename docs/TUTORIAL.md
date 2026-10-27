@@ -8,7 +8,7 @@ This guide takes you through one whole run, step by step. You don't need an API 
 
 - **Agent:** a program that uses an AI model to work on code by itself: it reads files, edits them and runs commands.
 - **Run:** one task from start to finish: plan → build → verify (test) → ship.
-- **Board:** the drawing on the right. It's the agent's plan as a picture, and you can edit it.
+- **Board:** the drawing on the left. It's the agent's plan as a picture, and you can edit it.
 - **Part (component):** one piece of the system, like the web page, the server or the database.
 - **Decision (◇):** a technical choice the agent made, like "use a background worker".
 
@@ -46,8 +46,8 @@ The rest of this guide covers the same run in more detail. Do the tour first, th
 
 ![The tour's first step rings the three areas: the panel, the board, and the phase road](../screenshots/tour/01-welcome.png)
 
-1. **The panel (left).** The agent talks here, and you answer. It has two tabs: **Chat & log** (what it said and did) and **Plan details** (the plan in words). The box at the bottom is for typing to it.
-2. **The board (right).** The plan as a drawing. Each picture is a part of the system; arrows show which part talks to which.
+1. **The panel (right).** The agent talks here, and you answer. It has two tabs: **Chat & log** (what it said and did) and **Plan details** (the plan in words). The box at the bottom is for typing to it.
+2. **The board (left).** The plan as a drawing. Each picture is a part of the system; arrows show which part talks to which.
 3. **The phase road (top).** Where the run is: **Plan → Build → Verify → Ship**, with a dot for each task.
 
 ### Legend

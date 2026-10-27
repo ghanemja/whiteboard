@@ -53,15 +53,17 @@ button {
   font-family: inherit;
 }
 
+/* The board on the left, the panel (first in the page, for keyboard and screen readers) on the right. */
 .app {
   display: grid;
-  grid-template-columns: minmax(340px, 410px) 1fr;
+  grid-template-columns: 1fr minmax(340px, 410px);
   height: 100%;
   background: var(--panel);
   color: var(--ink);
 }
 /* ---- the board: the journey on top, then a tab per canvas ---- */
 .board {
+  order: -1;
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -465,7 +467,7 @@ button {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid var(--line);
+  border-left: 1px solid var(--line);
   background: var(--panel);
 }
 
@@ -2101,9 +2103,6 @@ button:focus-visible {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 55vh minmax(0, 1fr);
   }
-  .board {
-    order: -1;
-  }
   .journey {
     padding: 6px 12px 0 14px;
   }
@@ -2118,7 +2117,7 @@ button:focus-visible {
     height: 84px;
   }
   .agent {
-    border-right: 0;
+    border-left: 0;
     border-top: 1px solid var(--line);
   }
 }

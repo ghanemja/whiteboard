@@ -1702,7 +1702,7 @@ export default function App() {
         ? {
             n: 1,
             title: "Tell the agent what to build",
-            text: "Pick an example, or describe your own task in the box at the bottom. It reads the code and draws a plan on the right, then waits for your OK. Nothing in your repo changes before that.",
+            text: "Pick an example, or describe your own task in the box at the bottom. It reads the code and draws a plan on the board, then waits for your OK. Nothing in your repo changes before that.",
             action: { label: "Watch a demo first", run: runDemo },
           }
         : !messages.length
@@ -1717,7 +1717,7 @@ export default function App() {
               ? {
                   n: 2,
                   title: "Check the plan",
-                  text: `The drawing on the right is its plan. Nothing is built until you approve.${openQuestions ? ` It left ${plural(openQuestions, "question")} for you in Plan details.` : ""} Click a ◇ to see other options; pull the glass down to change the drawing.`,
+                  text: `The drawing is its plan. Nothing is built until you approve.${openQuestions ? ` It left ${plural(openQuestions, "question")} for you in Plan details.` : ""} Click a ◇ to see other options; pull the glass down to change the drawing.`,
                 }
               : finishedRun || phase === "complete"
                 ? {
