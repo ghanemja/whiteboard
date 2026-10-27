@@ -1340,8 +1340,9 @@ export default function App() {
       // Excalidraw measures its container after mount, so fit once it has real dimensions.
       timers.push(setTimeout(() => board.fit(), 150));
       // With an API key, wait for a task; otherwise play the scripted demo, as the tour on a first visit.
-      if (status.live) document.getElementById("ask")?.focus();
-      else if (tourOffer) setAutoTour(true);
+      // A first visit, key or not: the demo starts and the intro pops up over it (the tour).
+      if (tourOffer) setAutoTour(true);
+      else if (status.live) document.getElementById("ask")?.focus();
       else timers.push(setTimeout(() => s.startDemo({ fresh: true }), 700));
     });
     return () => {
@@ -1866,7 +1867,7 @@ export default function App() {
     setSpeed(v);
     if (s) s.player.speed = v;
   };
-  // Start from an empty board: the first step shows the three areas, the second starts the demo.
+  // Start from an empty board: the intro starts the demo behind it, the next step speeds it up.
   const takeTour = async () => {
     if (!s) return;
     markTour("taken");
@@ -1934,7 +1935,7 @@ export default function App() {
     // Leaving the step a checkpoint waits for (done, skipped, or the tour's over) lets the demo go on.
     if (s.held && !holds(tour, s.held, tourCtx)) s.release();
   });
-  // A step's action, the first time it's reached: the plan step starts the demo at 2×.
+  // A step's action, the first time it's reached: the intro starts the demo, the plan step plays it at 2×.
   const prevTour = useRef(null);
   useEffect(() => {
     const prev = prevTour.current;
@@ -1942,8 +1943,9 @@ export default function App() {
     if (!isFresh(prev, tour)) return;
     if (stepOf(tour).enter === "demo") {
       runDemo();
-      setSpeedTo(2);
+      setSpeedTo(1);
     }
+    if (stepOf(tour).enter === "fast") setSpeedTo(2);
     if (stepOf(tour).clearSelection) s?.board.api.updateScene({ appState: { selectedElementIds: {} } });
   }, [tour]);
   // Where the tour's first circle on the board is, on screen, and the rest of the drawing round
@@ -2023,6 +2025,8 @@ export default function App() {
             total={tourLength}
             wait={tourWaiting(tourStep, tourCtx)}
             manual={tour.manual}
+            live={!!agent?.live}
+            onOwnTask={() => leaveTour("task")}
             onBack={() => setTour(tourBack(tour, tourCtx))}
             onNext={() => setTour(tourNext(tour, tourCtx))}
             onSkip={skipTour}
@@ -2093,24 +2097,7 @@ export default function App() {
               <span className="caption">{status}</span>
             </div>
           )}
-          {/* Not before the dev server says whether there's a key: without one the tour starts by itself. */}
-          {tour || !agent || autoTour ? null : tourOffer && s ? (
-            <div className="coach tour-offer" role="region" aria-label="Take the tour">
-              <div className="coach-top">
-                <span className="coach-label">New here?</span>
-              </div>
-              <b className="coach-title">Take the tour: a whole run in a few minutes</b>
-              <p>The demo plays as a lesson. It stops at each step until you've tried it: pick an option, answer a question, allow a command, check its work. No API key needed.</p>
-              <div className="tour-actions">
-                <button className="linkish" onClick={() => markTour("declined")}>
-                  No thanks
-                </button>
-                <button className="primary" onClick={takeTour}>
-                  Take the tour
-                </button>
-              </div>
-            </div>
-          ) : (
+          {tour || !agent || autoTour ? null : (
             tips && coach && <Coach c={coach} onHide={() => showTipsPref(false)} onTour={takeTour} />
           )}
         </header>

@@ -35,21 +35,19 @@ export const BOARD = '[data-tour="board"]';
 export const TOUR = [
   {
     id: "welcome",
-    title: "Welcome! This is a run, start to finish",
-    text: "A coding agent gets a task, plans it, builds it and tests it. Here it's a scripted demo: no API key, and it never touches your files. Three areas: (1) this panel, where it talks and you answer; (2) the board, its plan as a drawing; (3) the phase road: Plan → Build → Verify → Ship.",
+    // The intro: a pop-up in the middle of the screen, over the demo as it starts playing.
+    intro: true,
+    title: "Watch a coding agent plan, build and test",
+    text: "It draws its plan on the board as it works, and you steer it from the drawing. This is a demo run: no API key, and nothing on your machine changes.",
     next: true,
-    place: "center", // the three areas are the whole screen: the card sits in the middle, a ring round each
-    dom: () => [
-      { sel: '[data-tour="panel"]', label: "1 Panel" },
-      { sel: '[data-tour="board"]', label: "2 Board" },
-      { sel: '[data-tour="road"]', label: "3 Phase road" },
-    ],
+    enter: "demo",
+    place: "center", // nothing outlined: the next steps point at things one at a time
   },
   {
     id: "plans",
     title: "It plans first",
     text: "Watch the parts appear. Each picture is a part of the system: a browser window is the web client, a rack a server, a cylinder a database. The color says its state: the key under the board has them all. Grey means new: nothing is built yet.",
-    enter: "demo",
+    enter: "fast",
     wait: (c) => (c.gate ? null : "Playing at 2×. The plan stops by itself when it's ready."),
     done: (c) => c.gate || c.stage === "building",
     dom: () => [{ sel: '[data-tour="key"]', label: "What the colors mean" }],

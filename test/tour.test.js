@@ -27,10 +27,12 @@ test("a whole tour: each step waits for its action, then moves on by itself", ()
   let c = { ...base };
   let t = startTour(c);
   assert.equal(at(t), "welcome");
+  assert.ok(stepOf(t).intro, "the intro pop-up");
+  assert.equal(stepOf(t).enter, "demo", "the demo starts behind it");
   assert.equal(advance(t, c), t, "Next-only steps wait for Next");
   t = next(t, c);
   assert.equal(at(t), "plans");
-  assert.equal(stepOf(t).enter, "demo");
+  assert.equal(stepOf(t).enter, "fast");
 
   c = { ...c, started: true, stage: "planning", phase: "planning", firstDecision: "d1", firstQuestion: "q1" };
   assert.equal(advance(t, c), t, "still planning");
@@ -162,8 +164,8 @@ test("what stays lit, and where the card goes", () => {
     while (at(t) !== id) t = next(t, c);
     return targets(t, c);
   };
-  assert.equal(go("welcome", base).place, "center", "the three areas are the whole screen");
-  assert.equal(go("welcome", base).dom.length, 3);
+  assert.equal(go("welcome", base).place, "center", "the intro: a pop-up in the middle");
+  assert.equal(go("welcome", base).dom.length, 0, "nothing outlined behind it");
   assert.equal(go("finish", base).place, "center", "nothing to point at");
   assert.deepEqual(go("finish", base).spot, []);
 

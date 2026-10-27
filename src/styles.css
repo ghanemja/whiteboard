@@ -2820,13 +2820,43 @@ button:focus-visible {
   justify-content: flex-end;
   gap: 6px;
 }
-.app .coach.tour .linkish,
-.app .coach.tour-offer .linkish {
+.app .coach.tour .linkish {
   color: #6b5a1e;
 }
-.app[data-theme="dark"] .coach.tour .linkish,
-.app[data-theme="dark"] .coach.tour-offer .linkish {
+.app[data-theme="dark"] .coach.tour .linkish {
   color: var(--soft);
+}
+/* The intro (and the finish): in the middle of the screen, bigger, over the demo playing behind. */
+.tour-pop.at-center {
+  width: 460px;
+}
+.app .coach.tour.intro {
+  padding: 22px 24px 18px;
+}
+.intro-brand {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8a6d1c;
+}
+.app[data-theme="dark"] .intro-brand {
+  color: var(--soft);
+}
+.intro-title {
+  margin: 6px 0 8px;
+  font: 400 27px/1.2 var(--hand);
+  color: var(--ink);
+}
+.app .coach.tour.intro p {
+  font-size: 14px;
+}
+.app .coach.tour.intro .tour-actions {
+  margin-top: 16px;
+}
+.app .coach.tour.intro .tour-actions button.primary {
+  padding: 8px 16px;
+  font-size: 14px;
 }
 /* The spotlight: the screen dims round what the step is about (cut out of an SVG mask), with a
    ring round each thing to click, and the card pops out beside it. Only the card takes clicks:

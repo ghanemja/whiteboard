@@ -11,9 +11,31 @@ const marked = (s, proposed) =>
     ? s.split("◇").flatMap((part, i) => (i ? [<span key={i} className={`dmark${proposed ? " proposed" : ""}`} role="img" aria-label="decision">D</span>, part] : [part]))
     : s;
 
-// The step's card: the same yellow note as the coach, with a step count and a way out.
-// A step that waits for the run (it's still planning, say) says so instead of offering Next.
-export function TourCard({ step, proposed, n, total, wait, manual, onBack, onNext, onSkip, onExit, finish }) {
+// The step's card: the same yellow note as the coach, with a step count and a way out. Next is
+// always there: it does the step for you if you haven't (onSkip), so nobody has to work out what
+// to click. A step that waits for the run (it's still planning, say) says so, and Next waits too.
+// The first step is the intro, a pop-up over the demo as it starts: Show me around, or skip it
+// (with an API key, straight to your own task).
+export function TourCard({ step, proposed, n, total, wait, manual, live, onBack, onNext, onSkip, onExit, onOwnTask, finish }) {
+  if (step.intro)
+    return (
+      <div className="coach tour intro" role="dialog" aria-labelledby="tour-intro-title">
+        <span className="intro-brand">Agent Whiteboard</span>
+        <h2 id="tour-intro-title" className="intro-title">
+          {step.title}
+        </h2>
+        <p>{marked(step.text, proposed)}</p>
+        <div className="tour-actions">
+          <button className="linkish" onClick={live ? onOwnTask : onExit}>
+            {live ? "Start my own task" : "Skip the tour"}
+          </button>
+          <button className="primary" onClick={onNext} autoFocus>
+            Show me around →
+          </button>
+        </div>
+      </div>
+    );
+  const acts = !step.next && !manual;
   return (
     <div className="coach tour" role="region" aria-label="Tour">
       <div className="coach-top">
@@ -40,13 +62,9 @@ export function TourCard({ step, proposed, n, total, wait, manual, onBack, onNex
         </button>
         {finish ? (
           <span className="tour-finish">{finish}</span>
-        ) : step.next || manual ? (
-          <button className="primary" onClick={onNext}>
-            Next →
-          </button>
         ) : (
-          <button className="linkish" onClick={onSkip} title="Do it for me and go on">
-            Skip step
+          <button className="primary" onClick={acts ? onSkip : onNext} disabled={!!wait} title={acts ? "Go on (it does the step for you if you haven't)" : undefined}>
+            Next →
           </button>
         )}
       </div>

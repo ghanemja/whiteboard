@@ -51,16 +51,16 @@ let page;
   await page.goto(URL);
   await page.waitForFunction(() => window.__wb?.board?.api, null, { timeout: 30000 });
   if (theme === "dark") await S(() => window.__wb.board.api.updateScene({ appState: { theme: "dark" } }));
-  // A first visit (no API key): the tour starts by itself, with no demo playing behind it.
-  if (await page.$(".tour-offer")) fail("a first visit starts the tour, not an offer");
+  // A first visit: the intro pops up by itself, with the demo starting behind it.
 
-  // 1 Welcome: the three areas.
-  await waitStep(1, 15000);
-  if (await S(() => window.__wb.transcript.messages.length)) fail("the demo waits for the tour's second step");
+  // 1 The intro: a pop-up over the demo as it plays, nothing outlined.
+  await page.waitForSelector(".coach.tour.intro", { timeout: 15000 });
+  await page.waitForFunction(() => window.__wb.player.busy, null, { timeout: 10000 });
   const rings = await page.$$eval(".tour-ring", (r) => r.length);
-  if (rings !== 3) fail(`welcome should ring 3 areas, rings ${rings}`);
+  if (rings !== 0) fail(`the intro outlines nothing, rings ${rings}`);
+  await page.waitForTimeout(2500); // a little of the plan behind it
   await shot("01-welcome");
-  await page.click(".coach.tour button.primary"); // Next
+  await page.click(".coach.tour.intro button.primary"); // Show me around
 
   // 2 It plans (the tour plays it at 2×; faster here).
   await waitStep(2);
@@ -169,21 +169,21 @@ let page;
   if (!stored) fail("the tour should be remembered as taken");
   console.log("tour ok; messages before the build pause:", typed);
 
-  // Back, Skip step and Exit: from the ? / coach entry point, on a fresh board.
+  // Back, Next (doing a step for you) and Exit: from the coach's Tour link, on a fresh board.
   await page.click(".coach .coach-links button:has-text('Tour')");
-  await waitStep(1);
-  await page.click(".coach.tour button.primary"); // Next → the plan step starts the demo
+  await page.waitForSelector(".coach.tour.intro");
+  await page.click(".coach.tour.intro button.primary"); // Show me around
   await waitStep(2);
   await S(() => (window.__wb.player.speed = 4));
   await waitStep(3, 120000);
-  await page.click(".coach.tour .tour-actions button:has-text('Skip step')");
+  await page.click(".coach.tour .tour-actions button:has-text('Next')"); // opens nothing, goes on
   await waitStep(4);
   await page.click(".coach.tour .tour-actions button:has-text('Back')");
   await waitStep(3);
   if (!(await page.$(".coach.tour button:has-text('Next')"))) fail("a step you came back to waits for Next");
   await page.click(".coach.tour button:has-text('Next')");
   await waitStep(4);
-  await page.click(".coach.tour .tour-actions button:has-text('Skip step')"); // picks an option for you
+  await page.click(".coach.tour .tour-actions button:has-text('Next')"); // picks an option for you
   await waitStep(5);
   await page.waitForFunction(() => document.querySelectorAll(".gate .edits li li").length >= 1, null, { timeout: 5000 });
   await page.click(".coach.tour .coach-hide:has-text('Exit tour')");
@@ -196,7 +196,7 @@ let page;
   // The plain demo, for someone who's taken the tour: no tour, no prompt, no pause.
   await page.reload();
   await page.waitForFunction(() => window.__wb?.mode === "demo" && window.__wb.transcript.messages.length > 0, null, { timeout: 30000 });
-  if (await page.$(".tour-offer") || (await page.$(".coach.tour"))) fail("the tour starts by itself only on a first visit");
+  if (await page.$(".coach.tour")) fail("the tour starts by itself only on a first visit");
   await S(() => (window.__wb.player.speed = 4));
   await page.waitForFunction(() => window.__wb.awaitingApproval, null, { timeout: 120000 });
   await page.click('.gate button.primary');

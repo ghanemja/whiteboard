@@ -36,18 +36,20 @@ cp fixtures/recordings/* recordings/
 
 ## 2. Take the tour
 
-The first time you open the app, the tour starts by itself. To take it again later, press **Tour** in the yellow tips card (or **Take the tour** on the start screen).
+The first time you open the app, the demo starts and a short intro pops up over it: press **Show me around**. To take it again later, press **Tour** in the yellow tips card (or **Take the tour** on the start screen).
 
-The tour plays the demo as a lesson. The screen dims except for the part each step is about, and a yellow card pops out beside it to say what to do and why; an orange ring or circle marks the one thing to click. Everything still works under the dim. The demo **waits for you** at each step, so take your time. If you get stuck, **Skip step** does it for you; **Back** shows the last step again; **Exit tour** leaves it (the demo keeps going as normal).
+![The intro: a pop-up over the demo as it starts playing](../screenshots/tour/01-welcome.png)
+
+The tour plays the demo as a lesson. The screen dims except for the part each step is about, and a yellow card pops out beside it to say what to look at; an orange ring or circle marks it. Everything still works under the dim, so try it yourself, or press **Next** and it does the step for you. **Back** shows the last step again; **Exit tour** leaves it (the demo keeps going as normal).
 
 The rest of this guide covers the same run in more detail. Do the tour first, then read on, or follow along here instead.
 
 ## 3. The three areas
 
-![The tour's first step rings the three areas: the panel, the board, and the phase road](../screenshots/tour/01-welcome.png)
+![The board on the left, the panel on the right, and the phase road along the top](../screenshots/first-time-help/2-plan-gate-tips-on-the-board.png)
 
-1. **The panel (right).** The agent talks here, and you answer. It has two tabs: **Chat & log** (what it said and did) and **Plan details** (the plan in words). The box at the bottom is for typing to it.
-2. **The board (left).** The plan as a drawing. Each picture is a part of the system; arrows show which part talks to which.
+1. **The board (left).** The plan as a drawing. Each picture is a part of the system; arrows show which part talks to which.
+2. **The panel (right).** The agent talks here, and you answer. It has two tabs: **Chat & log** (what it said and did) and **Plan details** (the plan in words). The box at the bottom is for typing to it.
 3. **The phase road (top).** Where the run is: **Plan → Build → Verify → Ship**, with a dot for each task.
 
 ### Legend
