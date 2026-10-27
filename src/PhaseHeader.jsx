@@ -7,9 +7,12 @@ import { MILESTONE, PHASES, TASK } from "./engine/board";
 // Drawn with roughjs, the renderer Excalidraw uses, so it matches the canvases.
 
 const gen = rough.generator();
-const W = 660, H = 112, R = 26, CY = 36; // viewBox, milestone radius and center line
-const X = (i) => 44 + i * 170; // milestone centers
-const DOT = 9, GAP = 5, PER_ROW = 8;
+// One low row: each milestone with its name beside it, its tasks' dots underneath.
+const W = 580, H = 64, R = 19, CY = 25; // viewBox, milestone radius and center line
+const X = (i) => 30 + i * 150; // milestone centers
+const DOT = 8, GAP = 5, PER_ROW = 12;
+const LABEL_X = R + 7; // where a milestone's name starts, from its center
+const labelW = (p) => p.short.length * 9 + 4; // roughly, in the hand font at 17px
 const BLUE = "#1971c2";
 
 const seedOf = (s) => {
@@ -20,7 +23,7 @@ const seedOf = (s) => {
 
 // The milestone pictograms (the same drawings the board used), centered on (cx, cy).
 function icon(key, cx, cy, color, seed) {
-  const k = 0.62;
+  const k = 0.45;
   const o = (n, extra = {}) => ({ stroke: color, strokeWidth: 1.8, roughness: 1, seed: seed + n, ...extra });
   const P = (x, y) => [cx + x * k, cy + y * k];
   switch (key) {
@@ -62,6 +65,9 @@ function phaseIndex(phase) {
   return phase === "complete" ? PHASES.length : PHASES.findIndex((p) => p.key === phase);
 }
 
+// The finish flag, after the last milestone's name.
+const FLAG_X = X(3) + LABEL_X + 40 + 10;
+
 export default function PhaseHeader({ model, reviewing, hl, onHover, onFocus }) {
   const wrap = useRef(null);
   const [tip, setTip] = useState(null);
@@ -77,7 +83,7 @@ export default function PhaseHeader({ model, reviewing, hl, onHover, onFocus }) 
       const cx = X(i);
       const road =
         i < PHASES.length - 1 &&
-        gen.line(cx + R + 8, CY, X(i + 1) - R - 8, CY, {
+        gen.line(cx + LABEL_X + labelW(p) + 6, CY, X(i + 1) - R - 8, CY, {
           stroke: i < cur ? MILESTONE.done.stroke : "#dee2e6",
           strokeWidth: 2.5,
           roughness: 1,
@@ -105,7 +111,7 @@ export default function PhaseHeader({ model, reviewing, hl, onHover, onFocus }) 
   return (
     <header className="journey" ref={wrap}>
       <div className={`journey-title ${hl.has("title") ? "hl" : ""}`}>
-        <h2>{model.project || "No plan yet"}</h2>
+        <h2 title={model.project || undefined}>{model.project || "No plan yet"}</h2>
         {model.goal ? <p title={model.goal}>{model.goal}</p> : !model.project && <p>The agent draws its plan here.</p>}
       </div>
       <svg className="journey-strip" data-tour="road" viewBox={`0 0 ${W} ${H}`} role="list" aria-label="Development phases">
@@ -141,7 +147,7 @@ export default function PhaseHeader({ model, reviewing, hl, onHover, onFocus }) 
                     <rect x={cx + R * 0.72 + 1.4} y={CY - R * 0.72 - 4.5} width={2.6} height={9} fill="#fff" />
                   </g>
                 )}
-                <text x={cx} y={CY + R + 17} className="ms-label" fill={st.head}>
+                <text x={cx + LABEL_X} y={CY + 6} className="ms-label" fill={st.head}>
                   {p.short}
                 </text>
               </g>
@@ -149,7 +155,7 @@ export default function PhaseHeader({ model, reviewing, hl, onHover, onFocus }) 
                 const row = Math.floor(k / PER_ROW);
                 const inRow = Math.min(PER_ROW, ts.length - row * PER_ROW);
                 const x = cx - (inRow * DOT + (inRow - 1) * GAP) / 2 + (k % PER_ROW) * (DOT + GAP) + DOT / 2;
-                const y = CY + R + 31 + row * (DOT + GAP);
+                const y = CY + R + 10 + row * (DOT + GAP);
                 const c = TASK[t.status] ?? TASK.todo;
                 const lid = `task:${t.id}`;
                 return (
@@ -174,8 +180,8 @@ export default function PhaseHeader({ model, reviewing, hl, onHover, onFocus }) 
         {model.phase === "complete" && (
           <Paths
             drawables={[
-              gen.line(X(3) + R + 22, CY + 20, X(3) + R + 22, CY - 24, { stroke: MILESTONE.done.stroke, strokeWidth: 2.5, roughness: 1, seed: 7 }),
-              gen.polygon([[X(3) + R + 22, CY - 24], [X(3) + R + 46, CY - 17], [X(3) + R + 22, CY - 10]], {
+              gen.line(FLAG_X, CY + 14, FLAG_X, CY - 18, { stroke: MILESTONE.done.stroke, strokeWidth: 2.5, roughness: 1, seed: 7 }),
+              gen.polygon([[FLAG_X, CY - 18], [FLAG_X + 22, CY - 12], [FLAG_X, CY - 6]], {
                 stroke: MILESTONE.done.stroke, strokeWidth: 1.8, fill: "#8ce99a", fillStyle: "solid", roughness: 1, seed: 8,
               }),
             ]}
