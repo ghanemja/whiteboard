@@ -122,6 +122,7 @@ Browser (React + Excalidraw)                     Vite dev server (Node)
 | `src/engine/transcript.js` | Agent messages as sentences + activity rows, each linked to the logical ids it touched (`sentencesTouching(lids)`). A closed sentence also gets `t`, `claims`, `asks`, `assumes` (claims.js). |
 | `src/engine/claims.js` | Pure: `findClaims(sentence)`, `checkClaim(claim, evidence)`, `receipt(claims, evidence)`, `asksYou`, `assumes`. |
 | `src/engine/review.js` | Pure: `buildReview({ model, claims, passing, changes, commits, lastTest, denied })` → rows with links; `penMarks({ model, claims, ownerOf })` → the red-pen marks (4.12). |
+| `src/engine/logfile.js` | Pure: `logMarkdown()`, the run's log as Markdown for the panel's ⇩ download (4.16). |
 | `src/engine/stickers.js` | Pure: `STICKERS`, `stickerTarget`, `stickerEdit` (4.12). |
 | `src/engine/explode.js` | Pure: a layer opened in place (4.15): `explodeOf`, `iconOf`, `explodeLayout`, `explodeSkeletons`. |
 | `src/engine/tour.js` | Pure: the guided tour (4.13): `TOUR` steps, `startTour`, `advance`, `next`, `back`, `holds`, `targets`, `waiting`, `isFresh`. |
