@@ -32,6 +32,10 @@ export class Session {
   constructor({ board, onChange }) {
     this.board = board;
     this.onChange = onChange;
+    // Every op the board has applied, in order, and who's watching: views pinned beside the
+    // board redraw from these (null means the board was cleared).
+    this.opLog = [];
+    this.opWatchers = new Set();
     this.mode = "demo";
     this.stage = null; // null | "planning" | "building"
     this.gen = 0;
@@ -220,6 +224,14 @@ export class Session {
     return false;
   }
 
+  // An op the board applied (null: it was cleared), for the views pinned beside it.
+  logOp(op, { apply = false } = {}) {
+    if (apply) this.board.apply(op);
+    if (op) this.opLog.push(op);
+    else this.opLog = [];
+    for (const watch of this.opWatchers) watch(op);
+  }
+
   // ---- shared: applying ops and highlighting ----
   applyOp(attrs, { fromAgent = false } = {}) {
     if (!fromAgent && this.demoOp(attrs)) return;
@@ -232,6 +244,7 @@ export class Session {
     let ids = [];
     try {
       ids = this.board.apply(attrs);
+      this.logOp(attrs);
     } catch (err) {
       console.warn("board op failed", attrs, err);
     }
@@ -275,16 +288,22 @@ export class Session {
     }
     // In a replay the ⏸ still shows where the agent waited, though there's nothing to answer.
     this.board.setReviewTag(this.mode === "replay" ? !!this.gate : this.awaitingApproval);
-    // Stickers it has answered come off the board (Keep this stays: it's a standing constraint).
-    // It answers them in the turn they start, so they come off once that turn is over.
+    // Stickers are answered in the turn they start: once it's over, each has its answer beside it.
     if (this.board.stickers.size) {
       if (this.state.busy) this.stickerTurn = true;
       else if (this.stickerTurn) {
         this.stickerTurn = false;
-        this.board.settleStickers();
+        this.board.settleStickers(this.lastReply());
       }
     }
     this.notify();
+  }
+
+  // The start of the agent's last message: what a sticker it didn't answer on the board shows beside it.
+  lastReply() {
+    const m = this.transcript.messages.findLast((x) => x.role === "agent");
+    const said = m?.items.filter((it) => it.type === "s").map((it) => it.text.trim()) ?? [];
+    return said.slice(0, 2).join(" ").slice(0, 180);
   }
 
   // ---- starting over ----
@@ -301,6 +320,7 @@ export class Session {
     this.resetTimeline();
     this.transcript.clear();
     this.board.reset();
+    this.logOp(null);
     await this.board.init();
     if (g !== this.gen) return false;
     this.drawTimeline();
@@ -405,6 +425,7 @@ export class Session {
       this.hover = [];
       this.transcript.clear();
       this.board.reset();
+      this.logOp(null);
       this.board.view = view; // stay on the Timeline
       this.board.onPhase?.(null);
       await this.board.init();
@@ -671,13 +692,13 @@ export class Session {
   // ---- its questions and assumptions ----
   // An answer goes to the agent as a message ("About Q1 (…): …"); at the plan gate that revises the plan.
   answerQuestion(q, text) {
-    this.board.apply({ op: "question", id: q.id, state: "answered", answer: text });
+    this.logOp({ op: "question", id: q.id, state: "answered", answer: text }, { apply: true });
     this.sendChat(`About Q${q.n} (${q.text}): ${text}`);
   }
 
   // A confirmed assumption needs no turn of its own: the agent sees it in the board state it gets next.
   confirmAssumption(q) {
-    this.board.apply({ op: "assumption", id: q.id, state: "confirmed" });
+    this.logOp({ op: "assumption", id: q.id, state: "confirmed" }, { apply: true });
     this.sync();
   }
 

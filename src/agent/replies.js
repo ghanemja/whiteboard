@@ -79,20 +79,25 @@ export function buildEditsReply(decisions, model) {
         lines.push(`Dropping **${d.label}** (${d.title}) from the plan${op({ op: "decision", id: d.decision, state: "rejected" })}.`);
         break;
       case "sticker": {
+        // Each sticker is answered on the board too, in a bubble beside it (op answer).
         const on = d.decision ? `**${d.label}** (${d.title})` : `**${d.name}**`;
-        if (d.sticker === "why")
+        const answer = (text) => op({ op: "answer", el: d.elId, text });
+        if (d.sticker === "why") {
+          const why = d.decision
+            ? model.decisions[d.decision]?.why || "It's what the evidence in the repo points to."
+            : `${model.nodes[d.node]?.api?.length ? `It serves ${model.nodes[d.node].api.slice(0, 2).join(" and ")}` : "The plan needs it"}, and the decisions pinned to it depend on it.`;
           lines.push(
             d.decision
-              ? `Why ${on}: ${model.decisions[d.decision]?.why || "it's what the evidence in the repo points to."} If that doesn't convince you, pick another option on its ◇.`
-              : `Why ${on}: ${model.nodes[d.node]?.api?.length ? `it's what serves ${model.nodes[d.node].api.slice(0, 2).join(" and ")}` : "the plan needs it"}, and the decisions pinned to it depend on it. Put Not needed on it if you'd rather drop it.`,
+              ? `Why ${on}: ${why} If that doesn't convince you, pick another option on its ◇.${answer(why)}`
+              : `Why ${on}: ${why} Put Not needed on it if you'd rather drop it.${answer(why)}`,
           );
-        else if (d.sticker === "drop")
+        } else if (d.sticker === "drop")
           lines.push(
             d.decision
-              ? `Dropping ${on}, since you don't need it${op({ op: "decision", id: d.decision, state: "rejected" })}.`
-              : `Taking ${on} out of the plan${op({ op: "remove", id: d.node })}${task(`Remove ${short(d.name, 18)}`, "done")}.`,
+              ? `Dropping ${on}, since you don't need it${op({ op: "decision", id: d.decision, state: "rejected" })}.${answer(`OK: dropping ${d.label} from the plan.`)}`
+              : `Taking ${on} out of the plan${op({ op: "remove", id: d.node })}${task(`Remove ${short(d.name, 18)}`, "done")}.${answer(`OK: taking ${d.name} out of the plan.`)}`,
           );
-        else lines.push(`I'll keep ${on} as it is and won't change it without asking you first.`);
+        else lines.push(`I'll keep ${on} as it is and won't change it without asking you first.${answer("Got it: I'll leave this as it is, and ask before changing it.")}`);
         break;
       }
       case "choose": {

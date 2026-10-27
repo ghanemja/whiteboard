@@ -1234,7 +1234,7 @@ button.secondary:active:not(:disabled) {
 .plan {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
 }
 .plan section {
   display: flex;
@@ -1247,6 +1247,76 @@ button.secondary:active:not(:disabled) {
   font-weight: 800;
   font-size: 18px;
   color: var(--ink);
+}
+/* A section closed to its heading: a row you click to open, with its count and anything to look at. */
+.plan-sec {
+  display: flex;
+  flex-direction: column;
+}
+.plan-sec[open] {
+  gap: 8px;
+}
+.plan-sec > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  box-shadow: 2px 2px 0 var(--ink);
+  list-style: none;
+  cursor: pointer;
+}
+.plan-sec > summary::-webkit-details-marker {
+  display: none;
+}
+.plan-sec > summary::before {
+  content: "▸";
+  font-size: 13px;
+  transition: transform 0.15s;
+}
+.plan-sec[open] > summary::before {
+  transform: rotate(90deg);
+}
+.plan-sec > summary:hover {
+  background: var(--accent-soft);
+}
+.plan-sec[open] > summary {
+  margin-bottom: 4px;
+}
+.plan-sec > summary .h3-note {
+  margin-left: 0;
+}
+.sec-count {
+  margin-left: auto;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--soft);
+}
+/* Decisions to look at: a bell with the count, the one thing in the list that asks for you. */
+.sec-bell {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 8px 1px 6px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+.sec-count + .sec-bell {
+  margin-left: 0;
+}
+.sec-bell svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
 }
 .h3-note {
   font-family: var(--ui);
@@ -2798,27 +2868,6 @@ button:focus-visible {
   transform: rotate(45deg);
 }
 
-/* Questions you could ask at the plan gate. */
-.suggest {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-.suggest button {
-  padding: 3px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel);
-  color: var(--ink);
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.suggest button:hover {
-  border-color: var(--accent-ink);
-  color: var(--accent-ink);
-}
-
 /* "What's a decision?", "Why am I asked?": a short answer one click away. */
 .whats {
   margin: 0 0 10px;
@@ -3128,4 +3177,93 @@ button:focus-visible {
 .coach-steps li,
 .coach-links button {
   white-space: nowrap;
+}
+
+/* Views pinned beside the board: windows over it, dragged by the title bar, resized from the corner. */
+.canvas-tabs .lens-pin {
+  align-self: center;
+  margin-bottom: 4px;
+  padding: 3px 10px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: 2px 2px 0 var(--ink);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.canvas-tabs .lens-pin:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.canvas-tabs .lens-pin:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pin {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  min-height: 160px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  box-shadow: var(--sh-lg);
+  overflow: hidden;
+  resize: both;
+}
+.pin-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  border-bottom: var(--bw) solid var(--ink);
+  background: var(--marker-soft);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.pin-head:active {
+  cursor: grabbing;
+}
+.pin-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 800;
+}
+.pin-close {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: var(--bw) solid var(--ink);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+.pin-close:hover {
+  background: var(--accent-soft);
+}
+.pin-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+/* Just the drawing: pan and zoom with the wheel or a pinch, no Excalidraw menus. */
+.pin-body .layer-ui__wrapper,
+.pin-body .App-bottom-bar {
+  display: none;
 }

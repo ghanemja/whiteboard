@@ -49,7 +49,7 @@ The rest of this guide covers the same run in more detail. Do the tour first, th
 ![The board on the left, the panel on the right, and the phase road along the top](../screenshots/first-time-help/2-plan-gate-tips-on-the-board.png)
 
 1. **The board (left).** The plan as a drawing. Each picture is a part of the system; arrows show which part talks to which.
-2. **The panel (right).** The agent talks here, and you answer. It has two tabs: **Chat & log** (what it said and did) and **Plan details** (the plan in words). The box at the bottom is for typing to it.
+2. **The panel (right).** The agent talks here, and you answer. It has two tabs: **Chat & log** (what it said and did) and **Plan details** (the plan in words: open a section to read it; **Decisions** is last, with a bell when some need a look). The box at the bottom is for typing to it.
 3. **The phase road (top).** Where the run is: **Plan → Build → Verify → Ship**, with a dot for each task.
 
 ### Legend
@@ -130,13 +130,13 @@ With the glass down, **Edit the plan** above the board has buttons with words:
 
 ### Stickers
 
-The three stickers sit at the top of the board. Drag one onto a part or a ◇ (the glass comes down by itself):
+The three stickers sit at the top of the board. Drag one onto a part or a ◇. It goes to the agent right away, and the answer pops up in a bubble beside the sticker:
 
 - **Why?** asks it to explain (it changes nothing).
 - **Not needed** asks it to drop that part or decision.
 - **Keep this** tells it not to change that without asking you.
 
-![Stickers on the plan: Why? on a decision, Not needed on a part](../screenshots/stickers/1-stickers-on-the-plan-light.png)
+![Stickers on the plan, each with its answer beside it](../screenshots/stickers/1-stickers-on-the-plan-light.png)
 
 ### Send your changes
 
@@ -172,6 +172,8 @@ The bar above the board shows the same plan other ways. It never changes the pla
 | **Sequence** | One request, step by step, as a sequence diagram (pick the flow under **Flows & export**) |
 
 **Zoom into** opens one **layer**, so you see what's *inside* its parts. Same map: that layer's parts open up, the rest stay as grey boxes.
+
+To see two views at once, press **+ Pin this view** (beside the board's tabs). The view opens in its own window over the board; pick another view for the board itself. Drag a window by its title, resize it from its corner, and close it with **−**.
 
 - **Frontend**: pages and views, and the calls they make.
 - **Backend**: routes and jobs, and where each hands its work.

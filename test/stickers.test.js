@@ -6,6 +6,7 @@ import { STICKERS, stickerEdit, stickerTarget } from "../src/engine/stickers.js"
 import { areaOf, describeEdit } from "../src/engine/timeline.js";
 import { penMarks } from "../src/engine/review.js";
 import { checkClaim, findClaims } from "../src/engine/claims.js";
+import { buildEditsReply } from "../src/agent/replies.js";
 
 // A board like the demo's: the API server's hit-box with D1 on its top-left corner, and a store below.
 const model = {
@@ -58,6 +59,22 @@ test("Keep this is scope; Why? and Not needed are about what they're on", () => 
   assert.equal(areaOf({ kind: "sticker", sticker: "drop", node: "api" }), "architecture");
   assert.equal(describeEdit({ kind: "sticker", sticker: "why", node: "api", name: "API server" }), "Why? on API server");
   assert.equal(describeEdit({ kind: "sticker", sticker: "drop", decision: "d1", label: "D1", title: "Queue" }), "Not needed on D1 (Queue)");
+});
+
+test("every sticker is answered on the board, in a bubble beside it (op answer)", () => {
+  const m = { ...model, phase: "planning", decisions: { ...model.decisions, d1: { ...model.decisions.d1, why: "Big PDFs take minutes." } } };
+  const reply = buildEditsReply(
+    [
+      { kind: "sticker", sticker: "why", elId: "st1", decision: "d1", label: "D1", title: "Inline or background" },
+      { kind: "sticker", sticker: "drop", elId: "st2", node: "vdb", name: "Vector index" },
+      { kind: "sticker", sticker: "keep", elId: "st3", node: "api", name: "API server" },
+    ],
+    m,
+  );
+  const answers = [...reply.matchAll(/<board op="answer" el="([^"]+)" text="([^"]+)"\/>/g)].map((x) => [x[1], x[2]]);
+  assert.deepEqual(answers.map((a) => a[0]), ["st1", "st2", "st3"]);
+  assert.equal(answers[0][1], "Big PDFs take minutes.", "Why? gets the decision's reason");
+  assert.match(answers[1][1], /Vector index/);
 });
 
 test("the red pen rings the owner of a false file claim, notes an unowned one, crosses a failed check", () => {

@@ -93,6 +93,16 @@ const TAPE = { fill: "#a5d8ff", stroke: "#74c0fc" };
 const PIN = { head: "#fa5252", rim: "#c92a2a" };
 const WHY = "why:"; // element id prefix of the Why view
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+// Chat text as words for the board: no markdown marks, no board tags, one space between words.
+const plainWords = (s) => String(s).replace(/<board[^>]*\/?>/g, "").replace(/[*`_]/g, "").replace(/\s+/g, " ").trim();
+// Lines of at most n characters, broken between words.
+const wrapWords = (s, n) =>
+  s.split(" ").reduce((lines, w) => {
+    const last = lines.at(-1);
+    if (last && (last + " " + w).length <= n) lines[lines.length - 1] = `${last} ${w}`;
+    else lines.push(w);
+    return lines;
+  }, []).join("\n");
 // Two elements' boxes touch (within m px).
 const overlaps = (a, b, m = 0) => a.x < b.x + b.width + m && b.x < a.x + a.width + m && a.y < b.y + b.height + m && b.y < a.y + a.height + m;
 
@@ -308,7 +318,8 @@ export class Board {
   // A layer or flow filter fades what it leaves out, whatever was just drawn.
   commit(elements) {
     const on = (e, p) => e.id.startsWith(p) || e.containerId?.startsWith(p);
-    const layer = (e) => (on(e, "tip-") || on(e, "pen-") ? 3 : on(e, "alt-") ? 2 : e.groupIds?.[0]?.startsWith("g:dec-") || e.id.startsWith("flow:") ? 1 : 0);
+    // Stickers and their answers sit with the option pills, above the diamonds they're often stuck on.
+    const layer = (e) => (on(e, "tip-") || on(e, "pen-") ? 3 : on(e, "alt-") || e.customData?.sticker || e.customData?.answers ? 2 : e.groupIds?.[0]?.startsWith("g:dec-") || e.id.startsWith("flow:") ? 1 : 0);
     const ls = elements.map(layer);
     if (ls.some((l, i) => i && l < ls[i - 1])) elements = elements.map((e, i) => [ls[i], i, e]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, , e]) => e);
     this.api.updateScene({ elements: this.faded(elements), captureUpdate: CaptureUpdateAction.NEVER });
@@ -527,6 +538,7 @@ export class Board {
       case "adopt": return this.adopt(a);
       case "adopt-edge": return this.adoptEdge(a);
       case "adopt-note": return this.adoptNote(a.el);
+      case "answer": return this.answerSticker(a.el, a.text);
       default:
         console.warn("unknown board op", a);
         return [];
@@ -1485,13 +1497,26 @@ export class Board {
   drawDiagram(kind, flowId) {
     if (!this.diagramApi) return;
     const flow = this.model.flows[flowId] ?? Object.values(this.model.flows)[0];
-    const sk = kind === "er" ? drawEr(this.model) : kind === "sequence" ? drawSequence(this.model, flow) : kind === "inside" ? drawInside(this.model, flowId) : [];
+    const sk = this.diagramSkeleton(kind, flowId);
     const sig = JSON.stringify(sk);
     const which = `${kind}:${kind === "sequence" ? flow?.id : kind === "inside" ? flowId : ""}`;
     if (sig === this.diagramSig && which === this.diagramWhich) return;
     const refit = which !== this.diagramWhich || !this.diagramSig;
     this.diagramSig = sig;
     this.diagramWhich = which;
+    const out = this.diagramScene(kind, flowId, sk);
+    this.diagramApi.updateScene({ elements: out, captureUpdate: CaptureUpdateAction.NEVER });
+    if (refit && out.length) setTimeout(() => this.diagramApi.scrollToContent(out, { fitToViewport: true, viewportZoomFactor: 0.9 }), 40);
+  }
+
+  // A diagram from the model: kind "er", "sequence" (arg: the flow id, else the first flow) or
+  // "inside" (arg: the layer). The skeleton, then the elements: the diagram canvas draws these,
+  // and so does a view pinned beside the board.
+  diagramSkeleton(kind, arg) {
+    const flow = this.model.flows[arg] ?? Object.values(this.model.flows)[0];
+    return kind === "er" ? drawEr(this.model) : kind === "sequence" ? drawSequence(this.model, flow) : kind === "inside" ? drawInside(this.model, arg) : [];
+  }
+  diagramScene(kind, arg, sk = this.diagramSkeleton(kind, arg)) {
     const at = new Map(), right = new Map();
     const out = this.convert(sk.map(({ _c, _r, ...e }) => (_c && at.set(e.id, _c), _r != null && right.set(e.id, _r), e)));
     for (const e of out) {
@@ -1500,8 +1525,7 @@ export class Board {
       if (right.has(e.id)) e.x = right.get(e.id) - e.width;
       e.seed = seedOf(e.id);
     }
-    this.diagramApi.updateScene({ elements: out, captureUpdate: CaptureUpdateAction.NEVER });
-    if (refit && out.length) setTimeout(() => this.diagramApi.scrollToContent(out, { fitToViewport: true, viewportZoomFactor: 0.9 }), 40);
+    return out;
   }
 
   // The diagram canvas for export, with a title above it.
@@ -1706,12 +1730,46 @@ export class Board {
     }
   }
 
-  settleStickers() {
-    const gone = [...this.stickers].filter(([, s]) => s.sticker !== "keep");
+  // The turn that answers them is over. They stay on the board with their answers beside them;
+  // one it didn't answer on the board gets the start of its reply (fallback) instead.
+  settleStickers(fallback) {
+    const answered = new Set(this.scene().filter((e) => !e.isDeleted && e.customData?.answers).map((e) => e.customData.answers));
+    for (const [el] of this.stickers) if (fallback && !answered.has(el)) this.answerSticker(el, fallback);
     this.stickers.clear();
-    if (!gone.length) return;
+  }
+
+  // ---- a reply beside what it answers: a speech bubble by the user's sticker ----
+  // Drawn on the board (so it pans and zooms with it), grouped, remembered so diff() skips it,
+  // and tagged with the sticker it answers (customData.answers); it goes when the sticker does.
+  answerSticker(el, text) {
     const els = this.scene();
-    this.kill(els, new Set(gone.flatMap(([, s]) => s.ids)));
+    const st = els.find((e) => e.id === el && !e.isDeleted);
+    if (!st || !text) return [];
+    const old = new Set(els.filter((e) => e.customData?.answers === el).map((e) => e.id));
+    if (old.size) this.kill(els, old);
+    const [, y1, x2, y2] = getCommonBounds([st]);
+    const pad = 12, x = x2 + 24, mid = (y1 + y2) / 2, g = [`g:ans-${el}`], tag = { answers: el };
+    const [t] = this.convert([{ type: "text", id: `ans-${el}-x`, x: x + pad, y: 0, text: wrapWords(plainWords(text), 30), fontSize: 16, strokeColor: INK, groupIds: g, ...this.font() }]);
+    const y = mid - Math.min(24, t.height / 2 + pad);
+    const out = this.convert([
+      { type: "rectangle", id: `ans-${el}`, x, y, width: t.width + pad * 2, height: t.height + pad * 2, strokeColor: INK, backgroundColor: "#ffffff", fillStyle: "solid", strokeWidth: 1.5, roughness: 1, roundness: { type: 3 }, groupIds: g },
+      // The tail: a wedge from the bubble's edge to the sticker.
+      { type: "line", id: `ans-${el}-t`, x: x + 1, y: mid, points: [[0, -7], [-20, 0], [0, 7]], strokeColor: INK, strokeWidth: 1.5, roughness: 1, groupIds: g },
+    ]);
+    out.splice(1, 0, { ...t, y: y + pad });
+    for (const e of out) Object.assign(e, { customData: tag, seed: seedOf(e.id) });
+    this.remember(out);
+    this.commit([...els, ...out]);
+    return [];
+  }
+
+  // A bubble goes when the user deletes the sticker it answers.
+  tidyAnswers() {
+    const els = this.scene();
+    const live = new Set(els.filter((e) => !e.isDeleted).map((e) => e.id));
+    const orphans = new Set(els.filter((e) => !e.isDeleted && e.customData?.answers && !live.has(e.customData.answers)).map((e) => e.id));
+    if (!orphans.size) return;
+    this.kill(els, orphans);
     this.commit(els);
   }
 

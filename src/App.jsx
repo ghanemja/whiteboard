@@ -488,11 +488,51 @@ const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 // The development plan as a document: goal, architecture, connections, the reasoning
 // chain of decisions, and the steps. Every item is linked to its picture on the board.
+// A Plan section: closed until you open it, so the tab reads as a short list of headings.
+// Anything that points into it (a click on the board, the review) opens it first (reveal()).
+function Sec({ id, title, hint, note, count, badge, children }) {
+  return (
+    <details className="plan-sec" id={id}>
+      <summary title={hint}>
+        <h3>{title}</h3>
+        {note}
+        {count > 0 && <span className="sec-count">{count}</span>}
+        {badge}
+      </summary>
+      {children}
+    </details>
+  );
+}
+
+// What needs a look among the decisions: not approved yet, changed, or failed their check.
+function DecisionBell({ decisions }) {
+  const proposed = decisions.filter((d) => d.state === "proposed").length;
+  const changed = decisions.filter((d) => d.state === "changed").length;
+  const failed = decisions.filter((d) => d.proof === "fail").length;
+  const n = proposed + changed + failed;
+  if (!n) return null;
+  const why = [proposed && `${proposed} not approved yet`, changed && `${changed} changed`, failed && `${failed} failed its check`].filter(Boolean).join(", ");
+  return (
+    <span className="sec-bell" title={`To look at: ${why}`} aria-label={`${n} to look at: ${why}`}>
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M8 2.2a3.6 3.6 0 0 0-3.6 3.6v2.6L3 10.6h10l-1.4-2.2V5.8A3.6 3.6 0 0 0 8 2.2zM6.6 12.2a1.4 1.4 0 0 0 2.8 0" />
+      </svg>
+      {n}
+    </span>
+  );
+}
+
+// Open the Plan sections round an element, then bring it into view.
+function reveal(el, block = "nearest") {
+  for (let d = el?.closest("details"); d; d = d.parentElement?.closest("details")) d.open = true;
+  el?.scrollIntoView({ block, behavior: "smooth" });
+}
+
 function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPick, onShowFlow, canChallenge, changes = [], commits = 0, passing = [], onAnswer, onConfirm, onCorrect, onReply, onShow }) {
   const nodes = Object.values(model.nodes);
   const changed = nodes.filter((n) => n.diff);
   const byPath = new Map(changes.map((f) => [f.path, f]));
-  const toCode = (id) => document.getElementById(`plan-code:${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  const toCode = (id) => reveal(document.getElementById(`plan-code:${id}`), "start");
   const edges = Object.values(model.edges);
   const decisions = Object.values(model.decisions).sort((a, b) => a.n - b.n);
   const tasks = Object.values(model.tasks);
@@ -547,8 +587,7 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
       )}
 
       {nodes.length > 0 && (
-        <section>
-          <h3>Architecture</h3>
+        <Sec title="Architecture" count={nodes.length}>
           {nodes.map((n) => (
             <div key={n.id} {...link(`node:${n.id}`)} className={["plan-card", selected.has(`node:${n.id}`) && "linked"].filter(Boolean).join(" ")}>
               <div className="pc-head">
@@ -585,12 +624,11 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
               )}
             </div>
           ))}
-        </section>
+        </Sec>
       )}
 
       {edges.length > 0 && (
-        <section>
-          <h3>Connections</h3>
+        <Sec title="Connections" count={edges.length}>
           <ul className="plan-edges">
             {edges.map((e) => (
               <li key={`${e.from}>${e.to}`} {...link(`edge:${e.from}>${e.to}`)}>
@@ -600,12 +638,11 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
               </li>
             ))}
           </ul>
-        </section>
+        </Sec>
       )}
 
       {Object.keys(model.tables ?? {}).length > 0 && (
-        <section>
-          <h3>Data model</h3>
+        <Sec title="Data model" count={Object.keys(model.tables ?? {}).length}>
           {Object.values(model.tables).map((t) => (
             <div
               key={t.id}
@@ -632,12 +669,11 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
               </ul>
             </div>
           ))}
-        </section>
+        </Sec>
       )}
 
       {Object.keys(model.flows ?? {}).length > 0 && (
-        <section>
-          <h3>Flows</h3>
+        <Sec title="Flows" count={Object.keys(model.flows).length}>
           {Object.values(model.flows).map((f) => (
             <div key={f.id} className="plan-flow">
               <button className="linkish pf-name" onClick={() => onShowFlow(f.id)} title="Show it on the board">
@@ -653,12 +689,63 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
               </ol>
             </div>
           ))}
-        </section>
+        </Sec>
+      )}
+
+      {changes.length > 0 && (
+        <Sec
+          id="plan-code"
+          title="Code"
+          hint={`${changes.length} files changed in this run, ${commits ? `in ${commits} commits` : "not committed"}`}
+          note={
+            <span className="h3-note">
+              <span className="fd-add">+{changes.reduce((a, f) => a + f.add, 0)}</span> <span className="fd-del">−{changes.reduce((a, f) => a + f.del, 0)}</span> ·{" "}
+              {commits ? `${commits} commit${commits === 1 ? "" : "s"}` : "uncommitted"}
+            </span>
+          }
+        >
+          {changed.map((n) => (
+            <div key={n.id} id={`plan-code:${n.id}`} className="code-group" onMouseEnter={() => onHover([`node:${n.id}`])} onMouseLeave={() => onHover([])}>
+              <div className="cg-head">
+                <span className="pc-dot" style={{ background: STATUS_DOT[n.status] }} />
+                <b>{n.name}</b>
+              </div>
+              {n.diff.files.map((p) => byPath.get(p) && <FileDiff key={p} f={byPath.get(p)} />)}
+            </div>
+          ))}
+          {model.unowned?.length > 0 && (
+            <div id="plan-code:unowned" className="code-group unowned">
+              <div className="cg-head" title="No component on the board owns these files">
+                <b>Not on board</b>
+              </div>
+              {model.unowned.map((f) => <FileDiff key={f.path} f={byPath.get(f.path) ?? f} />)}
+            </div>
+          )}
+        </Sec>
+      )}
+
+      {tasks.length > 0 && (
+        <Sec title="Steps" count={tasks.length}>
+          {PHASES.map((p) => {
+            const ts = tasks.filter((t) => t.phase === p.key).sort((a, b) => a.slot - b.slot);
+            if (!ts.length) return null;
+            return (
+              <div key={p.key} id={`plan-phase:${p.key}`} className="plan-steps">
+                <div className="ps-phase">{p.label}</div>
+                {ts.map((t) => (
+                  <div key={t.id} {...link(`task:${t.id}`)} className={["ps-task", `ts-${t.status}`, selected.has(`task:${t.id}`) && "linked"].filter(Boolean).join(" ")}>
+                    <span className="ps-dot" />
+                    {t.text}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </Sec>
       )}
 
       {decisions.length > 0 && (
-        <section>
-          <h3>Decisions <span className="h3-note">the reasoning chain</span></h3>
+        <Sec title="Decisions" note={<span className="h3-note">the reasoning chain</span>} count={decisions.length} badge={<DecisionBell decisions={decisions} />}>
           <details className="whats">
             <summary>What's a decision?</summary>
             <p>
@@ -782,57 +869,7 @@ function PlanView({ model, phase, selected, onHover, onFocus, onChallenge, onPic
               )}
             </div>
           ))}
-        </section>
-      )}
-
-      {changes.length > 0 && (
-        <section id="plan-code">
-          <h3 title={`${changes.length} files changed in this run, ${commits ? `in ${commits} commits` : "not committed"}`}>
-            Code{" "}
-            <span className="h3-note">
-              <span className="fd-add">+{changes.reduce((a, f) => a + f.add, 0)}</span> <span className="fd-del">−{changes.reduce((a, f) => a + f.del, 0)}</span> ·{" "}
-              {commits ? `${commits} commit${commits === 1 ? "" : "s"}` : "uncommitted"}
-            </span>
-          </h3>
-          {changed.map((n) => (
-            <div key={n.id} id={`plan-code:${n.id}`} className="code-group" onMouseEnter={() => onHover([`node:${n.id}`])} onMouseLeave={() => onHover([])}>
-              <div className="cg-head">
-                <span className="pc-dot" style={{ background: STATUS_DOT[n.status] }} />
-                <b>{n.name}</b>
-              </div>
-              {n.diff.files.map((p) => byPath.get(p) && <FileDiff key={p} f={byPath.get(p)} />)}
-            </div>
-          ))}
-          {model.unowned?.length > 0 && (
-            <div id="plan-code:unowned" className="code-group unowned">
-              <div className="cg-head" title="No component on the board owns these files">
-                <b>Not on board</b>
-              </div>
-              {model.unowned.map((f) => <FileDiff key={f.path} f={byPath.get(f.path) ?? f} />)}
-            </div>
-          )}
-        </section>
-      )}
-
-      {tasks.length > 0 && (
-        <section>
-          <h3>Steps</h3>
-          {PHASES.map((p) => {
-            const ts = tasks.filter((t) => t.phase === p.key).sort((a, b) => a.slot - b.slot);
-            if (!ts.length) return null;
-            return (
-              <div key={p.key} id={`plan-phase:${p.key}`} className="plan-steps">
-                <div className="ps-phase">{p.label}</div>
-                {ts.map((t) => (
-                  <div key={t.id} {...link(`task:${t.id}`)} className={["ps-task", `ts-${t.status}`, selected.has(`task:${t.id}`) && "linked"].filter(Boolean).join(" ")}>
-                    <span className="ps-dot" />
-                    {t.text}
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-        </section>
+        </Sec>
       )}
     </div>
   );
@@ -1122,6 +1159,105 @@ function StickerTray({ onDropped }) {
   );
 }
 
+// A canvas nobody sees: where a pinned view's mirror board draws its Reasoning and Timeline.
+const NO_CANVAS = new Proxy(
+  {},
+  { get: (_, k) => (k === "getAppState" ? () => ({ zoom: { value: 1 }, scrollX: 0, scrollY: 0, width: 1, height: 1, offsetLeft: 0, offsetTop: 0 }) : String(k).startsWith("getScene") ? () => [] : () => {}) },
+);
+const ARCH_STYLES = ["pictures", "c4", "dfd"];
+
+// A view pinned beside the board: its own small, read-only canvas, dragged by its title bar,
+// resized from its corner, closed with −. Pictures, C4 and Data flow get a mirror Board in that
+// style, fed every op the session applies; Database, Sequence and a layer are drawn from the
+// board's model. So two views of the same plan can be open at once, and both keep up with it.
+function PinnedView({ v, s, theme, onClose, onChange }) {
+  const [api, setApi] = useState(null);
+  const box = useRef(null);
+  useEffect(() => {
+    if (!api || !s) return;
+    let alive = true, t;
+    // Fit the drawing, not the board's invisible frame round its whole grid.
+    const fit = () => alive && api.scrollToContent(api.getSceneElements().filter((e) => e.id !== "frame"), { fitToViewport: true, viewportZoomFactor: 0.9 });
+    const soon = () => (clearTimeout(t), (t = setTimeout(fit, 150)));
+    let watch;
+    if (ARCH_STYLES.includes(v.kind)) {
+      const b = new Board(api, { style: v.kind, whyApi: NO_CANVAS, timelineApi: NO_CANVAS });
+      const apply = (op) => {
+        try {
+          b.apply(op);
+        } catch {
+          /* a mirror is best effort: the main board is the real one */
+        }
+      };
+      const replay = async () => {
+        b.reset();
+        await b.init();
+        if (!alive) return;
+        s.opLog.forEach(apply);
+        soon();
+      };
+      replay();
+      watch = (op) => (op ? (apply(op), soon()) : replay());
+    } else {
+      let sig = "";
+      const draw = () => {
+        const els = s.board.diagramScene(v.kind, v.arg);
+        const next = JSON.stringify(els.map((e) => [e.id, Math.round(e.x), Math.round(e.y), e.text ?? ""]));
+        if (next === sig) return;
+        sig = next;
+        api.updateScene({ elements: els });
+        soon();
+      };
+      draw();
+      watch = () => draw();
+    }
+    s.opWatchers.add(watch);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+      s.opWatchers.delete(watch);
+    };
+  }, [api, s, v.kind, v.arg]);
+  // Resized from its corner: Excalidraw measures again, and the size is kept.
+  useEffect(() => {
+    if (!box.current) return;
+    const ro = new ResizeObserver(() => {
+      const r = box.current?.getBoundingClientRect();
+      if (r && (Math.round(r.width) !== v.w || Math.round(r.height) !== v.h)) onChange({ w: Math.round(r.width), h: Math.round(r.height) });
+      api?.refresh();
+    });
+    ro.observe(box.current);
+    return () => ro.disconnect();
+  });
+  // Dragged by the title bar, kept inside the board's area.
+  const drag = (e) => {
+    if (e.target.closest("button")) return;
+    const area = box.current.parentElement.getBoundingClientRect();
+    const start = { x: e.clientX, y: e.clientY, left: v.x, top: v.y };
+    const move = (m) =>
+      onChange({
+        x: Math.max(0, Math.min(area.width - v.w, start.left + m.clientX - start.x)),
+        y: Math.max(0, Math.min(area.height - 40, start.top + m.clientY - start.y)),
+      });
+    const up = () => (removeEventListener("pointermove", move), removeEventListener("pointerup", up));
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+  };
+  return (
+    <div className="pin" ref={box} style={{ left: v.x, top: v.y, width: v.w, height: v.h }} role="region" aria-label={`Pinned view: ${v.title}`}>
+      <div className="pin-head" onPointerDown={drag}>
+        <span className="pin-title">{v.title}</span>
+        <button className="pin-close" onClick={onClose} title="Unpin this view" aria-label={`Unpin ${v.title}`}>
+          −
+        </button>
+      </div>
+      <div className="pin-body">
+        <Excalidraw excalidrawAPI={setApi} initialData={INITIAL_DATA} UIOptions={WHY_UI_OPTIONS} viewModeEnabled theme={theme} />
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [api, setApi] = useState(null);
   const [whyApi, setWhyApi] = useState(null);
@@ -1262,6 +1398,27 @@ export default function App() {
     setFocus(f);
     sessionRef.current?.board.setFocus(f);
   };
+  // Views pinned beside the board, each in its own window: { id, kind, arg, title, x, y, w, h }.
+  const [pins, setPins] = useState([]);
+  // + Pin this view: what the board shows now, in a window of its own (one of each).
+  const pinView = () => {
+    const m = sessionRef.current?.board.model;
+    if (!m) return;
+    const flow = focus?.flow && m.flows[focus.flow];
+    const v = inside
+      ? { kind: "inside", arg: inside, title: `Inside: ${LAYERS.find((l) => l.key === inside)?.label}` }
+      : diagram === "sequence"
+        ? { kind: "sequence", arg: flow?.id ?? Object.keys(m.flows)[0], title: `Sequence: ${(flow ?? Object.values(m.flows)[0])?.name ?? ""}` }
+        : { kind: diagram, title: DIAGRAMS.find((d) => d.key === diagram)?.label ?? "View" };
+    setPins((ps) => {
+      if (ps.some((p) => p.kind === v.kind && p.arg === v.arg)) return ps;
+      const area = document.querySelector(".canvases")?.getBoundingClientRect();
+      const w = 420, h = 300, k = ps.length;
+      return [...ps, { ...v, id: `pin-${Date.now()}`, w, h, x: Math.max(0, (area?.width ?? 900) - w - 24 - k * 28), y: 64 + k * 28 }];
+    });
+  };
+  const pinned = !!pins.find((p) => (inside ? p.kind === "inside" && p.arg === inside : p.kind === diagram && (diagram !== "sequence" || p.arg === (focus?.flow ?? p.arg))));
+
   // Export what the board shows: Mermaid (the container view, or the flow as a sequence
   // diagram) for a README or PR, or an SVG/PNG with a title.
   const [exported, setExported] = useState(null);
@@ -1372,9 +1529,18 @@ export default function App() {
     const all = s.board.diff();
     const keys = new Set(all.map((d) => d.key));
     for (const k of sentKeys.current) if (!keys.has(k)) sentKeys.current.delete(k);
-    const fresh = all.filter((d) => !sentKeys.current.has(d.key));
+    let fresh = all.filter((d) => !sentKeys.current.has(d.key));
+    // A sticker goes to the agent as soon as it's on something; its answer pops up beside it.
+    const stickers = fresh.filter((d) => d.kind === "sticker");
+    if (stickers.length && s.mode !== "replay") {
+      stickers.forEach((d) => sentKeys.current.add(d.key));
+      s.sendEdits(stickers);
+      stick.current = true;
+      fresh = fresh.filter((d) => d.kind !== "sticker");
+    }
     setDecisions((prev) => (prev.map((d) => d.key).join() === fresh.map((d) => d.key).join() ? prev : fresh));
     s.board.refreshMarkers();
+    s.board.tidyAnswers();
   }, []);
 
   // Show what these logical ids touched: their sentences and activity, and their Plan entries.
@@ -1386,7 +1552,7 @@ export default function App() {
     setSelLids(new Set(lids));
     // Bring the matching sentence (Activity) or plan entry (Plan) into view.
     const target = tabRef.current === "plan" ? lids[0] && `plan-${lids[0]}` : ids.at(-1);
-    if (target) document.getElementById(target)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (target) reveal(document.getElementById(target));
   }, []);
   // From the Timeline: open the Activity tab at your message, or at the command that ran the tests.
   const focusInActivity = useCallback((id) => {
@@ -1405,7 +1571,7 @@ export default function App() {
     if (k === "code") {
       tabRef.current = "plan";
       setTab("plan");
-      return setTimeout(() => document.getElementById(v ? `plan-code:${v}` : "plan-code")?.scrollIntoView({ block: "start", behavior: "smooth" }), 30);
+      return setTimeout(() => reveal(document.getElementById(v ? `plan-code:${v}` : "plan-code"), "start"), 30);
     }
     focusInPlan([lid]);
   };
@@ -2385,19 +2551,6 @@ export default function App() {
               )}
             </p>
           )}
-          {reviewing && !draft && allDecisions.length > 0 && (
-            <div className="suggest" aria-label="Questions you could ask">
-              {allDecisions
-                .filter((d) => d.state !== "rejected")
-                .sort((a, b) => a.n - b.n)
-                .slice(0, 2)
-                .map((d) => (
-                  <button key={d.id} onClick={() => challenge(d)} title={`Starts a message about D${d.n}: ${d.chose}`}>
-                    Ask why: D{d.n} {clip(d.title, 30)}
-                  </button>
-                ))}
-            </div>
-          )}
           <form className="ask" onSubmit={sendChat} hidden={replayMode}>
             <input
               id="ask"
@@ -2477,6 +2630,11 @@ export default function App() {
                 <button onClick={() => exportView("png")}>Download PNG</button>
               </div>
             </details>
+          )}
+          {boardView === "board" && nodeCount > 0 && (
+            <button className="lens-pin" onClick={pinView} disabled={pinned} title={pinned ? "This view is pinned already" : "Keep this view open in its own window, then pick another: see both at once"}>
+              <span aria-hidden="true">+</span> Pin this view
+            </button>
           )}
           <span className="ct-hint">
             {tour
@@ -2660,6 +2818,17 @@ export default function App() {
               <p className="canvas-empty">The run appears here over time: what you did, each test run, and every decision as a lane, from proposed to proven.</p>
             )}
           </div>
+          {s &&
+            pins.map((v) => (
+              <PinnedView
+                key={v.id}
+                v={v}
+                s={s}
+                theme={theme}
+                onClose={() => setPins((ps) => ps.filter((p) => p.id !== v.id))}
+                onChange={(d) => setPins((ps) => ps.map((p) => (p.id === v.id ? { ...p, ...d } : p)))}
+              />
+            ))}
         </div>
         {boardView === "board" && diagram === "pictures" && !inside && nodeCount > 0 && <BoardKey />}
       </main>

@@ -6,7 +6,7 @@ import { LAYERS } from "../src/engine/views.js";
 // One board op. Mirrors Board.apply() in src/engine/board.js.
 const strs = z.array(z.string());
 export const Op = z.object({
-  op: z.enum(["project", "phase", "task", "node", "part", "edge", "flow", "table", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note"]),
+  op: z.enum(["project", "phase", "task", "node", "part", "edge", "flow", "table", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note", "answer"]),
   id: z.string().optional().describe("component id (node/status/rename/remove/adopt), part id (part, e.g. api.ask), task id (task), decision id (decision), flow id (flow), q1… (question) or a1… (assumption)"),
   name: z.string().optional().describe("project name, phase name, component name (≤16 chars, sentence case), part name (≤24 chars), or flow name (≤24 chars)"),
   layer: z.enum(LAYERS.map((l) => l.key)).optional().describe("node: frontend | backend | data | ml | external (defaults from kind; set ml for models, embeddings, evals); part: only when it differs from its component's"),
@@ -27,7 +27,7 @@ export const Op = z.object({
   style: z.enum(["sync", "async"]).optional(),
   v: z.enum(["planned", "building", "built", "verified", "failed", "live"]).optional().describe("component status"),
   phase: z.string().optional(),
-  text: z.string().optional().describe("task text (≤26 chars), note text, or the question / assumption (≤60 chars)"),
+  text: z.string().optional().describe("task text (≤26 chars), note text, the question / assumption (≤60 chars), or your answer to a sticker (one or two short sentences)"),
   status: z.enum(["todo", "building", "done", "failed"]).optional().describe("task status"),
   title: z.string().optional().describe("decision: what was decided, as a short question or topic"),
   chose: z.string().optional().describe("decision: the option chosen"),
@@ -46,13 +46,13 @@ export const Op = z.object({
   verify: z.string().optional().describe("decision: the check that will show it was right: a test by name, or a command and what it must show"),
   proof: z.enum(["pass", "fail"]).optional().describe("decision: the result of that check, once you've run it"),
   proof_by: z.string().optional().describe("decision: what proved or disproved it: the test's exact name as the runner printed it, or the command and what it showed"),
-  el: z.string().optional().describe("element id of a shape the user drew (adopt ops)"),
+  el: z.string().optional().describe("element id of a shape the user drew (adopt ops), or of the sticker you're answering (answer)"),
 });
 
 export const UPDATE_BOARD = {
   name: "update_board",
   description:
-    "Draw on the shared whiteboard the user is watching. Pass several ops at once. Ops: project, phase, task, node, part, edge, flow, table, decision, question, assumption, status, rename, note, remove, unlink, adopt, adopt-edge, adopt-note.",
+    "Draw on the shared whiteboard the user is watching. Pass several ops at once. Ops: project, phase, task, node, part, edge, flow, table, decision, question, assumption, status, rename, note, remove, unlink, adopt, adopt-edge, adopt-note, answer.",
   input: { ops: z.array(Op).min(1) },
 };
 

@@ -25,7 +25,7 @@ The app walks a newcomer through a run without hiding anything. **Hide tips** tu
 - **Glass.** The board sits behind glass: clicks explain, nothing moves. **Pull down to edit** shows Edit the plan; **Submit** sends your changes and puts the glass back. Use this, Rename and Remove pull it down for you.
 - **Edit the plan.** With the glass down, a toolbar with words above the board: Select, Rename, Add a part, Connect, Remove, Add a note. Each picks the matching Excalidraw tool and says what to do next; the gestures (double-click, Delete, drawing) still work. Excalidraw's full toolbar is behind **Drawing tools**.
 - **Click to explain.** Select a part, a ◇, an arrow or a question and a card says what it is in plain words (what a service is, its status, routes, files, decisions, connections), with its actions as buttons: Rename, Remove, Ask about it, See the code; for a decision, **Use this** on each option, Ask why and Reject it; for a question, its answers.
-- **Plain words.** Symbols come with a word: receipts read "✓ checked", "✗ not true", "? can't tell"; the panel's tabs are **Chat & log** and **Plan details**, with counts like "2 for you"; each board tab says what it's for; a key under the Pictures board says what the colors mean; a command prompt says what the command is for and why you're asked; at the plan gate, suggested questions ("Ask why: D1 …") start a message.
+- **Plain words.** Symbols come with a word: receipts read "✓ checked", "✗ not true", "? can't tell"; the panel's tabs are **Chat & log** and **Plan details**, with counts like "2 for you"; a key under the Pictures board says what the colors mean; a command prompt says what the command is for and why you're asked.
 
 ## Views and exports
 
@@ -45,6 +45,10 @@ The bar above the board shows the same plan other ways:
 - **Zoom into** opens one **layer** (Frontend, Backend, Data, ML, External) on the board's own map: each of its components becomes a frame holding its parts (pages, routes, jobs, pipeline steps, tables with their columns), with arrows for what each hands on; components of other layers stay closed, as grey boxes in their places. **ML** gathers the model pipeline even where its steps live inside backend components (chunk → embed → index, retrieve → prompt → answer). **Look inside** on a part's card opens its layer. Read-only; **Whole system** goes back.
 
 ![Zoom into ML: the RAG pipeline across the worker, the vector index, the API server and Claude](screenshots/zoom/2-ml-layer.png)
+
+- **+ Pin this view** (beside the board's tabs) keeps what the board shows open in its own window over it. Pin C4, switch the board to Pictures, pin Database: several views at once, each up to date with the plan. Drag a window by its title, resize it from its corner, close it with **−**.
+
+![C4 and Database pinned over the board, which shows Pictures](screenshots/views/pinned-c4-and-database.png)
 
 **Flows & export**, beside the board tabs:
 
@@ -130,7 +134,7 @@ Queued changes show in the panel by area, and **Submit** (panel, or floating on 
 
 ### Stickers
 
-![The sticker tray at the top of the board, and three stickers on the plan: Not needed on Object storage, Why? on D3, Keep this on Claude API, queued by area with ▢1 ◇1 ✐1 on Submit](screenshots/stickers/1-stickers-on-the-plan-light.png)
+![Two stickers on the plan, each with its answer in a bubble beside it: Why? on D3, and Not needed where Object storage was](screenshots/stickers/1-stickers-on-the-plan-light.png)
 
 Three stickers sit in a tray at the top of the board, always in sight. Drag one onto a part or a decision diamond (the glass comes down by itself):
 
@@ -140,7 +144,7 @@ Three stickers sit in a tray at the top of the board, always in sight. Drag one 
 | **Not needed** | remove it | reject it | ▢ / ◇ |
 | **Keep this** | leave it as it is: no renaming, removing or reworking without asking you | don't change that decision | ✐ |
 
-A sticker queues like any other edit and goes with **Submit** (or Revise / Approve with changes). Once the agent has answered, Why? and Not needed come off the board; Keep this stays as a standing constraint (the agent sees it in every message's board state) until you delete it. A sticker dropped on empty board is just a drawing: nothing is sent.
+A sticker goes to the agent as soon as you drop it, and its answer pops up in a speech bubble beside it on the board (the agent's `answer` op; the demo answers the same way). The sticker and its bubble stay until you delete the sticker. Keep this is a standing constraint: the agent sees it in every message's board state. A sticker dropped on empty board is just a drawing: nothing is sent.
 
 ## Marks on the board
 
