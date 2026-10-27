@@ -154,7 +154,13 @@ let page;
   await page.waitForSelector('[data-tour="lens"]');
   await page.click('[data-tour="lens"] .lens:text-is("ML")');
   await page.waitForTimeout(900);
-  if (!(await S(() => document.querySelector('.canvas.on[aria-label^="Inside the ML layer"]')))) fail("Zoom into ML should show the ML layer");
+  // It opens in place: the same (editable) board, the ML layer's parts burst out, the rest faded.
+  const opened = await S(() => ({
+    arch: !!document.querySelector(".canvas.arch.on"),
+    layer: window.__wb.board.focus?.explode && window.__wb.board.focus.layer,
+    pieces: window.__wb.board.scene().filter((e) => e.id.startsWith("ex:") && !e.isDeleted).length,
+  }));
+  if (!opened.arch || opened.layer !== "ml" || !opened.pieces) fail(`Zoom into ML should open the ML layer in place: ${JSON.stringify(opened)}`);
   await shot("12b-zoom-into-ml");
   await page.click(".coach.tour button:has-text('Next')");
 

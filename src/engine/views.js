@@ -30,6 +30,15 @@ export const LAYERS = [
   { key: "ml", label: "ML" },
   { key: "external", label: "External" },
 ];
+// Each layer's color: the plate behind its components on the whole board, and the icons its
+// parts get when the layer is opened up (explode.js). Soft fills, so status keeps its own colors.
+export const LAYER_COLOR = {
+  frontend: { stroke: "#1c7ed6", fill: "#e7f5ff" },
+  backend: { stroke: "#7048e8", fill: "#f3f0ff" },
+  data: { stroke: "#0ca678", fill: "#e6fcf5" },
+  ml: { stroke: "#f08c00", fill: "#fff4e6" },
+  external: { stroke: "#868e96", fill: "#f1f3f5" },
+};
 const LAYER_OF_KIND = { client: "frontend", service: "backend", test: "backend", queue: "data", data: "data", external: "external" };
 // A component's layer: the agent's, else its kind's. People have none: they stay in every view.
 export const layerOf = (n) => (LAYERS.some((l) => l.key === n.layer) ? n.layer : n.kind === "user" ? null : (LAYER_OF_KIND[n.kind] ?? "backend"));

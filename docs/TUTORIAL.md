@@ -171,20 +171,22 @@ The bar above the board shows the same plan other ways. It never changes the pla
 | **Database** | The tables each data store holds: columns, keys, and how they relate (an ER diagram) |
 | **Sequence** | One request, step by step, as a sequence diagram (pick the flow under **Flows & export**) |
 
-**Zoom into** opens one **layer**, so you see what's *inside* its parts. Same map: that layer's parts open up, the rest stay as grey boxes.
+Each part sits on a colored plate: that's its **layer** (blue Frontend, violet Backend, teal Data, orange ML, grey External; the key under the board says which is which).
+
+**Zoom into** opens one layer right there on the board, so you see what its parts are made of. Nothing moves: the other layers fade, and each of the layer's parts bursts into small pictures in the same color, joined by dashed lines: pages (a browser window), routes (a plug), steps (a gear), jobs (a clock), models (a sparkle), tables (a grid), stored files (a page), libraries (a parcel). The board zooms to fit. You can still edit it, and clicking a piece tells you about its part.
 
 To see two views at once, press **+ Pin this view** (beside the board's tabs). The view opens in its own window over the board; pick another view for the board itself. Drag a window by its title, resize it from its corner, and close it with **−**.
 
-- **Frontend**: pages and views, and the calls they make.
-- **Backend**: routes and jobs, and where each hands its work.
+- **Frontend**: pages and views, and the libraries they use.
+- **Backend**: routes, jobs and steps, and their libraries.
 - **Data**: tables, stored files, indexes.
 - **ML**: the model pipeline, even inside backend parts (chunk → embed → index, retrieve → prompt → answer).
 
-![Zoom into ML: the pipeline across the worker, the vector index, the API server and Claude](../screenshots/zoom/2-ml-layer.png)
+![Zoom into ML: the pipeline steps burst out of the API server, the worker and the vector index, next to Claude](../screenshots/zoom/2-ml-layer.png)
 
-![Zoom into Data: the PDFs in storage, the documents and chunks tables, and the index](../screenshots/zoom/3-data-layer.png)
+![Zoom into Data: the stored PDFs, the documents and chunks tables, and the index, around their stores](../screenshots/zoom/3-data-layer.png)
 
-**Whole system** goes back. **Look inside** on a part's card does the same as Zoom into. **Flows & export** copies any view as Mermaid or saves it as SVG or PNG.
+**Whole system** closes it again. **Look inside** on a part's card does the same as Zoom into. **Flows & export** copies any view as Mermaid or saves it as SVG or PNG.
 
 ## 7. The command prompt
 

@@ -4,7 +4,7 @@ import { Board, PHASES, STATUS, STICKERS, stickerItems } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
 import { AREAS, areaOf, fmt, STICKER_WORD } from "./engine/timeline";
-import { LAYERS, layerOf, openableLayers, tagCase, toDfdMermaid, toErMermaid, toInsideMermaid, toMermaid, toSequence } from "./engine/views";
+import { LAYER_COLOR, LAYERS, layerOf, openableLayers, tagCase, toDfdMermaid, toErMermaid, toInsideMermaid, toMermaid, toSequence } from "./engine/views";
 import { buildReview, penMarks } from "./engine/review";
 import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour, stepOf, targets as tourTargets, tourLength, waiting as tourWaiting } from "./engine/tour";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
@@ -1108,7 +1108,8 @@ function Explain({ lid, model, live, onClose, onRename, onRemove, onAsk, onChall
 
 // What the colors mean, under the Pictures board (C4 and data flow draw their own key).
 const KEY = [["planned", "New"], ["built", "Exists"], ["building", "Being built"], ["verified", "Tested ✓"], ["failed", "Failed ✗"], ["live", "Shipped ★"]];
-function BoardKey() {
+function BoardKey({ model }) {
+  const layers = LAYERS.filter((l) => Object.values(model?.nodes ?? {}).some((n) => layerOf(n) === l.key));
   return (
     <div className="board-key" aria-label="Key" data-tour="key">
       <b>Key</b>
@@ -1126,6 +1127,17 @@ function BoardKey() {
         <i className="sw" style={{ borderColor: "#f08c00", background: "#fff4e6" }} />
         Question for you
       </span>
+      {layers.length > 0 && (
+        <span className="bk-layers" title="The plate behind each part: which layer it's in. Zoom into one to open it up.">
+          <b>Layers</b>
+          {layers.map((l) => (
+            <span key={l.key}>
+              <i className="sw sw-layer" style={{ borderColor: LAYER_COLOR[l.key].stroke, background: LAYER_COLOR[l.key].fill }} />
+              {l.label}
+            </span>
+          ))}
+        </span>
+      )}
     </div>
   );
 }
@@ -1364,17 +1376,25 @@ export default function App() {
   });
   const styleRef = useRef(["c4", "dfd"].includes(diagram) ? diagram : "pictures");
   const readOnlyDiagram = diagram === "er" || diagram === "sequence";
-  // Zoom into a layer (a LAYERS key) or the whole system (null): the board's map, with that
-  // layer's components opened to show their parts. Read-only, on the diagram canvas.
+  // Zoom into a layer (a LAYERS key) or the whole system (null): in place on the board, that
+  // layer's components burst open to show their parts while the rest fades, and the camera
+  // refits (Board.drawExplode). The board stays the editable one.
   const [inside, setInside] = useState(null);
-  const readOnlyView = readOnlyDiagram || !!inside;
+  const readOnlyView = readOnlyDiagram;
   const chooseInside = (k) => {
     setInside(k);
-    if (k && focus) chooseFocus(null);
+    setFocus(null);
+    // The data model and sequence diagrams are separate canvases: open the layer on the board.
+    if (k && readOnlyDiagram) chooseDiagram(styleRef.current, { keepInside: true });
+    sessionRef.current?.board.setFocus(k ? { layer: k, explode: true } : null);
   };
-  const chooseDiagram = (v) => {
+  const chooseDiagram = (v, { keepInside = false } = {}) => {
     setDiagram(v);
-    setInside(null);
+    // Pictures, C4 and Data flow keep a layer open (redrawn in that style); the others close it.
+    if (inside && !keepInside && ["er", "sequence"].includes(v)) {
+      setInside(null);
+      sessionRef.current?.board.setFocus(null);
+    }
     if (!["er", "sequence"].includes(v)) {
       styleRef.current = v;
       sessionRef.current?.board.setStyle(v);
@@ -1395,6 +1415,7 @@ export default function App() {
   // Narrow the board to one layer or one flow ({ layer } | { flow } | null); the rest fades.
   const [focus, setFocus] = useState(null);
   const chooseFocus = (f) => {
+    if (f) setInside(null); // a flow replaces an opened layer
     setFocus(f);
     sessionRef.current?.board.setFocus(f);
   };
@@ -1461,8 +1482,10 @@ export default function App() {
   };
   // The read-only diagram follows the model as it changes (Board skips redraws that change nothing).
   useEffect(() => {
-    if (inside) sessionRef.current?.board.drawDiagram("inside", inside);
-    else if (readOnlyDiagram) sessionRef.current?.board.drawDiagram(diagram, focus?.flow);
+    const b = sessionRef.current?.board;
+    if (readOnlyDiagram) b?.drawDiagram(diagram, focus?.flow);
+    // A fresh board (start over, a replay) forgets the opened layer: open it again.
+    else if (b && inside && !(b.focus?.explode && b.focus.layer === inside)) b.setFocus({ layer: inside, explode: true });
   });
   const tabRef = useRef(tab);
   tabRef.current = tab;
@@ -2644,7 +2667,7 @@ export default function App() {
                 : boardView === "timeline"
                   ? `How the decisions moved. ${replayMode ? "Click a moment to jump there." : "Click a mark to read it."}`
                   : inside
-                    ? "Inside each part. Read-only."
+                    ? `The ${LAYERS.find((l) => l.key === inside)?.label} layer, opened up: what each part is made of. Whole system closes it.`
                     : diagram === "er"
                       ? "The tables each data store holds: keys, columns and relations. Read-only."
                       : diagram === "sequence"
@@ -2658,7 +2681,7 @@ export default function App() {
             <div className="lens-group" role="group" aria-label="Draw it as">
               <span className="lens-label">Draw as</span>
               {DIAGRAMS.map((d) => (
-                <button key={d.key} className={`lens ${!inside && diagram === d.key ? "on" : ""}`} aria-pressed={!inside && diagram === d.key} onClick={() => chooseDiagram(d.key)} title={d.title}>
+                <button key={d.key} className={`lens ${diagram === d.key ? "on" : ""}`} aria-pressed={diagram === d.key} onClick={() => chooseDiagram(d.key)} title={d.title}>
                   {d.label}
                 </button>
               ))}
@@ -2669,7 +2692,7 @@ export default function App() {
                 Whole system
               </button>
               {openableLayers(model).map((l) => (
-                <button key={l.key} className={`lens ${inside === l.key ? "on" : ""}`} aria-pressed={inside === l.key} onClick={() => chooseInside(l.key)} title={`Open the ${l.label} layer: what's inside its parts`}>
+                <button key={l.key} className={`lens ${inside === l.key ? "on" : ""}`} aria-pressed={inside === l.key} onClick={() => chooseInside(l.key)} title={`Open the ${l.label} layer in place: what its parts are made of`}>
                   {l.label}
                 </button>
               ))}
@@ -2780,16 +2803,13 @@ export default function App() {
           <div
             className={`canvas ${boardView === "board" && readOnlyView ? "on" : ""}`}
             role="tabpanel"
-            aria-label={inside ? `Inside the ${LAYERS.find((l) => l.key === inside)?.label} layer` : diagram === "er" ? "Data model" : "Sequence"}
+            aria-label={diagram === "er" ? "Data model" : "Sequence"}
           >
             <Excalidraw excalidrawAPI={setDiagramApi} initialData={INITIAL_DATA} UIOptions={WHY_UI_OPTIONS} viewModeEnabled theme={theme} />
-            {model && inside && !openableLayers(model).some((l) => l.key === inside) && (
-              <p className="canvas-empty">Nothing in this layer yet. Its parts appear here once the agent draws them.</p>
-            )}
-            {model && !inside && diagram === "er" && !Object.keys(model.tables ?? {}).length && (
+            {model && diagram === "er" && !Object.keys(model.tables ?? {}).length && (
               <p className="canvas-empty">The data model appears here when the agent describes its tables: columns, keys and how they relate.</p>
             )}
-            {model && !inside && diagram === "sequence" && !Object.keys(model.flows ?? {}).length && (
+            {model && diagram === "sequence" && !Object.keys(model.flows ?? {}).length && (
               <p className="canvas-empty">A flow appears here as a sequence diagram once the agent maps one: who calls whom, in order.</p>
             )}
           </div>
@@ -2830,7 +2850,7 @@ export default function App() {
               />
             ))}
         </div>
-        {boardView === "board" && diagram === "pictures" && !inside && nodeCount > 0 && <BoardKey />}
+        {boardView === "board" && diagram === "pictures" && nodeCount > 0 && <BoardKey model={model} />}
       </main>
     </div>
   );

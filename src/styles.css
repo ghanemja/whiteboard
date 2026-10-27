@@ -3267,3 +3267,17 @@ button:focus-visible {
 .pin-body .App-bottom-bar {
   display: none;
 }
+
+/* The key's layer row: the plate colors behind each part. */
+.board-key .bk-layers {
+  gap: 4px 12px;
+  flex-wrap: wrap;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+.board-key .sw-layer {
+  width: 14px;
+  height: 11px;
+  border-width: 1px;
+  border-radius: 4px;
+}

@@ -5,7 +5,8 @@ import {
 } from "@excalidraw/excalidraw";
 import { DECISION, INK, MILESTONE, MUTED, PHASES, PROOF, YOU } from "./palette";
 import { buildTimeline, drawTimeline, TL, xToTime } from "./timeline";
-import { c4Tag, dataOf, dfdIds, dfdRole, layerOf, parseColumns, parseLinks, parseSteps, sentenceCase, tagCase } from "./views";
+import { c4Tag, dataOf, dfdIds, dfdRole, LAYER_COLOR, LAYERS, layerOf, parseColumns, parseLinks, parseSteps, sentenceCase, tagCase } from "./views";
+import { explodeLayout, explodeOf, explodeSkeletons } from "./explode";
 import { drawEr, drawInside, drawSequence } from "./diagrams";
 import { STICKERS, stickerEdit } from "./stickers";
 
@@ -289,7 +290,8 @@ export class Board {
   reset() {
     this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {}, questions: {}, flows: {}, tables: {}, parts: {}, unowned: [] };
     this.diagramSig = null; // what the diagram canvas last drew
-    this.focus = null; // what the board is narrowed to: { layer } or { flow }, the rest faded
+    this.focus = null; // what the board is narrowed to: { layer } or { flow }, the rest faded; { layer, explode } opens the layer up
+    this.exSig = ""; // what the exploded layer last drew (drawExplode)
     this.known = new Set();
     this.hl = new Set();
     this.hlSig = "";
@@ -342,7 +344,11 @@ export class Board {
     const f = this.focus, m = this.model;
     if (!f) return null;
     let nodes;
-    if (f.layer) nodes = new Set(Object.values(m.nodes).filter((n) => [f.layer, null].includes(layerOf(n))).map((n) => n.id));
+    if (f.layer) {
+      nodes = new Set(Object.values(m.nodes).filter((n) => [f.layer, null].includes(layerOf(n))).map((n) => n.id));
+      // Opened up, a component of another layer with parts in this one stays in view: they burst out of it.
+      if (f.explode) for (const g of explodeOf(m, f.layer)) nodes.add(g.host);
+    }
     else if (m.flows[f.flow]) nodes = new Set(m.flows[f.flow].steps.flatMap((s) => [s.from, s.to]));
     else return null;
     const edges = new Set();
@@ -518,6 +524,12 @@ export class Board {
 
   // ---- ops ----
   apply(a) {
+    const ids = this.applyOp(a);
+    // An opened-up layer follows the plan as it changes (drawExplode skips what changes nothing).
+    if (this.focus?.explode && ["node", "part", "table", "rename", "remove", "adopt"].includes(a.op)) this.drawExplode();
+    return ids;
+  }
+  applyOp(a) {
     switch (a.op) {
       case "project": return this.setTitle(a.name, a.goal);
       case "decision": return this.setDecision(a);
@@ -675,6 +687,12 @@ export class Board {
           ...iconParts(node.kind, ox, oy, s, pid),
           { type: "text", id: `${pid}:label`, x: ox, y: oy + IH + 8, text: labelText ?? node.name, fontSize: 18, strokeColor: INK },
         ];
+    // The layer it's in, as a soft plate behind it: whole-board color coding (people have none).
+    const lc = LAYER_COLOR[layerOf(node)];
+    if (lc) {
+      const pad = c4 || dfd ? 10 : 6;
+      sk.unshift({ type: "rectangle", id: `${pid}:zone`, x: bx0 - pad, y: by0 - pad, width: b.w + pad * 2, height: b.h + pad * 2, strokeColor: lc.stroke, backgroundColor: lc.fill, fillStyle: "solid", strokeWidth: 1, roughness: c4 || dfd ? 0 : 1, roundness: { type: 3 }, opacity: 70 });
+    }
     if (dfd && role === "process") centers[`${pid}:id`] = [ox + IW / 2, by0 + 12];
     if (dfd && role === "store") {
       centers[`${pid}:id`] = [bx0 + 26, by0 + b.h / 2];
@@ -724,11 +742,12 @@ export class Board {
     const existing = this.model.nodes[id];
     if (existing) {
       // Repeating a node op fills in its details (libraries, APIs, files, layer) as the agent learns them.
+      const relayer = layer != null && layer !== existing.layer;
       if (layer != null) existing.layer = layer;
       if (libs != null) existing.libs = list(libs);
       if (api != null) existing.api = list(api);
       if (paths != null) existing.paths = list(paths);
-      if (libs != null) this.redrawNode(id);
+      if (libs != null || relayer) this.redrawNode(id); // the libraries under it, or its layer's plate
       if (paths != null) this.attributeChanges();
       return [`node:${id}`];
     }
@@ -1388,6 +1407,7 @@ export class Board {
     this.tapeNotes();
     this.redrawKey();
     this.drawFlowSteps();
+    this.drawExplode();
   }
 
   // ---- layers and flows: narrow the board to one ----
@@ -1404,10 +1424,62 @@ export class Board {
   }
 
   // { layer: "ml" }, { flow: "ask" }, or null for the whole board.
+  // { layer, explode: true } opens the layer up in place (drawExplode) and frames it.
   setFocus(focus) {
+    const was = this.focus;
     this.focus = focus?.layer || focus?.flow ? focus : null;
     this.hideAlternatives();
     this.drawFlowSteps();
+    this.drawExplode();
+    const opened = (f) => (f?.explode ? f.layer : null);
+    if (opened(was) !== opened(this.focus)) this.fitFocus(true);
+  }
+
+  // ---- a layer opened up: its components' parts burst out around them (explode.js) ----
+  // Drawn on this canvas, in place: nothing moves, the rest of the board fades, and the parts
+  // are the board's own drawing (remembered, so diff() skips them). Redrawn when the model or
+  // the drawing style changes; skipped when nothing it shows did.
+  drawExplode() {
+    const layer = this.focus?.explode ? this.focus.layer : null;
+    const els = this.scene();
+    const live = els.filter((e) => !e.isDeleted);
+    const boxes = {};
+    for (const n of Object.values(this.model.nodes)) {
+      const b = live.find((e) => e.id === n.elId);
+      if (b) boxes[n.id] = { x: b.x, y: b.y, w: b.width, h: b.height };
+    }
+    const groups = layer ? explodeOf(this.model, layer) : [];
+    const sig = layer ? JSON.stringify([layer, this.style, groups, boxes]) : "";
+    if (sig === this.exSig) return;
+    this.exSig = sig;
+    this.kill(els, new Set(els.filter((e) => e.id.startsWith("ex:")).map((e) => e.id)));
+    // Keep clear of the notes column and the key, too.
+    const obstacles = live
+      .filter((e) => e.id.startsWith("key:") || Object.values(this.model.questions).some((q) => q.elId === e.id) || this.model.notes.some((n) => n.elId === e.id))
+      .map((e) => ({ x: e.x, y: e.y, w: e.width, h: e.height }));
+    const items = explodeLayout(groups, boxes, obstacles);
+    const centers = new Map();
+    const out = this.convert(explodeSkeletons(items, { look: this.look(2), font: this.font() }).map(({ _c, ...e }) => (_c && centers.set(e.id, _c), e)));
+    for (const e of out) {
+      const c = centers.get(e.id);
+      if (c) [e.x, e.y] = [c[0] - e.width / 2, c[1] - e.height / 2];
+      e.groupIds = [`g:${e.id.split(":").slice(0, 2).join(":")}`];
+      e.seed = seedOf(e.id);
+    }
+    this.commit([...els, ...this.remember(out)]);
+  }
+
+  // Frame what the focus keeps (an opened layer and its parts), or the whole board.
+  fitFocus(animate = false) {
+    const keep = this.focusSet();
+    if (!keep) return this.api.scrollToContent(this.api.getSceneElements(), { fitToViewport: true, viewportZoomFactor: 0.94, animate });
+    const els = this.api.getSceneElements().filter((e) => e.id.startsWith("ex:") || keep.nodes.has(this.nodeByEl(e.id)?.id));
+    if (!els.length) return;
+    // A layer of one small part would fill the screen: frame at least a board's worth around it.
+    const [x1, y1, x2, y2] = getCommonBounds(els);
+    const w = Math.max(x2 - x1, 820), h = Math.max(y2 - y1, 520);
+    const frame = { ...els[0], id: "fit-frame", x: (x1 + x2) / 2 - w / 2, y: (y1 + y2) / 2 - h / 2, width: w, height: h, angle: 0, type: "rectangle", points: undefined };
+    this.api.scrollToContent([frame], { fitToViewport: true, viewportZoomFactor: 0.86, animate });
   }
 
   // A focused flow's steps as numbered dots along its links, in order; a step with no link drawn
@@ -1582,6 +1654,18 @@ export class Board {
     sk.push({ type: "diamond", id: "key:dec", x, y: y - 2, width: 18, height: 18, strokeColor: DECISION.accepted.stroke, backgroundColor: DECISION.accepted.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0 });
     x += 24;
     label("key:dec:t", "Decision");
+    // The layers on the board: the plate colors.
+    const used = LAYERS.filter((l) => Object.values(this.model.nodes).some((n) => layerOf(n) === l.key));
+    if (used.length) {
+      x = x0 + 42;
+      y += 26;
+      for (const l of used) {
+        const c = LAYER_COLOR[l.key];
+        sk.push({ type: "rectangle", id: `key:layer:${l.key}`, x, y, width: 14, height: 14, strokeColor: c.stroke, backgroundColor: c.fill, fillStyle: "solid", strokeWidth: 1, roughness: 0, roundness: { type: 3 } });
+        x += 20;
+        label(`key:layer:${l.key}:t`, l.label);
+      }
+    }
     const out = this.remember(this.convert(sk.map((e) => ({ ...e, locked: true }))));
     for (const e of out) e.seed = seedOf(e.id);
     this.commit([...els, ...out]);
@@ -1991,6 +2075,13 @@ export class Board {
         const [, part, did, nid] = id.split(":");
         if (part === "c" && this.model.nodes[nid]) out.add(`node:${nid}`);
         else if (this.model.decisions[did]) out.add(`decision:${did}`);
+        continue;
+      }
+      // An opened-up layer's part: the component it came out of.
+      if (id.startsWith("ex:")) {
+        const item = id.split(":")[1];
+        const host = this.model.parts[item]?.of ?? this.model.tables[item]?.of ?? item.split("#")[0];
+        if (this.model.nodes[host]) out.add(`node:${host}`);
         continue;
       }
       const node = this.nodeByEl(id);

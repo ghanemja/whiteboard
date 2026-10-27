@@ -42,9 +42,10 @@ The bar above the board shows the same plan other ways:
   | Sequence | One flow as a UML sequence diagram: lifelines, numbered messages, replies dashed | Read-only |
 
   The editable ones redraw the same board, so steering works in all three. C4, Data flow, Database and Sequence use the official look: square boxes, 1 px lines, a plain typeface and a Key. Status is color everywhere.
-- **Zoom into** opens one **layer** (Frontend, Backend, Data, ML, External) on the board's own map: each of its components becomes a frame holding its parts (pages, routes, jobs, pipeline steps, tables with their columns), with arrows for what each hands on; components of other layers stay closed, as grey boxes in their places. **ML** gathers the model pipeline even where its steps live inside backend components (chunk → embed → index, retrieve → prompt → answer). **Look inside** on a part's card opens its layer. Read-only; **Whole system** goes back.
+- **Color by layer.** On the whole board each part sits on a soft plate in its layer's color: Frontend blue, Backend violet, Data teal, ML orange, External grey (the key under the board has a Layers row). The pictogram keeps its status color.
+- **Zoom into** opens one **layer** (Frontend, Backend, Data, ML, External) in place, on the same board: nothing moves or swaps, the other layers fade, and each of its components bursts into what it's made of, as small icons in the layer's colors on dashed leader lines: a browser window for a page, a plug for a route, a gear for a step, a clock for a job, a sparkle for a model, a magnifier for an index, a grid for a table, a page for a stored file, a parcel for a library. The camera zooms to fit. **ML** gathers the model pipeline even where its steps live inside backend components (their pieces keep the ML color). It stays open while the agent works and in every editable notation (Pictures, C4, Data flow); click a piece to open its component's card. **Look inside** on a part's card opens its layer; **Whole system** closes it.
 
-![Zoom into ML: the RAG pipeline across the worker, the vector index, the API server and Claude](screenshots/zoom/2-ml-layer.png)
+![Zoom into Backend, in place: the API server and the ingest worker burst into their routes, steps, job and libraries; the other layers fade](screenshots/zoom/4-backend-layer.png)
 
 - **+ Pin this view** (beside the board's tabs) keeps what the board shows open in its own window over it. Pin C4, switch the board to Pictures, pin Database: several views at once, each up to date with the plan. Drag a window by its title, resize it from its corner, close it with **−**.
 
@@ -226,6 +227,7 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `src/engine/diagrams.js` | The read-only diagrams as Excalidraw skeletons: the data model (ER), a flow as a sequence diagram, and a layer zoomed into |
 | `src/engine/claims.js` | Receipts: finds checkable claims in the agent's sentences (and questions or assumptions said in passing) and checks them against the run's record |
 | `src/engine/review.js` | The end-of-run review card: what needs a look, and where; and the red-pen marks for the board |
+| `src/engine/explode.js` | A layer opened up in place: what each component bursts into, where the pieces go, their icons |
 | `src/engine/stickers.js` | The steering stickers: what a dropped sticker lands on, and the edit it makes |
 | `src/engine/tour.js` | The guided tour as pure functions: the steps, when each is done, where it points, when the demo waits for you |
 | `src/engine/spotlight.js`, `src/Tour.jsx` | The tour on screen: the dim with the step's part lit, and its card popped out beside it |

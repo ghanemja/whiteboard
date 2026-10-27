@@ -4,7 +4,7 @@
 // `node --test` can run it. Text centered on a point carries `_c: [x, y]`; right-aligned text
 // carries `_r: x` (where its right edge goes).
 import { INK, MUTED } from "./palette.js";
-import { C4_TYPE, LAYERS, c4Tag, insideOf, layerOf, partLayer } from "./views.js";
+import { C4_TYPE, LAYERS, LAYER_COLOR, c4Tag, insideOf, layerOf, partLayer } from "./views.js";
 
 const SANS = 6; // Nunito, Excalidraw's "Normal" typeface
 const crisp = { strokeWidth: 1, roughness: 0, locked: true };
@@ -125,7 +125,7 @@ export function drawSequence(model, flow) {
 // (tables drawn as in the data model); a component of another layer it talks to stays closed, a
 // grey box at its place. Arrows carry what passes between them.
 export const IN = { PAD: 16, HEAD: 50, GAP: 38, GX: 210, GY: 110, PH: 50, STUB: 46 };
-export const LAYER_TINT = { frontend: "#e7f5ff", backend: "#f3f0ff", data: "#e6fcf5", ml: "#fff4e6", external: "#f1f3f5" };
+export const LAYER_TINT = Object.fromEntries(Object.entries(LAYER_COLOR).map(([k, c]) => [k, c.fill]));
 const FAINT = "#adb5bd";
 
 export function drawInside(model, layer) {
