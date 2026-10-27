@@ -65,13 +65,9 @@ export const TOUR = [
   {
     id: "steer",
     title: "Change its mind",
-    text: "Press Use this on another option. Or pull the glass down and drag a sticker onto a part. Nothing is sent until you Submit.",
+    text: "Press Use this on another option. It goes on your list of changes; nothing is sent yet.",
     done: (c, s) => c.edits > s.edits || c.stage === "building",
-    dom: (c) => [
-      c.explainUse ? { sel: '[data-tour="use-this"]', label: "Use this" } : null,
-      { sel: '[data-tour="glass"]', label: "Pull the glass down" },
-      { sel: '[data-tour="stickers"]', label: "Or a sticker" },
-    ].filter(Boolean),
+    dom: (c) => (c.explainUse ? [{ sel: '[data-tour="use-this"]', label: "Use this" }] : []),
     board: (c) => (!c.explainUse && c.firstDecision ? [{ lid: `decision:${c.firstDecision}` }] : []),
     spot: (c) => (c.explainUse ? [".explain"] : []), // the options, on the decision's card
     skip: "pick",
@@ -79,11 +75,10 @@ export const TOUR = [
   {
     id: "answer",
     title: "Answer its question",
-    text: "It couldn't tell how big uploads get, so it asked you (the orange note). Click the note on the board, or open Plan details, and pick an answer. It updates the plan.",
+    text: "It couldn't tell how big uploads get, so it asked you. Click the circled note and pick an answer. It updates the plan.",
     done: (c, s) => c.answered > s.answered || c.stage === "building",
     board: (c) => (c.firstQuestion ? [{ lid: `question:${c.firstQuestion}` }] : []),
-    dom: () => [{ sel: '[data-tour="plan-tab"]', label: "Plan details" }],
-    spot: (c) => (c.tab === "plan" ? [".transcript"] : []), // the question, in Plan details
+    spot: (c) => (c.selected.includes(`question:${c.firstQuestion}`) ? [".explain"] : []), // its answers, on the note's card
     skip: "answer",
     clearSelection: true, // the decision's card from the last step would cover the note
   },
@@ -101,11 +96,10 @@ export const TOUR = [
   {
     id: "build",
     title: "It builds: orange means being built",
-    text: "It edits files by itself now. Open Chat & log and hover a sentence: the parts it changed light up on the board. (The demo is paused for you.)",
+    text: "It edits files by itself now. Hover a sentence in Chat & log: the parts it changed light up on the board. (The demo is paused for you.)",
     done: (c, s) => c.hovers > s.hovers || past(c, LATE),
-    board: (c) => (c.building ? [{ lid: `node:${c.building}` }] : []),
     dom: () => [{ sel: '[data-tour="log-tab"]', label: "Chat & log" }],
-    spot: (c) => (c.tab === "activity" ? [".transcript"] : []), // the sentences to hover
+    spot: (c) => [...(c.tab === "activity" ? [".transcript"] : []), BOARD], // the sentences to hover, and where they light up
     release: "build",
     clearSelection: true,
   },

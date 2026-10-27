@@ -1924,16 +1924,24 @@ export default function App() {
     }
     if (stepOf(tour).clearSelection) s?.board.api.updateScene({ appState: { selectedElementIds: {} } });
   }, [tour]);
-  // Where the tour's first circle on the board is, on screen: the card's arrow points at it.
+  // Where the tour's first circle on the board is, on screen, and the rest of the drawing round
+  // it (around): the card sits beside the circle, over as little of the drawing as it can.
   const tourNote = () => {
     const b = s?.board;
-    const e = b?.tips && b.api?.getSceneElements().find((x) => x.id === b.tips[0]);
+    const els = b?.tips && b.api?.getSceneElements();
+    const e = els?.find((x) => x.id === b.tips[0]);
     if (!e) return null;
     const st = b.api.getAppState();
-    const p = sceneCoordsToViewportCoords({ sceneX: e.x, sceneY: e.y }, st);
-    return { x: p.x, y: p.y, w: e.width * st.zoom.value, h: e.height * st.zoom.value };
+    const rect = (x) => {
+      const p = sceneCoordsToViewportCoords({ sceneX: x.x, sceneY: x.y }, st);
+      return { x: p.x, y: p.y, w: x.width * st.zoom.value, h: x.height * st.zoom.value };
+    };
+    const tips = new Set(b.tips);
+    // Parts, decisions, labels and notes; not arrows (their x, y is where they start) or the frame.
+    const drawn = els.filter((x) => !x.isDeleted && !tips.has(x.id) && x.id !== "frame" && x.type !== "arrow" && x.type !== "line");
+    return { ...rect(e), around: drawn.map(rect).filter((r) => r.w * r.h < (window.innerWidth * window.innerHeight) / 4) };
   };
-  // Its notes and circles on the board (the coach's own tips stay off while it runs).
+  // Its circles on the board (the coach's own tips stay off while it runs).
   const tourTips = useRef("");
   useEffect(() => {
     const b = s?.board;
@@ -2063,7 +2071,8 @@ export default function App() {
               <span className="caption">{status}</span>
             </div>
           )}
-          {tour ? null : tourOffer && s ? (
+          {/* Not before the dev server says whether there's a key: without one the tour starts by itself. */}
+          {tour || !agent || autoTour ? null : tourOffer && s ? (
             <div className="coach tour-offer" role="region" aria-label="Take the tour">
               <div className="coach-top">
                 <span className="coach-label">New here?</span>

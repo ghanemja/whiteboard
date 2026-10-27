@@ -12,16 +12,16 @@ The board is pictures, not prose. Components are hand-drawn pictograms (browser 
 
 New here? The tour starts by itself on your first visit (without an API key; with one, it's offered). Take it again with **Take the tour** (on the start screen, as **Tour** beside the coach's Hide tips, or the flag button by **?**). The scripted demo plays as a lesson: no API key, nothing touches your files. It stops at each step until you've tried it, then carries on: click a ◇ decision, pick another option with **Use this** (or drag a sticker onto a part), answer its question, **Approve with changes**, hover a log line while it builds, answer a command prompt (**Allow once**, **Allow all** or **Deny**, and *Why am I asked?*), open **Why** when a check fails and the decision changes, find the claim that isn't true (the ✗ row in the review, or the red pen), and read the **Timeline**. Twelve steps: the screen dims round the part each one is about, and its card pops out beside it, with Back, Skip step (it does the step for you) and Exit tour. A first visit offers it once.
 
-![The tour at step 4: the screen dims round the decision's card and the glass button, orange rings point at Use this and Pull the glass down, and the yellow tour card pops out beside Use this to say what to do and why](screenshots/tour/04-use-this.png)
+![The tour at step 4: the screen dims round the decision's card, an orange ring marks Use this, and the yellow tour card pops out beside it to say what to do and why](screenshots/tour/04-use-this.png)
 
 ## First-time help
 
 The app walks a newcomer through a run without hiding anything. **Hide tips** turns the coach and the board tips off (remembered); the **?** button brings them back.
 
-![The plan gate with tips: the coach card says step 2 of 4, sticky notes with hand-drawn arrows point at a decision and a part, an orange circle rings an open question, and the Edit the plan toolbar and color key frame the board](screenshots/first-time-help/2-plan-gate-tips-on-the-board.png)
+![The plan gate with tips: the coach card says step 2 of 4 and what to do, orange circles ring the first decision and an open question on the board, and the color key sits under it](screenshots/first-time-help/2-plan-gate-tips-on-the-board.png)
 
 - **Coach.** A yellow card at the top of the panel says which step you're on (Describe → Plan → Build → Check) and what to do now, in a sentence or two.
-- **Tips on the board.** The first time a plan waits for you, sticky notes with hand-drawn arrows point at a decision ("Click a ◇ to see its other options") and a part ("Click a part to learn what it is"), and an orange circle rings its first open question. Click one to dismiss them. They're never exported or sent to the agent.
+- **Tips on the board.** The first time a plan waits for you, orange circles ring its first decision and its first open question; the coach card says what to do with them, so there's one ask at a time. Click one to dismiss them. They're never exported or sent to the agent.
 - **Glass.** The board sits behind glass: clicks explain, nothing moves. **Pull down to edit** shows Edit the plan; **Submit** sends your changes and puts the glass back. Use this, Rename and Remove pull it down for you.
 - **Edit the plan.** With the glass down, a toolbar with words above the board: Select, Rename, Add a part, Connect, Remove, Add a note, Stickers. Each picks the matching Excalidraw tool and says what to do next; the gestures (double-click, Delete, drawing) still work. Excalidraw's full toolbar is behind **Drawing tools**.
 - **Click to explain.** Select a part, a ◇, an arrow or a question and a card says what it is in plain words (what a service is, its status, routes, files, decisions, connections), with its actions as buttons: Rename, Remove, Ask about it, See the code; for a decision, **Use this** on each option, Ask why and Reject it; for a question, its answers.

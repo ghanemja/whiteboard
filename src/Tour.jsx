@@ -93,7 +93,8 @@ export function TourSpotlight({ targets, spots, center, note, children }) {
       } catch {
         /* the board is between scenes */
       }
-      const next = { vw, vh, rings, areas, note: n && { x: Math.round(n.x), y: Math.round(n.y), w: Math.round(n.w), h: Math.round(n.h) } };
+      const round = (r) => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
+      const next = { vw, vh, rings, areas, note: n && { ...round(n), around: (n.around ?? []).map(round) } };
       setGeo((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
     };
     measure();
@@ -126,19 +127,20 @@ export function TourSpotlight({ targets, spots, center, note, children }) {
     return () => clearTimeout(t);
   }, [gone]);
 
-  // The card: beside the first target, else the first lit area (on the board, level with the
-  // tour's note there), else in the middle. It keeps off the other targets and the lit areas.
+  // The card: beside the first target, else the first lit area, else in the middle. When that's
+  // the board and the tour has circled something on it, right beside the circle, over as little
+  // of the drawing as it can. It keeps off the other targets and the lit areas.
   let anchor = null;
   const avoid = [];
   if (geo && !center) {
     const board = geo.areas.find((a) => a.key === BOARD);
     anchor = geo.rings[0] ?? geo.areas[0] ?? null;
-    if (anchor && anchor === board && geo.note) {
-      const n = geo.note;
-      if (n.y >= board.y && n.y + n.h <= board.y + board.h) anchor = { ...board, y: n.y, h: n.h };
-    }
+    const n = geo.note;
+    const onBoard = anchor && anchor === board && n && n.x >= board.x && n.y >= board.y && n.x + n.w <= board.x + board.w && n.y + n.h <= board.y + board.h;
+    if (onBoard) anchor = { x: n.x, y: n.y, w: n.w, h: n.h };
     for (const r of geo.rings.slice(1)) avoid.push({ ...r, weight: 1000 });
-    for (const a of geo.areas) if (a !== anchor) avoid.push({ ...a, weight: a === board ? 10 : 1 });
+    for (const a of geo.areas) if (a !== anchor && !(onBoard && a === board)) avoid.push({ ...a, weight: a === board ? 10 : 1 });
+    if (onBoard) avoid.push(...n.around);
   }
   const card = useRef(null);
   const [pos, setPos] = useState(null);

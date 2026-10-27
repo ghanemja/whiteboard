@@ -38,7 +38,7 @@ cp fixtures/recordings/* recordings/
 
 The first time you open the app, the tour starts by itself. To take it again later, press **Tour** in the yellow tips card (or **Take the tour** on the start screen).
 
-The tour plays the demo as a lesson. The screen dims except for the part each step is about, and a yellow card pops out beside it to say what to do and why; orange rings or sticky notes point at the thing to click. Everything still works under the dim. The demo **waits for you** at each step, so take your time. If you get stuck, **Skip step** does it for you; **Back** shows the last step again; **Exit tour** leaves it (the demo keeps going as normal).
+The tour plays the demo as a lesson. The screen dims except for the part each step is about, and a yellow card pops out beside it to say what to do and why; an orange ring or circle marks the one thing to click. Everything still works under the dim. The demo **waits for you** at each step, so take your time. If you get stuck, **Skip step** does it for you; **Back** shows the last step again; **Exit tour** leaves it (the demo keeps going as normal).
 
 The rest of this guide covers the same run in more detail. Do the tour first, then read on, or follow along here instead.
 
@@ -82,7 +82,7 @@ When you're happy with the plan, press **Approve plan & build** (or **Approve wi
 
 Now it edits files by itself. Parts turn **orange** while it changes them. In **Chat & log**, hover any sentence: the parts that sentence changed light up on the board. Under each part, small green and red blocks show how many lines it added and removed.
 
-![A part being built, in orange, with a note pointing at it](../screenshots/tour/07-build-hover-a-line.png)
+![A part being built, in orange; the tour card points at Chat & log](../screenshots/tour/07-build-hover-a-line.png)
 
 ### It tests (verify)
 
@@ -112,7 +112,7 @@ Buttons on a card that change the plan (**Use this**, **Rename**, **Remove**) pu
 
 Click a ◇, then press **Use this** next to one of the other options. Or drag one of the option pills that fan out beside the diamond onto it. To use your own idea, type it in the blank "+ your own" pill.
 
-![The decision card with Use this ringed, and the button to pull the glass down](../screenshots/tour/04-use-this.png)
+![The decision card with Use this ringed, and the tour card beside it](../screenshots/tour/04-use-this.png)
 
 ### Use the Edit the plan toolbar
 
@@ -150,7 +150,7 @@ Later on, press **Submit** (on the board or in the panel). Either way, the glass
 
 Sometimes the agent can't tell something from the code, so it asks you. Questions are orange sticky notes on the board (with a push pin), and **Plan details** shows "? 2 for you". Click the note, or open Plan details, and pick an answer or type your own. **Assumptions** (purple notes, ≈) are things it decided to believe; confirm one (✓) or correct it (✎).
 
-![The question circled on the board; Plan details ringed](../screenshots/tour/05-answer-its-question.png)
+![The question circled on the board, and the tour card beside it](../screenshots/tour/05-answer-its-question.png)
 
 You can also just type in the box at the bottom ("Use SQLite instead"), or press **Ask why** on a decision.
 
