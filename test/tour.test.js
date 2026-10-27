@@ -38,7 +38,7 @@ test("a whole tour: each step waits for its action, then moves on by itself", ()
   c = { ...c, gate: true };
   t = advance(t, c);
   assert.equal(at(t), "decision");
-  assert.deepEqual(targets(t, c).board, [{ lid: "decision:d1", text: "Click D1" }], "named as the board labels it");
+  assert.deepEqual(targets(t, c).board, [{ lid: "decision:d1" }], "circled: the card alone says what to do");
 
   c = { ...c, selected: ["node:api"] };
   assert.equal(at(advance(t, c)), "decision", "a part isn't a decision");
@@ -51,7 +51,7 @@ test("a whole tour: each step waits for its action, then moves on by itself", ()
   c = { ...c, edits: 1 };
   t = advance(t, c);
   assert.equal(at(t), "answer");
-  assert.deepEqual(targets(t, c).board, [{ lid: "question:q1", circle: true }]);
+  assert.deepEqual(targets(t, c).board, [{ lid: "question:q1" }]);
   // Answering makes it reply, so the plan isn't waiting for a moment.
   c = { ...c, answered: 1, gate: false };
   t = advance(t, c);
@@ -63,7 +63,7 @@ test("a whole tour: each step waits for its action, then moves on by itself", ()
   c = { ...c, gate: false, stage: "building", phase: "implementation", edits: 0, building: "api" };
   t = advance(t, c);
   assert.equal(at(t), "build");
-  assert.deepEqual(targets(t, c).board, [{ lid: "node:api", text: "Orange: being built now" }]);
+  assert.deepEqual(targets(t, c).board, [{ lid: "node:api" }]);
 
   c = { ...c, hovers: 3 };
   t = advance(t, c);

@@ -86,7 +86,7 @@ const QSTYLE = {
 };
 const QSTATES = ["open", "answered", "confirmed", "corrected"];
 // The coach's tips: yellow sticky notes and an orange ring (showTips).
-const TIP = { stroke: "#f08c00", fill: "#fff3bf", ring: "#e8590c" };
+const TIP_RING = "#e8590c";
 // The teacher's red pen on the review (showPen), and the tape and pins that say whose note is whose.
 const PEN = "#e03131";
 const TAPE = { fill: "#a5d8ff", stroke: "#74c0fc" };
@@ -1573,42 +1573,22 @@ export class Board {
     return [...els, ...this.convert([{ type: "text", id: "export:title", x: x1, y: y1 - 46, text: title, fontSize: 22, strokeColor: INK, fontFamily: SANS }])];
   }
 
-  // ---- the coach's tips: sticky notes with hand-drawn arrows, pointing at the board ----
-  // tips: [{ lid, text }] puts a note above the board with an arrow down to that thing;
-  // [{ lid, circle: true }] rings it, the way a teacher circles what to look at. They're the
-  // board's own drawing (remembered, so diff() skips them), never exported, and they go when
-  // you click one, approve, or hide tips.
+  // ---- the coach's tips: circles on the board, the way a teacher circles what to look at ----
+  // tips: [{ lid }]. The words stay on the coach's or the tour's card, so the board never asks a
+  // second thing. They're the board's own drawing (remembered, so diff() skips them), never
+  // exported, and they go when you click one, approve, or hide tips.
   showTips(tips) {
     this.hideTips();
     const els = this.scene();
     const live = els.filter((e) => !e.isDeleted && !e.id.startsWith(MARK) && e.id !== "frame");
     const targets = tips
-      .map((t) => ({ ...t, el: live.find((e) => e.id === this.elementFor(t.lid)) }))
-      .filter((t) => t.el)
-      .sort((a, b) => a.el.x - b.el.x);
+      .map((t) => live.find((e) => e.id === this.elementFor(t.lid)))
+      .filter(Boolean)
+      .sort((a, b) => a.x - b.x);
     if (!targets.length) return;
-    const [, top] = getCommonBounds(live);
-    const W = 200, H = 62;
-    const out = [];
-    let right = -Infinity; // notes sit in a row above the board, left to right, never overlapping
-    targets.forEach((t, i) => {
-      const [x1, y1, x2, y2] = getCommonBounds([t.el]);
-      const id = `tip-${i}`;
-      if (t.circle) {
-        out.push({ type: "ellipse", id, x: x1 - 18, y: y1 - 16, width: x2 - x1 + 36, height: y2 - y1 + 32, strokeColor: TIP.ring, backgroundColor: "transparent", strokeWidth: 2.5, roughness: 2 });
-        return;
-      }
-      const x = Math.max((x1 + x2) / 2 - W / 2, right + 24), y = top - H - 74;
-      right = x + W;
-      out.push({
-        type: "rectangle", id, x, y, width: W, height: H, strokeColor: TIP.stroke, backgroundColor: TIP.fill, fillStyle: "solid",
-        strokeWidth: 1, roughness: 1, roundness: { type: 3 }, label: { text: t.text, fontSize: 15, strokeColor: INK },
-      });
-      const sx = x + W / 2, sy = y + H + 6, dx = (x1 + x2) / 2 - sx, dy = y1 - 8 - sy;
-      out.push({
-        type: "arrow", id: `${id}-a`, x: sx, y: sy, points: [[0, 0], [dx * 0.35 + 22, dy * 0.5], [dx, dy]],
-        strokeColor: TIP.stroke, strokeWidth: 2, roughness: 2, roundness: { type: 2 }, endArrowhead: "arrow",
-      });
+    const out = targets.map((el, i) => {
+      const [x1, y1, x2, y2] = getCommonBounds([el]);
+      return { type: "ellipse", id: `tip-${i}`, x: x1 - 18, y: y1 - 16, width: x2 - x1 + 36, height: y2 - y1 + 32, strokeColor: TIP_RING, backgroundColor: "transparent", strokeWidth: 2.5, roughness: 2 };
     });
     const conv = this.remember(this.convert(out));
     for (const e of conv) e.seed = seedOf(e.id);

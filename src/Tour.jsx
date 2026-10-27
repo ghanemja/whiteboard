@@ -74,7 +74,7 @@ const ringBox = (r, vw, vh, pad = 5) => {
 // The spotlight. targets: the step's [{ sel, label }] to click, each lit with a ring and a
 // label; spots: selectors of areas to leave lit without a ring (what to read or watch);
 // center: the card in the middle of a dimmed screen (rings still drawn, nothing cut out);
-// note(): where the tour's sticky note on the board is, if any, so the card's arrow points at
+// note(): where the tour's circle on the board is, if any, so the card's arrow points at
 // it. The dim, the rings and the labels let every click through, so the page works as usual
 // underneath; only the card takes clicks. Re-measured as the layout moves, scrolls or resizes.
 export function TourSpotlight({ targets, spots, center, note, children }) {

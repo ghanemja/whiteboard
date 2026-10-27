@@ -1129,7 +1129,7 @@ export default function App() {
       }
       return !v;
     });
-  // Tips (the coach card and the notes it sticks on the board) and Excalidraw's own drawing
+  // Tips (the coach card and the circles it draws on the board) and Excalidraw's own drawing
   // tools: on and hidden by default, so a first run shows only what it needs. Remembered per browser.
   const remembered = (key, fallback) => {
     try {
@@ -1833,7 +1833,6 @@ export default function App() {
     finished: !!review,
     reviewOpens: reviewOpens.current,
     firstDecision: firstDecision?.id ?? null,
-    firstDecisionN: firstDecision?.n ?? null,
     firstQuestion: Object.values(model.questions).find((q) => q.kind === "question" && q.state === "open")?.id ?? null,
     building: Object.values(model.nodes).find((n) => n.status === "building")?.id ?? null,
   };
@@ -1925,7 +1924,7 @@ export default function App() {
     }
     if (stepOf(tour).clearSelection) s?.board.api.updateScene({ appState: { selectedElementIds: {} } });
   }, [tour]);
-  // Where the tour's first note on the board is, on screen: the card's arrow points at it.
+  // Where the tour's first circle on the board is, on screen: the card's arrow points at it.
   const tourNote = () => {
     const b = s?.board;
     const e = b?.tips && b.api?.getSceneElements().find((x) => x.id === b.tips[0]);
@@ -1949,8 +1948,8 @@ export default function App() {
     } else if (b.tips) b.hideTips();
   });
 
-  // The coach's tips on the board itself, the first time a plan waits for you: sticky notes with
-  // arrows to a decision and a part, and a circle round its first open question.
+  // The coach's tips on the board itself, the first time a plan waits for you: circles round the
+  // first decision and open question its note mentions (the words stay on the note: one ask).
   const tipsShown = useRef(false);
   if (!messages.length) tipsShown.current = false;
   useEffect(() => {
@@ -1965,16 +1964,8 @@ export default function App() {
       tipsShown.current = true;
       const m = b.model;
       const d = Object.values(m.decisions).filter((x) => x.state !== "rejected").sort((x, y) => x.n - y.n)[0];
-      const nodes = Object.values(m.nodes);
-      const n = nodes.find((x) => !d?.affects.includes(x.id)) ?? nodes[0];
       const q = Object.values(m.questions).find((x) => x.state === "open");
-      b.showTips(
-        [
-          d && { lid: `decision:${d.id}`, text: "Click a ◇ to see its other options" },
-          n && { lid: `node:${n.id}`, text: "Click a part to learn what it is" },
-          q && { lid: `question:${q.id}`, circle: true },
-        ].filter(Boolean),
-      );
+      b.showTips([d && { lid: `decision:${d.id}` }, q && { lid: `question:${q.id}` }].filter(Boolean));
       if (b.tips) b.fit(true);
     } else if (!want && b.tips) b.hideTips();
   });
@@ -2362,7 +2353,8 @@ export default function App() {
             </div>
           ) : awaitingTask ? null : (
             <p className="hint">
-              <b>Steer from the board:</b> use Edit the plan above it, click a ◇ to pick another option, or drop a sticker on a part. Then Submit.
+              {/* One ask at a time: while the tour runs, its card is it. */}
+              {!tour && <><b>Steer from the board:</b> use Edit the plan above it, click a ◇ to pick another option, or drop a sticker on a part. Then Submit.</>}
               {agentMode && s?.runId && s?.result && (
                 <span className="after-run">
                   <button className="linkish" onClick={() => replay(s.runId)}>
@@ -2472,17 +2464,19 @@ export default function App() {
             </details>
           )}
           <span className="ct-hint">
-            {boardView === "why"
-              ? "Evidence → decision → what it shapes → proof. Click a row to read it."
-              : boardView === "timeline"
-                ? `How the decisions moved. ${replayMode ? "Click a moment to jump there." : "Click a mark to read it."}`
-                : inside
-                  ? "Inside each part. Read-only."
-                  : diagram === "er"
-                    ? "The tables each data store holds: keys, columns and relations. Read-only."
-                    : diagram === "sequence"
-                      ? "One flow, step by step. Pick another under Flows. Read-only."
-                      : "Click any part or ◇ to learn what it is."}
+            {tour
+              ? null
+              : boardView === "why"
+                ? "Evidence → decision → what it shapes → proof. Click a row to read it."
+                : boardView === "timeline"
+                  ? `How the decisions moved. ${replayMode ? "Click a moment to jump there." : "Click a mark to read it."}`
+                  : inside
+                    ? "Inside each part. Read-only."
+                    : diagram === "er"
+                      ? "The tables each data store holds: keys, columns and relations. Read-only."
+                      : diagram === "sequence"
+                        ? "One flow, step by step. Pick another under Flows. Read-only."
+                        : "Click any part or ◇ to learn what it is."}
           </span>
         </div>
         {boardView === "board" && nodeCount > 0 && (

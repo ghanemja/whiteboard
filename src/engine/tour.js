@@ -1,5 +1,5 @@
 // The guided tour: the scripted demo run as a lesson. Each step says what to do and why,
-// points at it (a ring round a button or tab, or a sticky note with an arrow on the board),
+// points at it (a ring round a button or tab, or a circle on the board: the words stay on its card),
 // and waits until the person has done it; then the tour moves on by itself.
 //
 // Pure, so it can be tested without a browser. App builds a context (`ctx`) from the session
@@ -58,9 +58,9 @@ export const TOUR = [
   {
     id: "decision",
     title: "Click a ◇ decision",
-    text: "A ◇ is a technical choice it made, like “a background worker”. Click one on the board: a card opens with what it chose, the other options, and why.",
+    text: "A ◇ is a technical choice it made, like “a background worker”. Click the circled one: a card opens with what it chose, the other options, and why.",
     done: (c) => c.selected.some((l) => l.startsWith("decision:")) || c.stage === "building",
-    board: (c) => (c.firstDecision ? [{ lid: `decision:${c.firstDecision}`, text: `Click D${c.firstDecisionN ?? 1}` }] : []),
+    board: (c) => (c.firstDecision ? [{ lid: `decision:${c.firstDecision}` }] : []),
   },
   {
     id: "steer",
@@ -72,7 +72,7 @@ export const TOUR = [
       { sel: '[data-tour="glass"]', label: "Pull the glass down" },
       { sel: '[data-tour="stickers"]', label: "Or a sticker" },
     ].filter(Boolean),
-    board: (c) => (!c.explainUse && c.firstDecision ? [{ lid: `decision:${c.firstDecision}`, text: `Click D${c.firstDecisionN ?? 1} for its options` }] : []),
+    board: (c) => (!c.explainUse && c.firstDecision ? [{ lid: `decision:${c.firstDecision}` }] : []),
     spot: (c) => (c.explainUse ? [".explain"] : []), // the options, on the decision's card
     skip: "pick",
   },
@@ -81,7 +81,7 @@ export const TOUR = [
     title: "Answer its question",
     text: "It couldn't tell how big uploads get, so it asked you (the orange note). Click the note on the board, or open Plan details, and pick an answer. It updates the plan.",
     done: (c, s) => c.answered > s.answered || c.stage === "building",
-    board: (c) => (c.firstQuestion ? [{ lid: `question:${c.firstQuestion}`, circle: true }] : []),
+    board: (c) => (c.firstQuestion ? [{ lid: `question:${c.firstQuestion}` }] : []),
     dom: () => [{ sel: '[data-tour="plan-tab"]', label: "Plan details" }],
     spot: (c) => (c.tab === "plan" ? [".transcript"] : []), // the question, in Plan details
     skip: "answer",
@@ -103,7 +103,7 @@ export const TOUR = [
     title: "It builds: orange means being built",
     text: "It edits files by itself now. Open Chat & log and hover a sentence: the parts it changed light up on the board. (The demo is paused for you.)",
     done: (c, s) => c.hovers > s.hovers || past(c, LATE),
-    board: (c) => (c.building ? [{ lid: `node:${c.building}`, text: "Orange: being built now" }] : []),
+    board: (c) => (c.building ? [{ lid: `node:${c.building}` }] : []),
     dom: () => [{ sel: '[data-tour="log-tab"]', label: "Chat & log" }],
     spot: (c) => (c.tab === "activity" ? [".transcript"] : []), // the sentences to hover
     release: "build",
