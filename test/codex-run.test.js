@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { CodexRun } from "../server/codex-run.js";
 import { runsMiddleware } from "../server/runs.js";
-import { draw, fakeProvider, fakeResponses, shell } from "./fixtures/fake-responses.js";
+import { draw, fakeConfig, fakeProvider, fakeResponses, shell } from "./fixtures/fake-responses.js";
 
 const CODEX = process.env.CODEX_BIN;
 
@@ -140,6 +140,73 @@ test("asking for changes at the gate plans again, read-only; stop ends Codex", {
     runs.delete(run.id);
     web.close();
     model.server.close();
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("a board Codex can't reach stops the run and says so, before any plan", { skip: !CODEX && "set CODEX_BIN to run it", timeout: 60000 }, async () => {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "wb-codex-"));
+  const home = path.join(tmp, "codex-home");
+  mkdirSync(home);
+  const model = await fakeResponses([[{ text: "No board here." }]]);
+  // A port nothing listens on.
+  const closed = http.createServer();
+  await new Promise((r) => closed.listen(0, "127.0.0.1", r));
+  const port = closed.address().port;
+  await new Promise((r) => closed.close(r));
+  const run = new CodexRun({ repo: tmp, brief: "Map it.", origin: `http://127.0.0.1:${port}`, bin: CODEX, args: fakeProvider(model.url), env: { ...process.env, CODEX_HOME: home } });
+  const events = [];
+  run.listeners.add((e) => events.push(e));
+  try {
+    run.start();
+    for (let i = 0; i < 300 && !events.some((e) => e.type === "closed"); i++) await new Promise((r) => setTimeout(r, 100));
+    const errors = events.filter((e) => e.type === "error");
+    assert.equal(errors.length, 1, JSON.stringify(events.slice(-5)));
+    assert.match(errors[0].message, /^Codex couldn't reach the board, so the run stopped \(.*error sending request for url \(http:\/\/127\.0\.0\.1:\d+\/api\/runs\/\w+\/mcp\)\)\.$/);
+    assert.equal(events.find((e) => e.type === "stopped")?.reason, "board");
+    assert.ok(!events.some((e) => e.type === "gate"), `no plan gate over an empty board: ${JSON.stringify(events.map((e) => e.type))}`);
+    assert.equal(model.requests.length, 0, "and no model call, so no cost");
+  } finally {
+    run.stop();
+    model.server.close();
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("started from the browser, Codex reaches the board on the address the server listens on", { skip: !CODEX && "set CODEX_BIN to run it", timeout: 60000 }, async (t) => {
+  // 127.0.0.2 stands in for macOS's ::1: a loopback address that isn't 127.0.0.1.
+  const web = http.createServer();
+  const bound = await new Promise((r) => web.once("error", () => r(false)).listen(0, "127.0.0.2", () => r(true)));
+  if (!bound) return t.skip("no 127.0.0.2 here");
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "wb-codex-"));
+  const home = path.join(tmp, "codex-home");
+  mkdirSync(home);
+  const model = await fakeResponses([[draw("c1", [{ op: "node", id: "api", name: "API", kind: "service" }])], [{ text: "Mapped." }]]);
+  writeFileSync(path.join(home, "config.toml"), fakeConfig(model.url).map((c) => c.replace("=", " = ")).join("\n"));
+  const saved = { AGENT_ENGINE: process.env.AGENT_ENGINE, CODEX_HOME: process.env.CODEX_HOME };
+  Object.assign(process.env, { AGENT_ENGINE: "codex", CODEX_HOME: home });
+  const runs = (globalThis.__agentRuns ??= new Map());
+  const mw = runsMiddleware({ defaultRepo: tmp });
+  web.on("request", (req, res) => {
+    req.url = req.url.replace(/^\/api\/runs/, "") || "/";
+    mw(req, res, () => ((res.statusCode = 404), res.end()));
+  });
+  let run;
+  try {
+    const r = await fetch(`http://127.0.0.2:${web.address().port}/api/runs`, { method: "POST", body: JSON.stringify({ repo: tmp, brief: "Map the architecture." }) });
+    run = runs.get((await r.json()).id);
+    assert.match(run.boardMcp.url, /^http:\/\/127\.0\.0\.2:\d+\//);
+    const events = [...run.events];
+    run.listeners.add((e) => events.push(e));
+    for (let i = 0; i < 300 && !events.some((e) => e.type === "gate" || e.type === "closed"); i++) await new Promise((r) => setTimeout(r, 100));
+    assert.ok(events.some((e) => e.type === "gate"), JSON.stringify(events.slice(-5)));
+    assert.deepEqual(events.filter((e) => e.type === "op").map((e) => e.op.id), ["api"], "drawn on the board");
+  } finally {
+    run?.stop();
+    for (const [k, v] of Object.entries(saved)) v == null ? delete process.env[k] : (process.env[k] = v);
+    web.close();
+    model.server.close();
+    await new Promise((r) => setTimeout(r, 700));
     rmSync(tmp, { recursive: true, force: true });
   }
 });

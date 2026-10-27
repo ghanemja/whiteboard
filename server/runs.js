@@ -695,6 +695,7 @@ export class Run {
     const title = {
       idle: `Stopped after ${why.minutes} idle minutes`,
       server: "Stopped when the dev server shut down",
+      board: "Stopped: the agent couldn't reach the board",
       user: "Stopped the agent",
     }[why.reason];
     // A finished run closing on its own isn't part of the story; stopping work mid-turn is.
@@ -940,6 +941,13 @@ function readJson(req) {
   });
 }
 
+// Where an agent on this machine reaches this server (and so the run's board): the address this
+// request came in on. Not always 127.0.0.1: on macOS, Vite's "localhost" listens on ::1 alone.
+export function localOrigin({ localAddress, localPort }) {
+  const host = localAddress?.replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, "") || "127.0.0.1";
+  return `http://${host.includes(":") ? `[${host}]` : host}:${localPort}`;
+}
+
 const json = (res, status, body) => {
   res.statusCode = status;
   res.setHeader("content-type", "application/json");
@@ -970,9 +978,8 @@ export function runsMiddleware({ defaultRepo }) {
       const repo = path.resolve(String(body.repo || defaultRepo || ""));
       if (!repo || !existsSync(repo) || !statSync(repo).isDirectory()) return json(res, 400, { error: `Not a folder: ${repo}` });
       if (!body.brief?.trim()) return json(res, 400, { error: "Describe the task first." });
-      // Where an agent on this machine reaches the run's board server: this server's own port.
       const Engine = engine() === "codex" ? (await import("./codex-run.js")).CodexRun : ClaudeRun;
-      const run = new Engine({ repo, brief: body.brief.trim(), origin: `http://127.0.0.1:${req.socket.localPort}` });
+      const run = new Engine({ repo, brief: body.brief.trim(), origin: localOrigin(req.socket) });
       runs.set(run.id, run);
       run.start();
       return json(res, 200, { id: run.id });

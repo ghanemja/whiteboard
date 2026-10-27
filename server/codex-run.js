@@ -14,6 +14,9 @@ import { Run, settings } from "./runs.js";
 
 const rel = (repo, p) => (p ? path.relative(repo, path.resolve(repo, p)) || "." : "");
 const text = (t) => [{ type: "text", text: t, text_elements: [] }];
+// Why Codex's MCP client gave up on the board, without the Rust type names it wraps that in.
+const boardError = (e = "") =>
+  /not logged in/.test(e) ? "it turned away the run's token" : e.replace(/ ?Transport \[[^\]]*\]/g, "").split(", when ")[0].split("error: ").pop();
 // TOML for a `-c key=value` override.
 const toml = (v) => JSON.stringify(v);
 
@@ -33,6 +36,9 @@ export class CodexRun extends Run {
     this.waiting = []; // what the user said while a turn couldn't take it, for the next turn
     this.streamed = new Set(); // agent messages whose text came as deltas
     this.turns = 0;
+    // Codex connects to MCP servers in the background and fixes a turn's tools when it starts: the
+    // first turn waits for the board. True once it's connected, false if it can't be.
+    this.boardUp = new Promise((resolve) => (this.boardStarted = resolve));
   }
 
   async start() {
@@ -100,6 +106,8 @@ export class CodexRun extends Run {
       // The agent's own session id: what a later run would resume from.
       this.recorder.update({ sessionId: thread.id });
       this.emit({ type: "stage", stage: "planning", model: model ?? "Codex's default", repo: this.repo });
+      // (A Codex that doesn't report its MCP servers' startup gets 15 seconds.)
+      if (!(await Promise.race([this.boardUp, new Promise((r) => setTimeout(r, 15000, true).unref())])) || this.stopped || this.exited) return;
       await this.turn(`${CODEX_PLAN_INSTRUCTIONS}\n\n${this.brief}`);
     } catch (err) {
       if (!this.stopped && !this.exited) this.emit({ type: "error", message: err.message }); // an exit says so itself
@@ -168,6 +176,15 @@ export class CodexRun extends Run {
         return this.itemCompleted(p.item);
       case "turn/completed":
         return this.turnCompleted(p.turn);
+      case "mcpServer/startupStatus/updated":
+        if (p.name !== "board" || p.status === "starting") return;
+        this.boardStarted(p.status === "ready");
+        // Without the board Codex would only say update_board isn't there, and plan and build blind.
+        if (p.status !== "ready" && !this.stopped) {
+          this.emit({ type: "error", message: `Codex couldn't reach the board, so the run stopped (${boardError(p.error ?? p.status)}).` });
+          this.stop({ reason: "board" });
+        }
+        return;
       case "error":
         if (!p.willRetry) this.emit({ type: "error", message: p.error?.message ?? "Codex reported an error" });
         return;

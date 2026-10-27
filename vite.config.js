@@ -22,9 +22,10 @@ const agentRuns = () => {
 
 export default defineConfig(({ mode }) => {
   // Pick up the agent's settings from .env / .env.local for the server side only (not
-  // VITE_-prefixed, so none of it reaches client code): ANTHROPIC_* and AGENT_*, plus what the
-  // cloud providers read (CLAUDE_CODE_USE_BEDROCK, AWS_*, CLOUD_ML_REGION, GOOGLE_*).
-  for (const [k, v] of Object.entries(loadEnv(mode, process.cwd(), ["ANTHROPIC_", "AGENT_", "CLAUDE_CODE_", "AWS_", "CLOUD_ML_", "GOOGLE_"]))) process.env[k] ??= v;
+  // VITE_-prefixed, so none of it reaches client code): ANTHROPIC_* and AGENT_*, what the cloud
+  // providers read (CLAUDE_CODE_USE_BEDROCK, AWS_*, CLOUD_ML_REGION, GOOGLE_*), and Codex's
+  // (CODEX_BIN, CODEX_HOME, OPENAI_API_KEY).
+  for (const [k, v] of Object.entries(loadEnv(mode, process.cwd(), ["ANTHROPIC_", "AGENT_", "CLAUDE_CODE_", "AWS_", "CLOUD_ML_", "GOOGLE_", "CODEX_", "OPENAI_"]))) process.env[k] ??= v;
 
   return {
     plugins: [react(), agentRuns()],

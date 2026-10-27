@@ -32,9 +32,10 @@ export function fakeResponses(script) {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve({ server, url: `http://127.0.0.1:${server.address().port}/v1`, requests })));
 }
 
-// Codex settings that send it to the fake instead of OpenAI.
-export const fakeProvider = (url) =>
-  [`model_provider="fake"`, `model_providers.fake.name="fake"`, `model_providers.fake.base_url="${url}"`, `model_providers.fake.wire_api="responses"`, `model="fake-model"`].flatMap((c) => ["-c", c]);
+// Codex settings that send it to the fake instead of OpenAI, with its plugin sync (a network fetch
+// that outlives the process) off.
+export const fakeConfig = (url) => [`model_provider="fake"`, `model_providers.fake.name="fake"`, `model_providers.fake.base_url="${url}"`, `model_providers.fake.wire_api="responses"`, `model="fake-model"`, `features.plugins=false`, `features.remote_plugin=false`];
+export const fakeProvider = (url) => fakeConfig(url).flatMap((c) => ["-c", c]);
 
 // A function call to the board, the way a model makes one.
 export const draw = (callId, ops) => ({ type: "function_call", call_id: callId, namespace: "mcp__board", name: "update_board", arguments: JSON.stringify({ ops }) });

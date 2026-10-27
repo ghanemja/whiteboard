@@ -106,6 +106,7 @@ It's the same board and the same steps. The differences:
 - **Commands:** it runs in Codex's sandbox and asks you only for commands that need more than that (network, files outside the repo). **Allow all** lets the rest through.
 - **Cost:** Codex reports tokens, not dollars, so the end of a run shows no price. Billing is your ChatGPT plan or your OpenAI key.
 - Each run starts its own `codex app-server` and gives it the run's board as an MCP server (`/api/runs/<id>/mcp`, with a per-run token). Your own `~/.codex/config.toml` still applies.
+- If Codex can't connect to the board, the run stops before planning and says why.
 
 ## What happens in a run
 

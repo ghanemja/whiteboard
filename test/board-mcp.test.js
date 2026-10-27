@@ -6,7 +6,7 @@ import http from "node:http";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { serveBoardMcp } from "../server/board-mcp.js";
-import { runsMiddleware } from "../server/runs.js";
+import { localOrigin, runsMiddleware } from "../server/runs.js";
 
 const listen = (handler) =>
   new Promise((resolve) => {
@@ -90,4 +90,11 @@ test("each run's board is served at /api/runs/<id>/mcp, behind that run's token"
     runs.delete("r1");
     server.close();
   }
+});
+
+test("an agent is sent to the address the browser's request came in on, IPv6 included", () => {
+  assert.equal(localOrigin({ localAddress: "127.0.0.1", localPort: 5199 }), "http://127.0.0.1:5199");
+  // Vite's "localhost" on macOS: ::1 only, where 127.0.0.1 is refused.
+  assert.equal(localOrigin({ localAddress: "::1", localPort: 5199 }), "http://[::1]:5199");
+  assert.equal(localOrigin({ localAddress: "::ffff:127.0.0.1", localPort: 5199 }), "http://127.0.0.1:5199");
 });
