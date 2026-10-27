@@ -1833,18 +1833,26 @@ a.linkish:hover {
   flex: 1;
 }
 
-.field {
+/* The Repository field on the start screen (RepoPicker.jsx): Browse and Clone beside its label,
+   and the card each opens under it. */
+.rp {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   margin-bottom: 12px;
 }
-.field span {
+.rp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rp-head label {
+  flex: 1;
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
 }
-.field input {
+.rp input {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1853,9 +1861,170 @@ a.linkish:hover {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 13.5px;
 }
-.field input:focus {
+.rp input:focus {
   outline: 2px solid var(--accent-soft);
   border-color: var(--accent-ink);
+}
+.rp button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.rp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px 3px 8px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 700;
+  box-shadow: 2px 2px 0 var(--ink);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.rp-btn:hover:not(:disabled),
+.rp-btn[aria-expanded="true"] {
+  background: var(--accent-soft);
+}
+.rp-btn:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+.rp-card {
+  padding: 8px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  box-shadow: var(--sh);
+}
+.rp-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 2px 4px 8px;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.rp-crumbs > * + *::before {
+  content: "›";
+  display: inline-block;
+  margin: 0 6px;
+  color: var(--faint);
+  font-weight: 400;
+}
+.rp-crumbs button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.rp-crumbs button:hover {
+  color: var(--accent-ink);
+}
+.rp-crumbs b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+}
+.rp-list {
+  max-height: 236px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.rp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.rp-row:hover {
+  background: var(--accent-soft);
+}
+.rp-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-row.repo .rp-name {
+  font-weight: 700;
+}
+.rp-git {
+  padding: 0 6px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+.rp-none {
+  padding: 5px 6px;
+  font-size: 14px;
+  color: var(--soft);
+}
+.rp .rp-error {
+  margin: 8px 0 0;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--red) 8%, var(--panel));
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rp-actions,
+.rp-url {
+  display: flex;
+  gap: 8px;
+}
+.rp-actions {
+  margin-top: 8px;
+}
+.rp-actions button {
+  flex: 1;
+  margin-top: 0;
+  padding: 7px 10px;
+  font-size: 14.5px;
+}
+.rp-url input {
+  flex: 1;
+  min-width: 0;
+}
+.rp-url button.primary {
+  width: auto;
+  margin-top: 0;
+  padding: 6px 14px;
+  font-size: 14.5px;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+.rp .rp-done {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--green);
 }
 
 /* Plan review gate: the agent has stopped and is waiting on the user. */

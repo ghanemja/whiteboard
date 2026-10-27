@@ -259,6 +259,15 @@ To run a real agent instead of the demo:
 
 Now the start screen asks **What should the agent do?** The repository field starts at the practice repo (`sandbox/linkshort`, a tiny URL shortener with tests). Pick one of the example tasks, like "Let links expire after a given number of days", or describe your own. Everything from sections 4–9 works the same, except the commands are real now, so read each prompt. To reset the practice repo, run `npm run sandbox` again.
 
+To work on another repo, use the two buttons beside the field:
+
+- **Browse** shows your folders. Click one to go in, **Up** to go back; repos are marked **git**. **Use this folder** picks the one you're in.
+- **Clone** takes a git URL, like `https://github.com/octocat/Hello-World.git`, clones it into `sandbox/` and picks it. A private repo works only if git is already signed in (an SSH key or a saved login): the app never asks for a password.
+
+![The start screen with Browse open on sandbox/: a cloned repo and the practice repo, both marked git](../screenshots/tutorial/pick-a-repo.png)
+
+Only use repos you trust: the agent loads a repo's own settings, and those can run commands.
+
 A run costs about $0.20–0.40.
 
 To use OpenAI's Codex instead of Claude: install it (`npm i -g @openai/codex`), sign in (`codex login`), put `AGENT_ENGINE=codex` in `.env.local`, and restart. Everything works the same; the README's *Codex* section has the details.

@@ -7,6 +7,7 @@ import { serveBoardMcp } from "./board-mcp.js";
 import { boardReply, UPDATE_BOARD } from "./board-tool.js";
 import { BOARD_INSTRUCTIONS, PLAN_INSTRUCTIONS } from "./instructions.js";
 import { listRecordings, readChain, readDecisions, readRecording, Recorder } from "./recordings.js";
+import { cloneRepo, folderError, listFolders, startFolder } from "./repos.js";
 import { layerOf, LAYERS, parseColumns, parseSteps, sentenceCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "../src/engine/views.js";
 
 // A run = one Claude Agent SDK session working in a real repo. Its board drawing
@@ -20,6 +21,7 @@ import { layerOf, LAYERS, parseColumns, parseSteps, sentenceCase, toDfdMermaid, 
 //   POST /api/runs/:id/control     <- { type: approve | revise | chat | edits | permission | stop, ... }
 //   GET  /api/runs/recordings      -> saved runs, newest first
 //   GET  /api/runs/recordings/:id  -> a run's recorded events (JSONL); /decisions -> its decision log (markdown)
+//   GET  /api/runs/folders, POST /api/runs/clone -> picking the repo (repos.js)
 
 // On globalThis so a dev-server reload (which re-imports this module) can't orphan running agents.
 const runs = (globalThis.__agentRuns ??= new Map());
@@ -992,7 +994,7 @@ const json = (res, status, body) => {
   res.end(JSON.stringify(body));
 };
 
-export function runsMiddleware({ defaultRepo }) {
+export function runsMiddleware({ defaultRepo, sandbox = path.resolve("sandbox") }) {
   return async function handleRuns(req, res, next) {
     const url = new URL(req.url, "http://local");
     const parts = url.pathname.split("/").filter(Boolean); // [] | [id, "events"] | [id, "control"]
@@ -1038,6 +1040,32 @@ export function runsMiddleware({ defaultRepo }) {
       // Plain text so a browser shows the decision log instead of downloading it.
       res.setHeader("content-type", parts[2] === "decisions" ? "text/plain; charset=utf-8" : "application/x-ndjson; charset=utf-8");
       return res.end(body);
+    }
+
+    // Picking the repo: a folder's subfolders for the picker, or a git URL cloned into sandbox/.
+    if (req.method === "GET" && parts[0] === "folders") {
+      const dir = url.searchParams.get("path") || startFolder(url.searchParams.get("near"), { defaultRepo });
+      try {
+        return json(res, 200, listFolders(dir));
+      } catch (err) {
+        const { status, error } = folderError(err, dir);
+        return json(res, status, { error });
+      }
+    }
+    if (req.method === "POST" && parts[0] === "clone") {
+      // JSON only: another site's page can't send that without the browser asking first (CORS).
+      if (!/^application\/json\b/i.test(req.headers["content-type"] ?? "")) return json(res, 415, { error: "Send JSON." });
+      let body;
+      try {
+        body = await readJson(req);
+      } catch {
+        return json(res, 400, { error: "Request body must be JSON." });
+      }
+      try {
+        return json(res, 200, await cloneRepo(body.url, { into: sandbox }));
+      } catch (err) {
+        return json(res, err.status ?? 500, { error: err.message });
+      }
     }
 
     const run = runs.get(parts[0]);

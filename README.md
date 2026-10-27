@@ -72,7 +72,7 @@ npm run dev                  # http://localhost:5199
 ```
 
 - **Nothing set:** a scripted demo plays.
-- **With a model** ([Models](#models): a key for Anthropic's API, or a URL for anything else): the repo field starts at the sandbox (or `AGENT_REPO`); point it at any local folder, describe a task, start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
+- **With a model** ([Models](#models): a key for Anthropic's API, or a URL for anything else): the repo field starts at the sandbox (or `AGENT_REPO`); type any local folder, **Browse** for one (git repos are marked), or **Clone** a git URL into `sandbox/`; then describe a task and start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
 - **Saved runs:** `cp fixtures/recordings/* recordings/` adds three real runs under "Saved boards".
 - **Tests:** `npm test`.
 - **Settings** (`.env.local`): `AGENT_URL`, `AGENT_KEY`, `AGENT_MODEL` ([Models](#models)), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo), `AGENT_ENGINE=codex` to run [Codex](#codex) instead of Claude.
@@ -207,7 +207,9 @@ In a replay the Timeline shows the whole run, with what hasn't happened yet fade
 
 Select a component to see what changed it: its card lists its files with +/−, and **See the code** opens the diffs in Plan details. The downloaded log (**⇩**) lists everything the agent read, edited and ran, and whether each command passed.
 
-The agent loads the repo's project settings and `CLAUDE.md`, not your global Claude Code settings or hooks. It's told never to push, publish or deploy; "Ship" means tests pass and docs match.
+The agent loads the repo's project settings and `CLAUDE.md`, not your global Claude Code settings or hooks. A repo's own settings can run commands (hooks) as soon as the agent starts there, so only run it on, or clone, repos you trust. It's told never to push, publish or deploy; "Ship" means tests pass and docs match.
+
+**Clone** runs `git clone` with no shell and never waits for a password: a private repo works only if git is already signed in (an SSH key, or a saved login). It takes https://, ssh://, git:// and `git@host:path` URLs.
 
 ## How it fits together
 
@@ -219,8 +221,10 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `server/codex-run.js` | `CodexRun`: Codex as the agent, through `codex app-server` (JSON-RPC over stdio). Plans in a read-only turn (the gate), builds in a workspace-write one; its command approvals are the permission prompts |
 | `server/board-mcp.js` | The same tool as an MCP server over HTTP, for agents other than Claude (Codex, opencode): each run's board at `/api/runs/<id>/mcp`, behind that run's bearer token |
 | `server/changes.js` | What a run changed in the repo, from git: working-tree snapshots through a throwaway index, and their diff |
+| `server/repos.js` | Picking the repo: a folder's subfolders for Browse (names only, git repos marked), and Clone (`git clone` into `sandbox/`) |
 | `server/instructions.js` | What the agent is told about the board (appended to the Claude Code system prompt) |
-| `src/agent/live.js` | Browser side of `/api/runs`: start, follow the event stream, send approvals and messages |
+| `src/agent/live.js` | Browser side of `/api/runs`: start, follow the event stream, send approvals and messages, list folders, clone |
+| `src/RepoPicker.jsx` | The start screen's Repository field, with Browse and Clone |
 | `src/engine/session.js` | Routes agent events to the board and the transcript; plan gate and permission state; keeps the run's timed events for the Timeline and seeks replays |
 | `src/engine/board.js` | Owns the three Excalidraw canvases: the Architecture pictograms and decision diamonds, the Why chains, the Timeline, highlighter marks, and `diff()` of your edits |
 | `src/engine/timeline.js` | The Timeline as pure functions: `buildTimeline(events)` (lanes, marks, causes, the time axis with compressed waits), `timeToX`, `drawTimeline` (Excalidraw skeletons) |
@@ -238,7 +242,7 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `src/engine/parser.js`, `player.js`, `src/agent/script.js`, `replies.js` | The scripted demo (inline `<board/>` tags typed out at reading pace) |
 | `scripts/make-sandbox.mjs` | Creates the sample repo |
 | `scripts/tour-check.cjs` | Takes the tour end to end in headless Chromium (Playwright) with screenshots, then checks the plain demo is unchanged |
-| `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, stickers and the red pen, the tour's steps, the views and their Mermaid exports, the decision log's diagrams, and git change tracking on a throwaway repo |
+| `test/*.test.js` | `npm test`: the Timeline over the sample runs in `fixtures/recordings/`, claims and receipts, the review card, stickers and the red pen, the tour's steps, the views and their Mermaid exports, the decision log's diagrams, git change tracking on a throwaway repo, and picking the repo (folder listing, git URLs, clones from a throwaway repo) |
 
 Board ops (`update_board` tool and demo tags alike): `project`, `phase`, `task`, `node` (with `layer`), `part`, `edge`, `flow`, `table`, `decision`, `question`, `assumption`, `status`, `rename`, `note`, `remove`, `unlink`, `adopt`, `adopt-edge`, `adopt-note`. See `Board.apply()`. The demo's script also uses `diff` and `run` to stand in for what a live run gets from git and the test runner, and `ask` (a command prompt) and `tour` (a checkpoint) that only do something during the tour.
 
