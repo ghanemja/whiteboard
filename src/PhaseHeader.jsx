@@ -105,8 +105,8 @@ export default function PhaseHeader({ model, reviewing, hl, onHover, onFocus }) 
   return (
     <header className="journey" ref={wrap}>
       <div className={`journey-title ${hl.has("title") ? "hl" : ""}`}>
-        <h2>{model.project || "Waiting for the agent…"}</h2>
-        {model.goal && <p title={model.goal}>{model.goal}</p>}
+        <h2>{model.project || "No plan yet"}</h2>
+        {model.goal ? <p title={model.goal}>{model.goal}</p> : !model.project && <p>The agent draws its plan here.</p>}
       </div>
       <svg className="journey-strip" data-tour="road" viewBox={`0 0 ${W} ${H}`} role="list" aria-label="Development phases">
         {art.map(({ p, i, state, st, cx, road, circle, icon: ic }) => {

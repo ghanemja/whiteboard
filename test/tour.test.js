@@ -77,7 +77,7 @@ test("a whole tour: each step waits for its action, then moves on by itself", ()
   assert.equal(at(t), "why");
 
   c = { ...c, phase: "verification", view: "why" };
-  assert.equal(advance(t, c), t, "the Why tab only counts once a check has changed a decision");
+  assert.equal(advance(t, c), t, "the Reasoning tab only counts once a check has changed a decision");
   c = { ...c, testCaused: true };
   t = advance(t, c);
   assert.equal(at(t), "untrue");
@@ -182,7 +182,7 @@ test("what stays lit, and where the card goes", () => {
   const built = { ...plan, gate: false, stage: "building", phase: "implementation", building: "api" };
   assert.deepEqual(go("build", built).spot, [".transcript", BOARD]);
   assert.deepEqual(go("build", { ...built, tab: "plan" }).spot, [BOARD]);
-  assert.deepEqual(go("why", { ...built, testCaused: true }).spot, [], "just the Why tab");
+  assert.deepEqual(go("why", { ...built, testCaused: true }).spot, [], "just the Reasoning tab");
   assert.deepEqual(go("untrue", { ...built, phase: "complete", finished: true }).spot, [BOARD], "the red pen marks");
-  assert.deepEqual(go("untrue", { ...built, phase: "complete", finished: true, view: "why" }).spot, [], "no pen marks on the Why tab");
+  assert.deepEqual(go("untrue", { ...built, phase: "complete", finished: true, view: "why" }).spot, [], "no pen marks on the Reasoning tab");
 });

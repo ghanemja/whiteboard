@@ -23,7 +23,7 @@ The app walks a newcomer through a run without hiding anything. **Hide tips** tu
 - **Coach.** A yellow card at the top of the panel says which step you're on (Describe → Plan → Build → Check) and what to do now, in a sentence or two.
 - **Tips on the board.** The first time a plan waits for you, orange circles ring its first decision and its first open question; the coach card says what to do with them, so there's one ask at a time. Click one to dismiss them. They're never exported or sent to the agent.
 - **Glass.** The board sits behind glass: clicks explain, nothing moves. **Pull down to edit** shows Edit the plan; **Submit** sends your changes and puts the glass back. Use this, Rename and Remove pull it down for you.
-- **Edit the plan.** With the glass down, a toolbar with words above the board: Select, Rename, Add a part, Connect, Remove, Add a note, Stickers. Each picks the matching Excalidraw tool and says what to do next; the gestures (double-click, Delete, drawing) still work. Excalidraw's full toolbar is behind **Drawing tools**.
+- **Edit the plan.** With the glass down, a toolbar with words above the board: Select, Rename, Add a part, Connect, Remove, Add a note. Each picks the matching Excalidraw tool and says what to do next; the gestures (double-click, Delete, drawing) still work. Excalidraw's full toolbar is behind **Drawing tools**.
 - **Click to explain.** Select a part, a ◇, an arrow or a question and a card says what it is in plain words (what a service is, its status, routes, files, decisions, connections), with its actions as buttons: Rename, Remove, Ask about it, See the code; for a decision, **Use this** on each option, Ask why and Reject it; for a question, its answers.
 - **Plain words.** Symbols come with a word: receipts read "✓ checked", "✗ not true", "? can't tell"; the panel's tabs are **Chat & log** and **Plan details**, with counts like "2 for you"; each board tab says what it's for; a key under the Pictures board says what the colors mean; a command prompt says what the command is for and why you're asked; at the plan gate, suggested questions ("Ask why: D1 …") start a message.
 
@@ -124,15 +124,15 @@ Edit the board; each change is sorted by what you touched:
 | ▢ | Architecture | rename (double-click a name), delete, draw a box, draw an arrow between two |
 | ◇ | Decision | select a diamond → its alternatives fan out → drag one onto it (or type your own in the blank one); delete a diamond to reject it |
 | ✐ | Scope | drop a text note ("English PDFs only") |
-| ▢ ◇ ✐ | Stickers | drag **Why?**, **Not needed** or **Keep this** from the sticker sheet onto a part or a ◇ |
+| ▢ ◇ ✐ | Stickers | drag **Why?**, **Not needed** or **Keep this** from the tray at the top of the board onto a part or a ◇ |
 
 Queued changes show in the panel by area, and **Submit** (panel, or floating on the board with ▢ ◇ ✐ counts) sends them. While the agent works they go after its current step. The agent gets each edit with its area; the decision log lists them the same way. In Plan details, clicking an alternative under **Over** picks it too. A picked option sits beside its diamond in blue until the agent applies it; delete it to undo.
 
 ### Stickers
 
-![The sticker sheet open in the Library, and three stickers on the plan: Not needed on Object storage, Why? on D3, Keep this on Claude API, queued by area with ▢1 ◇1 ✐1 on Submit](screenshots/stickers/1-stickers-on-the-plan-light.png)
+![The sticker tray at the top of the board, and three stickers on the plan: Not needed on Object storage, Why? on D3, Keep this on Claude API, queued by area with ▢1 ◇1 ✐1 on Submit](screenshots/stickers/1-stickers-on-the-plan-light.png)
 
-**Stickers** in Edit the plan opens Excalidraw's Library with a sheet of three stickers. Drag one onto a part or a decision diamond:
+Three stickers sit in a tray at the top of the board, always in sight. Drag one onto a part or a decision diamond (the glass comes down by itself):
 
 | Sticker | On a part | On a ◇ | Area |
 | --- | --- | --- | --- |
@@ -162,7 +162,7 @@ To push back, **Ask why** on a decision starts a message ("About D1 …") for yo
 
 Every decision also names its **check**: how we'll know it was right, usually a test by name. Its result is drawn on the diamond: ✓ proven, ✗ failed. The agent reports proofs after running the tests, and the server compares them with the test runner's own output (node --test, Jest/Vitest, pytest -v, go test -v). Where the output disagrees, the output wins and the agent is told. Later test runs keep re-checking, so a regression crosses a diamond again. A decision whose choice changes goes back to unchecked.
 
-The **Why** tab draws each decision as a chain: evidence (files from the repo, facts, your request, a failed check) → the decision → the components it shapes → its proof. Dashed purple links show which decisions build on which. It's drawn from the decisions, so it's read-only: pan and zoom it, and click a row to open that decision in Plan details. The tab itself counts the decisions and how many are proven (✓) or failed (✗).
+The **Reasoning** tab draws each decision as a chain: evidence (files from the repo, facts, your request, a failed check) → the decision → the components it shapes → its proof. Dashed purple links show which decisions build on which. It's drawn from the decisions, so it's read-only: pan and zoom it, and click a row to open that decision in Plan details. The tab itself counts the decisions and how many are proven (✓) or failed (✗).
 
 The **Timeline** tab answers "what changed, when, and because of what?" across the run, left to right with mm:ss ticks:
 

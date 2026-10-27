@@ -119,7 +119,7 @@ let page;
   await shot("08-command-prompt");
   await page.click('.permit button.primary'); // Allow once
 
-  // 9 A check failed: open the Why tab.
+  // 9 A check failed: open the Reasoning tab.
   await waitStep(9);
   await page.waitForFunction(() => window.__wb.held === "verify", null, { timeout: 90000 });
   await shot("09-check-failed-open-why");

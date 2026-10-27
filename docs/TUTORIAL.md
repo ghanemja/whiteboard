@@ -88,9 +88,9 @@ Now it edits files by itself. Parts turn **orange** while it changes them. In **
 
 Each decision came with a check. When it runs the tests, each ◇ gets a ✓ (passed) or ✗ (failed). In the demo, D2 ("how PDFs are split") fails: the check wanted the right page for 45 of 50 questions, and it got 41. So the agent **changes D2** and tests again: 47 of 50, ✓.
 
-Open the **Why** tab to see the reasoning as a chain: **evidence → decision → what it shapes → proof**. D2's row shows the failed check as the reason it changed.
+Open the **Reasoning** tab to see the reasoning as a chain: **evidence → decision → what it shapes → proof**. D2's row shows the failed check as the reason it changed.
 
-![The Why tab: one row per decision, from evidence to proof](../screenshots/tour/09b-why-tab.png)
+![The Reasoning tab: one row per decision, from evidence to proof](../screenshots/tour/09b-why-tab.png)
 
 ### It ships
 
@@ -125,11 +125,10 @@ With the glass down, **Edit the plan** above the board has buttons with words:
 | **Connect** | Draw an arrow from one part to another |
 | **Remove** | Remove the selected part or arrow, or reject the selected ◇ |
 | **Add a note** | Write a note on the board, like "English PDFs only" |
-| **Stickers** | Opens the sticker sheet (below) |
 
 ### Stickers
 
-Press **Stickers** and drag one onto a part or a ◇:
+The three stickers sit at the top of the board. Drag one onto a part or a ◇ (the glass comes down by itself):
 
 - **Why?** asks it to explain (it changes nothing).
 - **Not needed** asks it to drop that part or decision.

@@ -115,10 +115,10 @@ export const TOUR = [
   {
     id: "why",
     title: "A check failed, so it changed a decision",
-    text: "D2 said “the right page for 45 of 50 questions”. The eval found 41, so it changed D2. Open the Why tab: each decision with its evidence, what it shapes, and the check that proves it.",
+    text: "D2 said “the right page for 45 of 50 questions”. The eval found 41, so it changed D2. Open the Reasoning tab: each decision with its evidence, what it shapes, and the check that proves it.",
     wait: (c) => (c.testCaused ? null : "Testing… watch the ◇ decisions get ✓ or ✗."),
     done: (c) => (c.testCaused && c.view === "why") || past(c, ["complete"]),
-    dom: (c) => (c.testCaused ? [{ sel: '[data-tour="why-tab"]', label: "Why" }] : []),
+    dom: (c) => (c.testCaused ? [{ sel: '[data-tour="why-tab"]', label: "Reasoning" }] : []),
     release: "verify",
   },
   {

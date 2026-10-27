@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Excalidraw, exportToBlob, exportToSvg, sceneCoordsToViewportCoords, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
+import { Excalidraw, exportToBlob, exportToSvg, MIME_TYPES, sceneCoordsToViewportCoords, serializeLibraryAsJSON, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
 import { Board, PHASES, STATUS, STICKERS, stickerItems } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
@@ -83,7 +83,6 @@ const TOOL_ICONS = {
   remove: <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />,
   note: <path d="M3 2.5h10v7.5l-3.5 3.5H3zM9.5 13.5V10H13" />,
   tools: <path d="M2.5 13.5l3-1 7.5-7.5-2-2L3.5 10.5zM9.5 4.5l2 2M2.5 2.5h3M2.5 2.5v3" />,
-  stickers: <path d="M3 3.5h10v6l-3.5 3.5H3zM9.5 13V9.5H13M5.5 6.5h5" />,
 };
 const ToolIcon = ({ name }) => (
   <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -1094,6 +1093,35 @@ function BoardKey() {
   );
 }
 
+// The stickers, always in sight at the top of the board: drag one onto a part or a ◇. The drop is Excalidraw's
+// own library drop, so the board gets the same sticker elements (stickerItems) and turns them into
+// edits as before. A drop pulls the glass down, so you can move it or Submit.
+const STICKER_SAYS = { why: "Asks it to explain", drop: "Asks it to drop that", keep: "Says leave it as is" };
+function StickerTray({ onDropped }) {
+  return (
+    <div className="sticker-tray" data-tour="stickers" role="group" aria-label="Stickers: drag one onto a part or a decision">
+      {Object.entries(STICKERS).map(([key, st]) => (
+        <span
+          key={key}
+          className="sticker"
+          draggable
+          title={`${STICKER_SAYS[key]}. Drag it onto a part or a ◇.`}
+          style={{ "--st-stroke": st.stroke, "--st-fill": st.fill, transform: `rotate(${st.angle}rad)` }}
+          onDragStart={(e) => {
+            const item = stickerItems().find((i) => i.id === `wb-sticker-${key}`);
+            e.dataTransfer.setData(MIME_TYPES.excalidrawlib, serializeLibraryAsJSON([item]));
+            e.dataTransfer.effectAllowed = "copy";
+          }}
+          onDragEnd={(e) => e.dataTransfer.dropEffect !== "none" && onDropped()}
+        >
+          {st.label}
+        </span>
+      ))}
+      <span className="st-hint">drag onto a part or ◇</span>
+    </div>
+  );
+}
+
 export default function App() {
   const [api, setApi] = useState(null);
   const [whyApi, setWhyApi] = useState(null);
@@ -1309,9 +1337,6 @@ export default function App() {
       if (!alive) return;
       setAgent(status);
       setRepo((r) => r || status.defaultRepo || "");
-      // The sticker sheet, in Excalidraw's Library (Stickers in Edit the plan opens it). Made once
-      // the hand-drawn font is loaded, so the labels are measured right.
-      api.updateLibrary({ libraryItems: stickerItems(), merge: true, defaultStatus: "unpublished" }).catch((e) => console.warn("Stickers didn't load", e));
       // Excalidraw measures its container after mount, so fit once it has real dimensions.
       timers.push(setTimeout(() => board.fit(), 150));
       // With an API key, wait for a task; otherwise play the scripted demo, as the tour on a first visit.
@@ -1418,8 +1443,10 @@ export default function App() {
         const lids = s.board.logicalIdsFor(sel ? sel.split(",") : []);
         showLinked(lids);
         setBoardSel(lids);
-        // Restyling what the board draws does nothing (it's redrawn), so its style panel would only cover the board.
-        setOwnSel(!!sel && sel.split(",").every((id) => s.board.known.has(id)));
+        // Restyling what the board draws does nothing (it's redrawn), so its style panel would only cover
+        // the board; a sticker means what it says, whatever its colors.
+        const scene = sel ? new Map(s.board.api.getSceneElements().map((e) => [e.id, e])) : null;
+        setOwnSel(!!sel && sel.split(",").every((id) => s.board.known.has(id) || !!scene.get(id)?.customData?.sticker));
         // A selected decision fans out its alternatives: drag one onto it to pick it.
         if (s.mode !== "replay") s.board.onSelect(sel ? sel.split(",") : [], appState);
       }
@@ -1796,11 +1823,6 @@ export default function App() {
     setTimeout(() => !b.api.getAppState().editingTextElement && dbl(), 60);
     setToolHint("Type the new name, then click an empty spot.");
     return true;
-  };
-  // The sticker sheet is Excalidraw's Library sidebar.
-  const openStickers = () => {
-    s?.board.api.toggleSidebar({ name: "default", tab: "library", force: true });
-    setToolHint("Drag a sticker onto a part or a ◇. Why? asks it to explain, Not needed asks to drop it, Keep this says leave it as is.");
   };
   const selected = boardSel.length === 1 ? boardSel[0] : null;
   const toolRename = () => {
@@ -2409,13 +2431,11 @@ export default function App() {
           <button role="tab" aria-selected={boardView === "board"} data-tour="arch-tab" onClick={() => showView("board")} title="The components and how they connect. Edit it to steer the agent.">
             <span className="ct-icon" aria-hidden="true" />
             Architecture
-            <span className="ct-sub">what it builds</span>
             {nodeCount > 0 && <span className="ct-count">{nodeCount}</span>}
           </button>
           <button role="tab" aria-selected={boardView === "why"} data-tour="why-tab" onClick={() => showView("why")} title="Each decision: its evidence, what it shapes, and the check that proves it">
             <span className="vs-diamond" aria-hidden="true" />
-            Why
-            <span className="ct-sub">the reasons</span>
+            Reasoning
             {allDecisions.length > 0 && <span className="ct-count" title="Decisions">{allDecisions.length}</span>}
             {(proofCount("pass") > 0 || proofCount("fail") > 0) && (
               <span className="ct-proofs" title={`${proofCount("pass")} proven, ${proofCount("fail")} failed, ${proofCount(null)} not checked yet`}>
@@ -2427,7 +2447,6 @@ export default function App() {
           <button role="tab" aria-selected={boardView === "timeline"} data-tour="timeline-tab" onClick={() => showView("timeline")} title="How the decisions moved over the run: what changed, when, and because of what">
             <span className="tl-icon" aria-hidden="true" />
             Timeline
-            <span className="ct-sub">what changed when</span>
             {hasTimeline && <span className="ct-count" title="How long the run took">{fmt(tl.duration)}</span>}
             {tl?.changes > 0 && (
               <span className="ct-changes" title={`${tl.changes} decision change${tl.changes === 1 ? "" : "s"}`}>
@@ -2539,10 +2558,6 @@ export default function App() {
               <ToolIcon name="note" />
               Add a note
             </button>
-            <button onClick={openStickers} data-tour="stickers" title="Stickers to drag onto a part or a ◇: Why?, Not needed, Keep this">
-              <ToolIcon name="stickers" />
-              Stickers
-            </button>
             <button className={`eb-tools ${tools ? "on" : ""}`} aria-pressed={tools} onClick={toggleTools} title="Show or hide Excalidraw's full drawing tools">
               <ToolIcon name="tools" />
               Drawing tools
@@ -2564,6 +2579,7 @@ export default function App() {
                 <span className="glass-glint" />
               </div>
             )}
+            {editable && <StickerTray onDropped={lowerGlass} />}
             {editable && glassUp && (
               <button className="glass-handle" data-tour="glass" onClick={lowerGlass} title="Pull the glass down to move, rename, remove or add things, then Submit">
                 <span aria-hidden="true">⇣</span> Pull down to edit
@@ -2635,7 +2651,7 @@ export default function App() {
           <div
             className={`canvas ${boardView === "why" ? "on" : ""}`}
             role="tabpanel"
-            aria-label="Why"
+            aria-label="Reasoning"
             onPointerDownCapture={(e) => (whyDown.current = [e.clientX, e.clientY])}
             onPointerUpCapture={whyClick}
           >
