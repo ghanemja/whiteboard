@@ -981,9 +981,7 @@ export class ClaudeRun extends Run {
       case "permission": {
         if (body.decision === "allow-all") this.allowCommands = true;
         const allow = body.decision === "allow" || body.decision === "allow-all";
-        // Said plainly: a softer "find another way" had agents retry the same command dozens of times.
-        const declined = "The user declined this command. Don't run it, or a variant of it, again. To create or change a file, use the Write or Edit tool, which needs no permission; otherwise find another way, or ask them in your reply.";
-        return this.answer(body.requestId, allow ? { behavior: "allow" } : { behavior: "deny", message: declined });
+        return this.answer(body.requestId, allow ? { behavior: "allow" } : { behavior: "deny", message: "The user declined. Find another way or ask them in your reply." });
       }
       default:
         return false;
