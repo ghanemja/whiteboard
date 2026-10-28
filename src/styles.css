@@ -2272,6 +2272,31 @@ button:focus-visible {
   color: var(--ink);
 }
 
+/* Export's look: Clean (for slides and docs) or Sketch (as on the board), for the SVG and PNG. */
+.export-look {
+  display: flex;
+  gap: 2px;
+  margin: 2px 8px 4px;
+  padding: 2px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
+}
+.view-items .export-look button {
+  flex: 1;
+  margin: 0;
+  padding: 4px 8px;
+  border: 0;
+  box-shadow: none;
+  border-radius: calc(var(--r-sm) - 2px);
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.view-items .export-look button.on {
+  background: var(--accent);
+}
+
 /* The view bar: the same plan drawn other ways (Draw as), or one layer opened up (Zoom into). */
 .lens-bar {
   flex-shrink: 0;

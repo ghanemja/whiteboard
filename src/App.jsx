@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Excalidraw, exportToBlob, exportToSvg, MIME_TYPES, sceneCoordsToViewportCoords, serializeLibraryAsJSON, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
+import { Excalidraw, exportToBlob, exportToSvg, FONT_FAMILY, MIME_TYPES, sceneCoordsToViewportCoords, serializeLibraryAsJSON, viewportCoordsToSceneCoords } from "@excalidraw/excalidraw";
 import { Board, PHASES, STATUS, STICKERS, stickerItems } from "./engine/board";
 import PhaseHeader from "./PhaseHeader";
 import { Session } from "./engine/session";
@@ -8,6 +8,7 @@ import { busyDecisions, LAYER_COLOR, LAYERS, layerOf, openableLayers, tagCase, t
 import { buildReview, penMarks } from "./engine/review";
 import { logMarkdown } from "./engine/logfile";
 import { createHistory } from "./engine/history";
+import { presentable } from "./engine/present";
 import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour, stepOf, targets as tourTargets, tourLength, waiting as tourWaiting } from "./engine/tour";
 import { decisionsUrl, getAgentStatus, getRepoBoard, listRecordings } from "./agent/live";
 import { TourCard, TourSpotlight } from "./Tour";
@@ -1407,6 +1408,22 @@ export default function App() {
   // Export what the board shows: Mermaid (the container view, or the flow as a sequence
   // diagram) for a README or PR, or an SVG/PNG with a title.
   const [exported, setExported] = useState(null);
+  // SVG/PNG in the board's hand-drawn sketch, or clean (straight lines, a plain font) for slides and docs.
+  const [exportLook, setExportLook] = useState(() => {
+    try {
+      return localStorage.getItem("wb-export-look") === "sketch" ? "sketch" : "clean";
+    } catch {
+      return "clean";
+    }
+  });
+  const chooseExportLook = (look) => {
+    setExportLook(look);
+    try {
+      localStorage.setItem("wb-export-look", look);
+    } catch {
+      /* storage blocked: it's still set for this page */
+    }
+  };
   const exportView = async (kind) => {
     const s = sessionRef.current;
     if (!s) return;
@@ -1426,8 +1443,9 @@ export default function App() {
         await navigator.clipboard.writeText(`\`\`\`mermaid\n${text}\`\`\`\n`);
       } else {
         const api = readOnlyView ? b.diagramApi : b.api;
+        const drawn = readOnlyView ? b.diagramElements(title) : b.exportElements(title);
         const opts = {
-          elements: readOnlyView ? b.diagramElements(title) : b.exportElements(title),
+          elements: exportLook === "clean" ? presentable(drawn, { fontFamily: FONT_FAMILY.Nunito }) : drawn,
           appState: { ...api.getAppState(), exportBackground: true, viewBackgroundColor: "#ffffff", exportWithDarkMode: false, exportScale: 2 },
           files: api.getFiles(),
           exportPadding: 32,
@@ -2588,6 +2606,16 @@ export default function App() {
                 <button onClick={() => exportView("mermaid")} title="Copy as a Mermaid diagram (GitHub renders it)">
                   Copy Mermaid
                 </button>
+                <div className="export-look" role="radiogroup" aria-label="How the SVG and PNG look">
+                  {[
+                    ["clean", "Clean", "Straight lines and a plain font, for slides and docs"],
+                    ["sketch", "Sketch", "Hand-drawn, as on the board"],
+                  ].map(([k, label, tip]) => (
+                    <button key={k} role="radio" aria-checked={exportLook === k} className={exportLook === k ? "on" : ""} onClick={() => chooseExportLook(k)} title={tip}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <button onClick={() => exportView("svg")}>Download SVG</button>
                 <button onClick={() => exportView("png")}>Download PNG</button>
               </div>

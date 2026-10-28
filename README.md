@@ -62,7 +62,9 @@ The bar above the board shows the same plan other ways:
 **Flows & export**, beside the board tabs:
 
 - **Show a flow**: the path a request takes, its steps numbered on the arrows and listed in a card. In Sequence it picks the flow.
-- **Export** what the board shows: **Copy Mermaid** (each view has its Mermaid form: flowcharts, `erDiagram`, `sequenceDiagram`, and a flowchart with a subgraph per component for a layer; GitHub renders them in a README or PR), **Download SVG** or **Download PNG**, with a title.
+- **Export** what the board shows: **Copy Mermaid** (each view has its Mermaid form: flowcharts, `erDiagram`, `sequenceDiagram`, and a flowchart with a subgraph per component for a layer; GitHub renders them in a README or PR), **Download SVG** or **Download PNG**, with a title. The SVG and PNG come **Clean** by default: straight lines, solid shapes and a plain font, for slides and docs, without the stickers, their answers, and the tape and pins that only mean something on the live board. **Sketch** gives the hand-drawn look of the board instead. The choice is remembered.
+
+![The Pictures view exported Clean: the same pictograms, layer plates, decisions and status badges, with straight lines and a plain font](screenshots/views/5-exported-clean-png.png)
 
 The agent supplies what these need: flows (`flow` op), tables (`table` op), each component's layer, and the parts inside components (`part` op: name, kind, its layer when it differs, and what it hands on). A component with no parts shows what it exposes (its `api`) and its tables. The Plan details lists the flows and the data model too, and names are kept in sentence case.
 
