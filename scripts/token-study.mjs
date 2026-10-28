@@ -26,6 +26,7 @@ import { z } from "zod";
 import { BOARD_INSTRUCTIONS, CODEX_BOARD_INSTRUCTIONS, CODEX_PLAN_INSTRUCTIONS, PLAN_INSTRUCTIONS } from "../server/instructions.js";
 import { boardReply, Op, READ_BOARD, UPDATE_BOARD } from "../server/board-tool.js";
 import { ClaudeRun, settings } from "../server/runs.js";
+import { renderDecisions } from "../server/recordings.js";
 import { createStreamParser } from "../src/engine/parser.js";
 import { BUILD_SCRIPT, PLAN_SCRIPT } from "../src/agent/script.js";
 import { buildChatReply, buildEditsReply } from "../src/agent/replies.js";
@@ -818,6 +819,7 @@ const dir = path.join(ROOT, "fixtures/recordings");
 for (const f of readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort()) {
   const ev = readFileSync(path.join(dir, f), "utf8").trim().split("\n").map((l) => JSON.parse(l));
   const meta = ev.find((e) => e.type === "meta");
+  const metaNow = Object.assign({}, ...ev.filter((e) => e.type === "meta" || e.type === "meta-update"));
   const done = ev.find((e) => e.type === "done");
   if (!done?.cost) continue;
   const b = new BoardModel();
@@ -857,7 +859,9 @@ for (const f of readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort()) {
   const history = out + results + userAdded + planInstr; // the board's share of the conversation
   const low = usd(out, PRICE.output) + usd(FIXED + history, PRICE.write) + usd(FIXED * (turns - 1), PRICE.read);
   const high = low + usd(history * (turns - 1), PRICE.read);
-  rows.push({ f, meta, done, calls: calls.length, ops: calls.flat().length, out, results, userAdded, low, high });
+  // For section 10: the board as the run left it, and its decision log as the server writes it now.
+  const log = renderDecisions(metaNow, ev.filter((e) => e.type === "decision"), mirror.planMarkdown());
+  rows.push({ f, meta, done, calls: calls.length, ops: calls.flat().length, out, results, userAdded, low, high, snap: b.snapshot(), log });
 }
 table(
   ["Run", "Task", "Model, effort", "Turns", "Measured cost", "Board calls (ops)", "Board output", "Board input added", "Board cost (est.)", "Share"],
@@ -870,7 +874,26 @@ table(
 console.log("Measured cost and turns: the Agent SDK's result (total_cost_usd, num_turns). These runs were recorded before read_board, so their measured cost includes the board snapshot in every message. Board input added here is counted as the new messages would be: fixed overhead per turn, plus tool results, the edits and wrappers sent at the gate, and the plan-mode instructions. No reads.");
 console.log("Low: every board token written to the cache once, the fixed overhead read on every turn. High: also every board token re-read on every later turn. Neither counts the re-reads of Claude Code's own context on the extra requests the calls cause.\n");
 
-h("10. Sizes, for reference");
+// 10. Carrying on (HANDOFF 4.17): a new session on a saved board starts from one message, the task
+// plus the saved run's decision log (the handover) and the board as it is. Built by runs.js itself
+// (Run.firstTurn), for a next task on each real run's board.
+h("10. Carrying on: the first message of a session that starts from a saved board");
+const nextTask = "Add a GET /health endpoint that reports how many links are stored";
+const carry = [];
+for (const r of rows) {
+  const run = Object.assign(Object.create(ClaudeRun.prototype), { brief: nextTask, from: { id: r.meta.id, log: r.log }, boardState: r.snap, startEdits: [] });
+  const message = run.firstTurn;
+  dump(`carry-on-${r.meta.id}.txt`, message);
+  carry.push({ id: r.meta.id, log: await count(r.log), state: await count(`\n\n<board_state>${JSON.stringify(r.snap)}</board_state>`), total: await count(message) });
+}
+table(
+  ["Saved run", "Decision log (handover)", "<board_state>", "Whole first message", "Written to the cache once", "Read by each later request"],
+  carry.map((c) => [c.id, fmt(c.log), fmt(c.state), fmt(c.total), money(usd(c.total, PRICE.write)), money(usd(c.total, PRICE.read))]),
+);
+console.log(`The task: "${nextTask}" (${fmt(await count(nextTask))} tokens on its own). The message is runs.js Run.firstTurn; the decision log is the one the server writes for that run today (renderDecisions over its recording).`);
+console.log(`The rest of the new session costs what any run does: the same ${fmt(FIXED)} fixed tokens per request, and none of the earlier session's conversation (it starts a fresh one).\n`);
+
+h("11. Sizes, for reference");
 table(
   ["Text", "Tokens"],
   [

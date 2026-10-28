@@ -85,7 +85,7 @@ test("each run's board is served at /api/runs/<id>/mcp, behind that run's token"
     assert.deepEqual(drawn, [{ op: "phase", name: "planning" }]);
     await client.close();
     await assert.rejects(connect(`${base}/api/runs/r1/mcp`, "tok-other"), "another run's token doesn't open this board");
-    assert.equal((await fetch(`${base}/api/runs/nope/mcp`, { method: "POST" })).status, 404);
+    assert.equal((await fetch(`${base}/api/runs/nope/mcp`, { method: "POST", headers: { "content-type": "application/json" } })).status, 404);
   } finally {
     runs.delete("r1");
     server.close();

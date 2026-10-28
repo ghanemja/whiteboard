@@ -18,7 +18,20 @@ async function post(url, body) {
   return data;
 }
 
-export const startRun = ({ repo, brief }) => post("/api/runs", { repo, brief });
+// from: a saved run's id, to carry on from its board (with the board as it is now, and any edits that start it).
+export const startRun = ({ repo, brief, from, board_state, edits }) => post("/api/runs", { repo, brief, from, board_state, edits });
+
+// ---- picking the repo (server/repos.js) ----
+// A folder's subfolders: { path, parent, repo, crumbs, folders: [{ name, path, repo }], more }. With
+// { near: <the repo field> } instead of a path, the folder the picker should open on.
+export async function listFolders({ path, near }) {
+  const res = await fetch(`/api/runs/folders?${new URLSearchParams(path ? { path } : { near: near ?? "" })}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Couldn't list folders (${res.status})`);
+  return data;
+}
+// git clone into sandbox/<name> -> { path, name }; throws with git's error.
+export const cloneRepo = (url) => post("/api/runs/clone", { url });
 
 // ---- saved runs ----
 export async function listRecordings() {
@@ -43,6 +56,19 @@ export async function loadRecording(id) {
         return []; // a line cut off by a crash
       }
     });
+}
+
+// A run that carried on from another, and so on back: each run's events, oldest first.
+export async function loadChain(id, depth = 50) {
+  const chain = [];
+  const seen = new Set();
+  for (let at = id; at && !seen.has(at) && chain.length < depth; ) {
+    seen.add(at);
+    const events = await loadRecording(at);
+    chain.unshift(events);
+    at = events.find((e) => e.type === "meta")?.from;
+  }
+  return chain;
 }
 
 export const decisionsUrl = (id) => `/api/runs/recordings/${encodeURIComponent(id)}/decisions`;

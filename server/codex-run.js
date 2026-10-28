@@ -109,7 +109,7 @@ export class CodexRun extends Run {
       this.emit({ type: "stage", stage: "planning", model: model ?? "Codex's default", repo: this.repo });
       // (A Codex that doesn't report its MCP servers' startup gets 15 seconds.)
       if (!(await Promise.race([this.boardUp, new Promise((r) => setTimeout(r, 15000, true).unref())])) || this.stopped || this.exited) return;
-      await this.turn(`${CODEX_PLAN_INSTRUCTIONS}\n\n${this.brief}`);
+      await this.turn(`${CODEX_PLAN_INSTRUCTIONS}\n\n${this.firstTurn}`);
     } catch (err) {
       if (!this.stopped && !this.exited) this.emit({ type: "error", message: err.message }); // an exit says so itself
       this.halt();

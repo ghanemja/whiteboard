@@ -10,9 +10,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { CodexRun } from "../server/codex-run.js";
-import { runsMiddleware } from "../server/runs.js";
 import { draw, fakeConfig, fakeProvider, fakeResponses, shell } from "./fixtures/fake-responses.js";
+
+// The recordings folder is resolved when recordings.js loads: keep this test's out of the repo.
+process.chdir(mkdtempSync(path.join(os.tmpdir(), "wb-codex-recordings-")));
+const { CodexRun } = await import("../server/codex-run.js");
+const { runsMiddleware } = await import("../server/runs.js");
 
 const CODEX = process.env.CODEX_BIN;
 
@@ -193,7 +196,7 @@ test("started from the browser, Codex reaches the board on the address the serve
   });
   let run;
   try {
-    const r = await fetch(`http://127.0.0.2:${web.address().port}/api/runs`, { method: "POST", body: JSON.stringify({ repo: tmp, brief: "Map the architecture." }) });
+    const r = await fetch(`http://127.0.0.2:${web.address().port}/api/runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ repo: tmp, brief: "Map the architecture." }) });
     run = runs.get((await r.json()).id);
     assert.match(run.boardMcp.url, /^http:\/\/127\.0\.0\.2:\d+\//);
     const events = [...run.events];

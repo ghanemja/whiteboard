@@ -688,151 +688,8 @@ button.icon.speed {
 .linkish:hover {
   color: var(--accent-ink);
 }
-.msg.notice {
-  padding: 9px 12px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
-  background: color-mix(in srgb, var(--red) 8%, var(--panel));
-  color: var(--ink);
-  font-size: 14.5px;
-  line-height: 1.5;
-}
-.msg p {
-  margin: 0 0 10px;
-  font-size: 16px;
-  line-height: 1.62;
-}
-.msg p:last-child {
-  margin-bottom: 0;
-}
-.who {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--soft);
-  margin-bottom: 6px;
-}
-.avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-family: var(--display);
-  font-weight: 800;
-  font-size: 14px;
-}
-.typing {
-  font-weight: 600;
-  color: var(--orange);
-}
 
-/* Phase headings inside the agent's message, colored like the phase bar. */
-.section {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 18px 0 8px;
-  font-family: var(--display);
-  font-weight: 800;
-  font-size: 18px;
-  color: var(--faint);
-}
-.who + .section {
-  margin-top: 6px;
-}
-.section::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: currentColor;
-  opacity: 0.3;
-}
-.section .num {
-  width: 21px;
-  height: 21px;
-  display: grid;
-  place-items: center;
-  border: 1.5px solid currentColor;
-  border-radius: 50%;
-  font-family: var(--ui);
-  font-size: 13px;
-  font-weight: 800;
-}
-.section.current {
-  color: var(--orange);
-}
-.section.done {
-  color: var(--green);
-}
-.section.done .num {
-  background: var(--green);
-  border-color: var(--green);
-  color: var(--panel);
-}
 
-.s {
-  border-radius: 3px;
-  transition:
-    background-color 0.5s,
-    box-shadow 0.5s;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-.s.has-ops {
-  cursor: pointer;
-}
-.s.has-ops:hover {
-  background: var(--marker-soft);
-  transition-duration: 0.1s;
-}
-.s.live {
-  background: linear-gradient(
-    transparent 14%,
-    var(--marker) 14%,
-    var(--marker) 90%,
-    transparent 90%
-  );
-}
-.s.linked {
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-.caret {
-  display: inline-block;
-  width: 2px;
-  height: 1.05em;
-  margin-left: 1px;
-  background: var(--ink);
-  vertical-align: -2px;
-  animation: blink 1s steps(1) infinite;
-}
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
-}
-.msg.you {
-  align-self: flex-end;
-  max-width: 88%;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 12px 12px 4px 12px;
-  padding: 10px 12px;
-}
-.msg.you.linked {
-  border-color: var(--accent-ink);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-.msg.you .sub {
-  font-size: 14.5px;
-  color: var(--soft);
-  margin-bottom: 6px;
-}
 
 /* ---- edit lists ---- */
 .edits {
@@ -1018,143 +875,7 @@ button.secondary:active:not(:disabled) {
   transform: translate(2px, 2px);
   box-shadow: 1px 1px 0 var(--ink);
 }
-/* Real work the agent did: compact rows between its sentences. */
-.act {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 2px 0 6px;
-  padding: 4px 8px;
-  border-radius: 7px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: var(--ink);
-  background: var(--panel-2);
-  transition: background-color 0.3s;
-}
-.act.has-ops {
-  cursor: pointer;
-}
-.act.has-ops:hover {
-  background: var(--marker-soft);
-}
-.act.linked {
-  background: var(--accent-soft);
-}
-.act-icon {
-  flex-shrink: 0;
-  width: 14px;
-  text-align: center;
-  color: var(--faint);
-  font-weight: 700;
-}
-.act-edit .act-icon,
-.act-write .act-icon {
-  color: var(--orange);
-}
-.act-command .act-icon {
-  color: var(--accent-ink);
-}
-.act-body {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-.act-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.act-command .act-label {
-  color: var(--ink);
-}
-.act-summary {
-  color: var(--faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.act-ok {
-  color: var(--green);
-  font-weight: 700;
-}
-.act-bad {
-  color: var(--red);
-  font-weight: 700;
-}
-.msg code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.88em;
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: var(--panel-2);
-}
 
-/* Activity | Plan */
-.tabs {
-  display: flex;
-  gap: 4px;
-  padding: 8px 18px 0;
-  border-bottom: 1px solid var(--line);
-}
-.tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px 9px;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  background: none;
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-bottom: -1px;
-}
-.tab[aria-selected="true"] {
-  font-weight: 800;
-  border-bottom-color: var(--accent);
-}
-.tab-count {
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-  font-size: 12.5px;
-}
-.tab-count.bad {
-  background: color-mix(in srgb, var(--red) 14%, transparent);
-  color: var(--red);
-}
-/* Skim: hide the narration. */
-.skim-row {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: flex-end;
-  padding: 5px 18px;
-  border-bottom: 1px solid var(--line);
-}
-.tab,
-.tab-count {
-  white-space: nowrap;
-}
-.skim-row .skim {
-  padding: 3px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink);
-  font-size: 13.5px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.skim-row .skim.on {
-  border-color: var(--accent-ink);
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-}
 .skim-gap {
   padding: 0 7px;
   border: 1px dashed var(--line);
@@ -1195,39 +916,6 @@ button.secondary:active:not(:disabled) {
 }
 .rcpt-why {
   font-weight: 600;
-}
-/* Things the agent asked you or assumed, said in passing. */
-.s.asks {
-  text-decoration: underline dotted #c2255c;
-  text-underline-offset: 3px;
-}
-.s.asks::after {
-  content: "?";
-  display: inline-block;
-  margin-left: 4px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #c2255c;
-  color: #fff;
-  font-size: 12.5px;
-  font-weight: 700;
-  line-height: 1.5;
-}
-.s.assumes {
-  text-decoration: underline dotted #7048e8;
-  text-underline-offset: 3px;
-}
-.s.assumes::after {
-  content: "≈";
-  display: inline-block;
-  margin-left: 4px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #7048e8;
-  color: #fff;
-  font-size: 12.5px;
-  font-weight: 700;
-  line-height: 1.5;
 }
 
 /* The development plan: goal, architecture, connections, decisions, steps. */
@@ -1418,6 +1106,62 @@ button.secondary:active:not(:disabled) {
   overflow-wrap: anywhere;
 }
 /* The end of a run: what needs a look. */
+/* What the agent said, at the top of the panel (the log itself downloads): its reply to what you
+   typed, an error, or the line you opened. */
+.said {
+  padding: 10px 14px 12px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--sh);
+}
+.said-bad {
+  background: color-mix(in srgb, var(--red) 8%, var(--panel));
+}
+.said-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--soft);
+}
+.said p {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.55;
+}
+.said p + .edits,
+.said .sub {
+  margin-bottom: 6px;
+}
+.said code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.88em;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--panel-2);
+}
+.said-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+.act-ok {
+  color: var(--green);
+  font-weight: 700;
+}
+.act-bad {
+  color: var(--red);
+  font-weight: 700;
+}
+.act-summary {
+  color: var(--faint);
+  font-size: 14px;
+}
 .review {
   margin-top: 4px;
   padding: 12px 14px;
@@ -1516,10 +1260,6 @@ button.secondary:active:not(:disabled) {
 }
 
 /* What it asked you, and what it's assuming. */
-.tab-count.ask {
-  background: color-mix(in srgb, #f08c00 16%, transparent);
-  color: #e8590c;
-}
 .qmark {
   display: inline-grid;
   place-items: center;
@@ -2093,18 +1833,26 @@ a.linkish:hover {
   flex: 1;
 }
 
-.field {
+/* The Repository field on the start screen (RepoPicker.jsx): Browse and Clone beside its label,
+   and the card each opens under it. */
+.rp {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   margin-bottom: 12px;
 }
-.field span {
+.rp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rp-head label {
+  flex: 1;
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
 }
-.field input {
+.rp input {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -2113,9 +1861,170 @@ a.linkish:hover {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 13.5px;
 }
-.field input:focus {
+.rp input:focus {
   outline: 2px solid var(--accent-soft);
   border-color: var(--accent-ink);
+}
+.rp button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.rp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px 3px 8px;
+  border: var(--bw) solid var(--ink);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 700;
+  box-shadow: 2px 2px 0 var(--ink);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.rp-btn:hover:not(:disabled),
+.rp-btn[aria-expanded="true"] {
+  background: var(--accent-soft);
+}
+.rp-btn:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+.rp-card {
+  padding: 8px;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  box-shadow: var(--sh);
+}
+.rp-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 2px 4px 8px;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.rp-crumbs > * + *::before {
+  content: "›";
+  display: inline-block;
+  margin: 0 6px;
+  color: var(--faint);
+  font-weight: 400;
+}
+.rp-crumbs button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.rp-crumbs button:hover {
+  color: var(--accent-ink);
+}
+.rp-crumbs b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+}
+.rp-list {
+  max-height: 236px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.rp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.rp-row:hover {
+  background: var(--accent-soft);
+}
+.rp-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-row.repo .rp-name {
+  font-weight: 700;
+}
+.rp-git {
+  padding: 0 6px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+.rp-none {
+  padding: 5px 6px;
+  font-size: 14px;
+  color: var(--soft);
+}
+.rp .rp-error {
+  margin: 8px 0 0;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--red) 8%, var(--panel));
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rp-actions,
+.rp-url {
+  display: flex;
+  gap: 8px;
+}
+.rp-actions {
+  margin-top: 8px;
+}
+.rp-actions button {
+  flex: 1;
+  margin-top: 0;
+  padding: 7px 10px;
+  font-size: 14.5px;
+}
+.rp-url input {
+  flex: 1;
+  min-width: 0;
+}
+.rp-url button.primary {
+  width: auto;
+  margin-top: 0;
+  padding: 6px 14px;
+  font-size: 14.5px;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+.rp .rp-done {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--green);
 }
 
 /* Plan review gate: the agent has stopped and is waiting on the user. */
@@ -2177,19 +2086,6 @@ a.secondary {
 button.secondary:hover,
 a.secondary:hover {
   background: var(--accent-soft);
-}
-.msg.you .approved {
-  display: flex;
-  align-items: center;
-  font-weight: 700;
-  font-size: 15px;
-}
-.g-approve {
-  background: color-mix(in srgb, var(--green) 18%, transparent);
-  color: var(--green);
-}
-.msg.you .approved + .edits {
-  margin-top: 6px;
 }
 
 .ask {
@@ -2256,12 +2152,8 @@ button:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .caret,
   .status.on .dot {
     animation: none;
-  }
-  .s {
-    transition: none;
   }
 }
 
@@ -2513,41 +2405,28 @@ button:focus-visible {
 .app[data-theme="dark"] .glass::after {
   opacity: 0.3;
 }
-.glass-handle {
-  position: absolute;
-  top: 6px;
-  left: 50%;
-  z-index: 5;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 14px 6px;
-  border: 1.5px solid rgba(120, 160, 205, 0.65);
-  border-top: 0;
-  border-radius: 0 0 12px 12px;
-  background: rgba(240, 247, 255, 0.94);
-  color: #34506e;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(60, 90, 130, 0.15);
-}
-.glass-handle:hover {
-  background: #ffffff;
-  color: var(--accent-ink);
-}
-.app[data-theme="dark"] .glass-handle {
-  background: rgba(43, 50, 66, 0.94);
-  color: #c5d6f0;
-}
 @media (prefers-reduced-motion: reduce) {
   .glass {
     transition: none;
   }
 }
-.edit-bar .gb-raise {
+/* The glass switch: first in Edit the plan, one width for both labels, so it stays put.
+   Tinted like the glass while it's up; dashed once it's down (the glass is out of the way). */
+.edit-bar .glass-toggle {
+  justify-content: center;
+  min-width: 11.5em;
+  font-weight: 800;
+}
+.edit-bar .glass-toggle.up {
+  border-color: rgba(90, 135, 185, 0.9);
+  background: rgba(225, 238, 252, 0.95);
+  color: #34506e;
+}
+.app[data-theme="dark"] .edit-bar .glass-toggle.up {
+  background: rgba(55, 70, 95, 0.95);
+  color: #c5d6f0;
+}
+.edit-bar .glass-toggle.down {
   border-style: dashed;
 }
 
@@ -3280,4 +3159,76 @@ button:focus-visible {
   height: 11px;
   border-width: 1px;
   border-radius: 4px;
+}
+/* Under the database and sequence diagrams the layers are the whole key. */
+.board-key .bk-layers:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+/* A decision in progress: its status circle on the board flashes, and a ring spreads from it
+   (DecisionPulse, over the canvas; moved with the board by transform). Orange, like "Being built". */
+.dec-pulses {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dec-pulse {
+  position: absolute;
+  left: -10px;
+  top: -10px;
+  width: 20px;
+  height: 20px;
+  --pulse: #e8590c;
+}
+.dec-pulse::before,
+.dec-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+.dec-pulse::before {
+  background: var(--pulse);
+  animation: dec-flash 1.4s ease-in-out infinite;
+}
+.dec-pulse::after {
+  border: 2.5px solid var(--pulse);
+  animation: dec-ring 1.4s ease-out infinite;
+}
+@keyframes dec-flash {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes dec-ring {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+.app[data-theme="dark"] .dec-pulse {
+  --pulse: #ff922b;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dec-pulse::before,
+  .dec-pulse::after {
+    animation: none;
+  }
+  .dec-pulse::before {
+    opacity: 0.3;
+  }
+  .dec-pulse::after {
+    transform: scale(1.45);
+  }
 }
