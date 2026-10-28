@@ -83,7 +83,7 @@ npm run dev                  # http://localhost:5199; makes the sample repo (san
 - **With a model** ([Models](#models): a key for Anthropic's API, or a URL for anything else): the repo field starts at the sandbox (or `AGENT_REPO`); type any local folder, **Browse** for one (git repos are marked), or **Clone** a git URL into `sandbox/`; then describe a task and start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
 - **Saved runs:** `cp fixtures/recordings/* recordings/` adds three real runs under "Saved boards".
 - **Tests:** `npm test`.
-- **Settings** (`.env.local`): `AGENT_URL`, `AGENT_KEY`, `AGENT_MODEL` ([Models](#models)), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo), `AGENT_ENGINE=codex` to run [Codex](#codex) instead of Claude.
+- **Settings** (`.env.local`): `AGENT_URL`, `AGENT_KEY`, `AGENT_MODEL` ([Models](#models)), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo), `AGENT_ENGINE=codex` to run [Codex](#codex) instead of Claude, `AGENT_SHORTHAND` ([Shorthand mode](#shorthand-mode), on by default).
 
 ## Models
 
@@ -120,6 +120,16 @@ It's the same board and the same steps. The differences:
 - **Cost:** Codex reports tokens, not dollars, so the end of a run shows no price. Billing is your ChatGPT plan or your OpenAI key.
 - Each run starts its own `codex app-server` and gives it the run's board as an MCP server (`/api/runs/<id>/mcp`, with a per-run token). Your own `~/.codex/config.toml` still applies.
 - If Codex can't connect to the board, the run stops before planning and says why.
+
+### Shorthand mode
+
+On by default; `AGENT_SHORTHAND=off` in `.env.local` turns it off. It changes how the agent talks to the board, not what it draws:
+
+- **Board ops as lines.** The agent sends `update_board` one op per line instead of JSON: `edge web>api via=HTTP api="POST /ask"` rather than `{"op":"edge","from":"web","to":"api",…}`. The server parses each line into the same op and checks it; a line it can't read comes back with its number and the reason, and the rest are drawn. `read_board` answers in the same lines.
+- **Only the tools it uses.** A Claude run gets Read, Glob, Grep, Edit, Write, Bash and ExitPlanMode (the plan gate), not all of Claude Code's built-in tools. That's most of the saving: its first request drops from about 41,800 tokens to 15,200 here (a cloud container ships extra tools, so a local install saves less). It can't search the web or start subagents.
+- **Terse chat.** Results first, file:line and numbers, no filler; names, errors, questions for you and the final summary stay whole.
+
+Measured live on the same task and correction, a run cost $0.39 instead of $0.67 with a cold cache, and $0.27 instead of $0.38 with a warm one, with the same tests passing and every decision proven ([the numbers](docs/TOKEN_STUDY.md#shorthand-mode)). Codex gets the lines and the terse chat; it keeps its own tools.
 
 **What the board costs in tokens:** [docs/TOKEN_STUDY.md](docs/TOKEN_STUDY.md) compares it with a chat assistant and with the same agent without the board (counted with `scripts/token-study.mjs`; set `ANTHROPIC_API_KEY` for exact Claude counts).
 

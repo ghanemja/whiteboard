@@ -61,10 +61,15 @@ test("a run carrying on starts from the saved board, quietly", async () => {
     assert.equal(run.decisions.get("d3").state, "proposed");
     assert.equal(run.events.length, 1);
     // The handover: the edits it started with, the last run's decision log, the board now.
+    run.shorthand = false;
     const turn = run.firstTurn;
     assert.match(turn, /^I changed the board:\n<board_edits>\[\{"kind":"rename"/);
     assert.match(turn, /<handover from="bbb">\n# Decisions: linkshort/);
-    assert.match(turn, /<board_state>\{"nodes":/);
+    // The board as lines in shorthand mode (the default), as JSON without it.
+    run.shorthand = true;
+    assert.match(run.firstTurn, /<board_state>\n(node|project|phase) /);
+    run.shorthand = false;
+    assert.match(run.firstTurn, /<board_state>\{"nodes":/);
     // The recording says where it came from.
     clearTimeout(run.idleTimer);
     run.recorder.close();

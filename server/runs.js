@@ -51,8 +51,10 @@ export const settings = (env = process.env) =>
 
 // Shorthand mode (AGENT_SHORTHAND, README "Settings"): the agent draws with one op per line instead
 // of JSON, reads the board in the same lines, chats tersely, and (Claude) gets only the built-in
-// tools it uses, which cuts Claude Code's own prompt by about two thirds. Off with 0, false, off or no.
-export const SHORTHAND_DEFAULT = false;
+// tools it uses, which cuts Claude Code's own prompt by about two thirds. On by default: in a live
+// A/B it cost 42% less cold and 29% less warm, with the same tests and proofs (docs/TOKEN_STUDY.md).
+// Off with 0, false, off or no.
+export const SHORTHAND_DEFAULT = true;
 export const shorthand = (env = process.env) => {
   const v = String(env.AGENT_SHORTHAND ?? "").trim().toLowerCase();
   return v ? !["0", "false", "off", "no"].includes(v) : SHORTHAND_DEFAULT;

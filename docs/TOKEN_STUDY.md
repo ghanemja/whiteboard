@@ -16,6 +16,7 @@ How many tokens does a task take with the whiteboard, compared with a normal cha
 
 Prices are Claude Opus 5.5's. "In" sums the input of every request, resent history included. B and the whiteboard leave out what they share (Claude Code's own prompt and tools, the repo reads, the build work), so neither is a whole run's bill. Their difference is the board's cost.
 
+- **Shorthand mode (on by default) cuts a live run's cost by 29–42%** ([below](#shorthand-mode)): it gives the agent only the tools it uses, which shrinks its first request from 40,897 to 14,307 tokens, and writes board ops as lines (−20 to −32% output for the ops, −17% for a read). The tables in this summary are the standard mode's.
 - **Messages carry only what changed.** A correction's message to the agent is 42–88 tokens, down from 1,142–1,188 when the board went with every message. The agent calls `read_board` for the whole board when it needs it; a read returns about 1,070 tokens.
 - **So the board costs less.** Its extra cost over B is +$0.0420 for a plan and 3 corrections (was +$0.0592, 29% less) and +$0.0968 for the full run (was +$0.1275, 24% less). Input falls from 65,448 to 53,914 tokens, and from 302,884 to 223,370. The first plan costs slightly more (+$0.0464, was +$0.0454), because the fixed overhead grew by 203 tokens.
 - **It still processes far more input than B.** The full run takes 223,370 input tokens against 29,262 for B, about 7.6 times as many. 96% of the board's input is cache reads, at a twentieth of the input price.
@@ -82,6 +83,7 @@ npm i --no-save js-tiktoken@1.0.21   # o200k_base counts, without touching packa
 node scripts/token-study.mjs         # prints every table here
 ANTHROPIC_API_KEY=sk-ant-… node scripts/token-study.mjs   # exact Claude counts (count_tokens)
 node scripts/token-study.mjs --dump texts/                # also saves every text it counts
+node scripts/prompt-size.mjs                              # the whole first request, standard vs shorthand (a one-turn call; needs a model)
 ```
 
 With neither js-tiktoken nor a key, it falls back to characters ÷ 4 and says so (`npm install` and `npm audit fix` remove a `--no-save` package, so install it again after them). `TOKENIZER_DIR` points it at js-tiktoken installed somewhere else.
@@ -255,6 +257,76 @@ Six runs of the real agent (Claude Opus 5.5, effort `low`) on the sample repo, a
 - **Whole-run cost doesn't separate the two designs.** The same design on the same task cost $0.366 and $0.618; both designs reach $0.65. Which commands ran, and how the agent chose to write its tests, decide more than the board does.
 - **Commands.** Each run asked twice: once to append to a test file with a shell heredoc, once to run `npm test`. Answers came from an allowlist of test commands only. The heredoc was declined every time, and every agent then made the same change with its Edit tool. `npm test` was declined in four runs (piped into `grep`, or before the allowlist was in place); in those the tests never ran, and the agent said so. Each agent took each "no" once.
 - **Cache writes cost more than the tables assume.** These runs cached with the 1-hour lifetime: writes billed at $8 per million tokens (twice the input price), not the 5-minute $5 the tables use. Whether a run with your own API key does the same isn't tested.
+
+## Shorthand mode
+
+Shorthand mode (`AGENT_SHORTHAND`, on by default since 2026-10-28; README, [Shorthand mode](../README.md#shorthand-mode)) is a "caveman" for the board. Caveman, a Claude Code skill, makes the model reply in terse English and claims 65–75% fewer output tokens; independent tests found 12–25% less output and 1–3% off the bill, because output is a small share of what a run costs. So shorthand mode goes after input as well as output:
+
+- **Fewer tools.** A Claude run gets only the built-in tools agents used in every live run (Read, Glob, Grep, Edit, Write, Bash) and ExitPlanMode, which a `tools` list drops unless it's named (checked: without it the plan gate's call fails with "No such tool available").
+- **Board ops as lines.** `update_board` takes one op per line (`edge web>api via=HTTP api="POST /ask"`), and its schema is one string instead of every op's fields. `read_board` and a carried-on session's `<board_state>` come back in the same lines.
+- **Terse chat:** results first, file:line, numbers; names, errors, questions and the final summary stay whole.
+
+The instructions grow by the line syntax and the chat style; every other rule is unchanged (`test/shorthand.test.js` checks each line of the standard instructions is still there). They weren't compressed: at most 3,149 tokens, read from the cache on every request at $0.20 per million, a shorter version would save under a cent a run and risks dropping a rule.
+
+### Counted (scripts/token-study.mjs, section 12)
+
+| Fixed, every request | Standard | Shorthand | Change |
+|---|---:|---:|---:|
+| Board instructions | 3,149 | 3,617 | +15% |
+| update_board tool definition | 1,340 | 199 | −85% |
+| read_board tool definition | 116 | 126 | +9% |
+| **Total** | **4,605** | **3,942** | **−14%** |
+
+| Board ops the agent writes (output) | JSON call | Lines call | Change |
+|---|---:|---:|---:|
+| First plan (42 ops, one call) | 1,878 | 1,498 | −20% |
+| The three corrections' replies (6 ops) | 183 | 140 | −23% |
+| The build (54 ops, 10 calls) | 1,086 | 743 | −32% |
+
+| The board as the agent reads it (input) | JSON | Lines | Change |
+|---|---:|---:|---:|
+| `read_board` after each correction | 1,027–1,094 | 852–908 | −17% |
+| Carry-on `<board_state>`, the three saved runs | 640–870 | 507–720 | −17 to −21% |
+
+A lines call is counted as it's sent: inside the tool call's JSON, where the line's quotes and newlines are escaped (the bare lines are 3–10% shorter still). On the demo's full run, that's 663 tokens less on every request and 766 fewer output tokens: about $0.02 a run. The tool trim is the big lever, and it isn't in these counts.
+
+### The whole first request (scripts/prompt-size.mjs)
+
+A one-turn call with the run's own options (`ClaudeRun.queryOptions`), in plan mode, Claude Haiku 5.5:
+
+| | Tools | First request |
+|---|---:|---:|
+| Standard | 44 built-in + 2 board | 41,795 |
+| Shorthand | 7 built-in + 2 board | 15,214 (−64%) |
+
+This cloud container's Claude Code ships tools a local install may not have (Artifact, Cron, Monitor, Workflow…), so on your machine the standard number, and the saving, is smaller. Claude Code's own prompt changes with its version: rerun the script for current numbers.
+
+### Live A/B
+
+The same task and correction as the earlier live runs ("Support custom aliases like /launch"; "Aliases are 3 to 20 letters, digits or dashes, and an alias that is already taken is refused."), Claude Opus 5.5 at effort `low`, driven through the UI by `scripts/live-run.cjs`, read with `scripts/live-usage.mjs`, on 2026-10-28 at `112f34e`. The sandbox was reset before each run, with the allowlist of test commands. Order: standard, shorthand, standard, shorthand, about 1.3 minutes each, so the first of each mode wrote its prompt to the cache (cold) and the second read it (warm).
+
+| | Standard, cold | Shorthand, cold | Standard, warm | Shorthand, warm |
+|---|---:|---:|---:|---:|
+| **Cost** | **$0.668** | **$0.386** | **$0.383** | **$0.274** |
+| Requests | 11 | 11 | 12 | 10 |
+| First request | 40,897 | 14,307 | 40,897 | 14,305 |
+| … of it written to the cache / read | 40,895 / 0 | 14,305 / 0 | 5,262 / 35,633 | 1,525 / 12,778 |
+| Cache writes, whole run (1-hour) | 53,169 | 25,501 | 17,099 | 12,828 |
+| Cache reads, whole run | 465,274 | 191,031 | 545,362 | 186,842 |
+| Output | 7,493 | 7,175 | 6,842 | 6,682 |
+| Chat text (o200k_base) | 203 | 196 | 240 | 187 |
+| update_board calls (as lines) | 4 (0) | 5 (5) | 5 (0) | 5 (5) |
+| update_board input (o200k_base) | 1,310 | 1,079 | 915 | 926 |
+| Lines it couldn't draw | — | 0 | — | 0 |
+| read_board | not called | not called | not called | not called |
+| Tests ran | yes, 8/8 | yes, 8/8 | no | yes, 8/8 |
+| Decisions proven | 3 of 3 | 3 of 3 | 0 of 3 | 3 of 3 |
+
+- **Shorthand cost 42% less cold and 29% less warm.** Nearly all of it is input: the first request is 26,590 tokens smaller, and every later request re-reads that difference. Cold, the first request's cache write alone falls from $0.327 to $0.114 at the 1-hour rate.
+- **Output barely moved:** 2–4% less. The board calls are shorter cold (−18%), and the same warm, where that plan had more ops. The chat was already short (187–240 tokens a run), and terse chat didn't change its size; the final summaries stayed whole and clear.
+- **Same work done.** Every run finished with 8/8 tests passing (run again afterwards in the sandbox). The warm standard run didn't run its tests, because the driver's allowlist declined `npm test 2>&1 | grep -E "^(not ok|ok)…"` (the `|` inside the pattern made it look like a pipe into something else), so it proved none of its decisions. The other three each proved all three. Each agent tried one heredoc that was declined, then made the change with Edit or Write.
+- **Every shorthand line drew:** 10 calls, no errors, the plan as complete as the standard runs' (project, phases, tasks, nodes, edges, parts, flows, decisions with checks).
+- **So it's on by default.** The cost difference is larger than the run-to-run spread seen before ($0.37–$0.65 for the same design), cold and warm alike, and nothing it measured got worse. One run per cell is still few: the earlier live runs showed how much one run can vary. What it gives up: the agent can't search the web, fetch URLs or start subagents, which no recorded run had used.
 
 ## Caveats
 
