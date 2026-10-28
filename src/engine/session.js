@@ -3,7 +3,7 @@ import { createStreamParser } from "./parser";
 import { Player } from "./player";
 import { Transcript } from "./transcript";
 import { buildChatReply, buildEditsReply } from "../agent/replies";
-import { controlRun, followRun, loadChain, replyBoard, startRun } from "../agent/live";
+import { controlRun, followRun, loadChain, openRepoBoard, replyBoard, startRun } from "../agent/live";
 import { BUILD_SCRIPT, DEMO_CHANGES, PLAN_SCRIPT } from "../agent/script";
 import { areaOf, describeEdit, gist } from "./timeline";
 import { receipt } from "./claims";
@@ -361,19 +361,20 @@ export class Session {
   }
 
   // ---- a real agent run ----
-  async startAgent({ repo, brief }) {
+  // map: a repo with no board yet, mapped with no task (the task comes next, in the same session).
+  async startAgent({ repo, brief, map = false }) {
     if ((this.board.model.project || this.transcript.messages.length) && !(await this.reset())) return;
     const g = this.gen;
     this.mode = "agent";
     this.stage = "planning";
-    this.brief = brief;
+    this.brief = brief || (map ? "Map this codebase onto the board" : "");
     this.repo = repo;
-    const m = this.transcript.addUserMessage({ kind: "chat", text: brief });
+    const m = this.transcript.addUserMessage({ kind: "chat", text: this.brief });
     this.events = [{ t: 0, type: "start", text: brief, msg: m.id }];
     this.drawTimeline();
     this.beginTurn();
     try {
-      const { id } = await startRun({ repo, brief });
+      const { id } = await startRun({ repo, brief, map });
       if (g !== this.gen) return controlRun(id, { type: "stop" }).catch(() => {});
       this.runId = id;
       this.runOpen = true;
@@ -456,7 +457,7 @@ export class Session {
       this.board.onPhase?.(null);
       await this.board.init();
       if (g !== this.gen || r !== this.replay) return;
-      Object.assign(this, { stage: "planning", gate: null, permission: null, agentBusy: false, turnEnds: 0, stickerSettleAt: null, stickerMidTurn: false, result: null, caption: "", steerText: null, replayT: 0, changes: null, commits: 0 });
+      Object.assign(this, { stage: "planning", gate: null, permission: null, agentBusy: false, turnEnds: 0, stickerSettleAt: null, stickerMidTurn: false, mapReady: false, result: null, caption: "", steerText: null, replayT: 0, changes: null, commits: 0 });
       this.drawBase(r.base);
       this.transcript.addUserMessage({ kind: "chat", text: this.brief });
       r.i = 0;
@@ -518,6 +519,24 @@ export class Session {
     this.stateChanged();
   }
 
+  // A repo's saved board (whiteboard.zip), opened as its latest run and kept: what you send next
+  // starts a session on it, in this repo. False if it couldn't be opened.
+  async openRepoBoard(repo) {
+    let id;
+    try {
+      ({ id } = await openRepoBoard(repo));
+    } catch (err) {
+      this.agentError(err.message);
+      return false;
+    }
+    await this.startReplay(id, { instant: true });
+    if (this.mode !== "replay") return false;
+    this.keepBoard({ live: true });
+    this.repo = repo; // the saved runs may come from another machine's checkout
+    this.stateChanged();
+    return true;
+  }
+
   // Agent mode with no agent to talk to (it stopped, or the board came from a saved run).
   get carriesOn() {
     return this.mode === "agent" && !this.runOpen && !!this.parent;
@@ -569,6 +588,7 @@ export class Session {
     this.agentBusy = true;
     this.workingSince = Date.now();
     this.result = null;
+    this.mapReady = false;
     this.stateChanged();
   }
 
@@ -667,6 +687,7 @@ export class Session {
         break;
       case "done":
         this.turnEnds++;
+        this.mapReady = !!e.mapped; // a map with no task yet: nothing to review, the task comes next
         this.agentBusy = false;
         this.steerText = null;
         this.result = e;

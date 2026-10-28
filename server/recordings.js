@@ -54,6 +54,11 @@ export class Recorder {
     this.writeDecisions();
   }
 
+  // Resolves once everything written so far is in the file.
+  flush() {
+    return new Promise((resolve) => (this.stream.writableEnded ? resolve() : this.stream.write("", () => resolve())));
+  }
+
   close() {
     if (!this.stream.writableEnded) this.stream.end();
   }
@@ -118,6 +123,32 @@ export function readChain(id, depth = 50) {
     at = events.find((e) => e.type === "meta")?.from;
   }
   return chain;
+}
+
+// The ids in a run's chain, oldest first: the runs it carried on from, then itself.
+export function chainIds(id, depth = 50) {
+  const ids = [];
+  for (let at = id; at && !ids.includes(at) && ids.length < depth; ) {
+    const text = readRecording(at);
+    if (text == null) break;
+    ids.unshift(at);
+    at = parse(text).find((e) => e.type === "meta")?.from;
+  }
+  return ids;
+}
+
+// Saved runs from a repo's board file (board-file.js) into recordings/, so they replay and carry on
+// like any other; one already here is left as it is. The latest one's id, or null.
+export function importRuns(runs) {
+  mkdirSync(REC_DIR, { recursive: true });
+  for (const r of runs) {
+    if (!ID.test(r.id)) continue;
+    const file = path.join(REC_DIR, `${r.id}.jsonl`);
+    if (existsSync(file)) continue;
+    writeFileSync(file, r.jsonl);
+    if (r.decisions) writeFileSync(path.join(REC_DIR, `${r.id}.decisions.md`), r.decisions);
+  }
+  return runs.at(-1)?.id ?? null;
 }
 
 export function readDecisions(id) {

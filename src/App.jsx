@@ -9,7 +9,7 @@ import { buildReview, penMarks } from "./engine/review";
 import { logMarkdown } from "./engine/logfile";
 import { createHistory } from "./engine/history";
 import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour, stepOf, targets as tourTargets, tourLength, waiting as tourWaiting } from "./engine/tour";
-import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
+import { decisionsUrl, getAgentStatus, getRepoBoard, listRecordings } from "./agent/live";
 import { TourCard, TourSpotlight } from "./Tour";
 import { RepoField } from "./RepoPicker";
 import { LiveSetup } from "./LiveSetup";
@@ -1263,6 +1263,8 @@ export default function App() {
     requestAnimationFrame(() => el.setSelectionRange(v.length, v.length));
   };
   const [repo, setRepo] = useState("");
+  // The board saved in the picked repo (whiteboard.zip), if any: { file, saved }.
+  const [repoBoard, setRepoBoard] = useState(null);
   const [agent, setAgent] = useState(null); // { live, provider, model, effort, defaultRepo } from the dev server
   const [recordings, setRecordings] = useState([]);
   const [quote, setQuote] = useState(null); // the line of the run opened at the top of the panel (Said)
@@ -1628,7 +1630,7 @@ export default function App() {
   const quoted = quote && (messages.find((m) => m.id === quote && m.role === "you") ?? messages.flatMap((m) => m.items).find((it) => it.id === quote));
   const close = (id) => setClosed((c) => new Set(c).add(id));
   // Once the run is over: what needs a look.
-  const finishedRun = !!s && messages.length > 0 && (s.mode === "replay" ? !s.state.replaying : s.mode === "agent" ? !!s.result && !s.state.busy : s.board.model.phase === "complete" && !s.state.busy);
+  const finishedRun = !!s && messages.length > 0 && (s.mode === "replay" ? !s.state.replaying : s.mode === "agent" ? !!s.result && !s.mapReady && !s.state.busy : s.board.model.phase === "complete" && !s.state.busy);
   const review =
     finishedRun &&
     buildReview({
@@ -1657,6 +1659,15 @@ export default function App() {
   const agentMode = s?.mode === "agent";
   const replayMode = s?.mode === "replay";
   const awaitingTask = agent?.live && messages.length === 0;
+  useEffect(() => {
+    if (!awaitingTask || !repo.trim()) return setRepoBoard(null);
+    let live = true;
+    const timer = setTimeout(() => getRepoBoard(repo.trim()).then((b) => live && setRepoBoard(b)).catch(() => live && setRepoBoard(null)), 300);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [repo, awaitingTask]);
   const reviewing = !!s?.awaitingApproval;
   const permission = replayMode ? null : s?.permission;
   const recording = s?.recording;
@@ -1700,11 +1711,23 @@ export default function App() {
     clearUi();
     s.startDemo();
   };
-  const startTask = (brief) => {
+  // A repo with a saved board carries on from it; one without is mapped first (the server does that).
+  const startTask = async (brief) => {
     if (!s || !brief.trim()) return;
     clearUi();
     setDraft("");
+    if (repoBoard?.saved && (await s.openRepoBoard(repo.trim()))) return s.carryOn({ text: brief.trim() });
     s.startAgent({ repo: repo.trim(), brief: brief.trim() });
+  };
+  const mapRepo = () => {
+    if (!s) return;
+    clearUi();
+    s.startAgent({ repo: repo.trim(), brief: "", map: true });
+  };
+  const openSavedBoard = () => {
+    if (!s) return;
+    clearUi();
+    s.openRepoBoard(repo.trim());
   };
   const replay = (id, opts) => {
     if (!s) return;
@@ -1856,7 +1879,7 @@ export default function App() {
   else if (reviewing) status = "Plan ready. Review it on the board, then approve.";
   else if (decisions.length) status = "Your board changes are ready to send";
   else if (s?.carriesOn) status = "Carry on: edit the board or type below. It starts a new session from this board.";
-  else if (s?.result) status = `Done${s.result.cost != null ? ` · $${s.result.cost.toFixed(2)}` : ""}${s.result.turns ? ` · ${s.result.turns} turns` : ""}`;
+  else if (s?.result) status = `${s.mapReady ? "Map ready" : "Done"}${s.result.cost != null ? ` · $${s.result.cost.toFixed(2)}` : ""}${s.result.turns ? ` · ${s.result.turns} turns` : ""}`;
   else if (phase === "complete") status = "Shipped. Edit the board to steer the next round.";
   else if (s && messages.length) status = "Idle";
 
@@ -1885,6 +1908,12 @@ export default function App() {
                 title: "It wants to run a command",
                 text: "Read it at the bottom, then Allow or Deny. It asks before every command; editing files inside the repo doesn't ask, because you approved the plan.",
               }
+            : s?.mapReady && !st.busy
+              ? {
+                  n: 1,
+                  title: "The map is ready",
+                  text: "The board shows the code as it is today, and it's saved in the repo. Describe a task in the box at the bottom: the agent plans it on this map.",
+                }
             : reviewing
               ? {
                   n: 2,
@@ -2307,6 +2336,27 @@ export default function App() {
                   you approve, it builds and tests while the board keeps up. Edit the board at any point to steer it.
                 </p>
                 <RepoField value={repo} onChange={setRepo} />
+                {repoBoard?.file &&
+                  (repoBoard.saved ? (
+                    <p className="note repo-board">
+                      ▣ This repo has a saved board (<code>{repoBoard.file}</code>): <b>{repoBoard.saved.project || "untitled"}</b>, {repoBoard.saved.runs} run{repoBoard.saved.runs === 1 ? "" : "s"}
+                      {repoBoard.saved.savedAt ? `, saved ${new Date(repoBoard.saved.savedAt).toLocaleDateString(undefined, { dateStyle: "medium" })}` : ""}. Your task carries on from it.{" "}
+                      <button className="linkish" onClick={openSavedBoard}>
+                        Open it
+                      </button>
+                    </p>
+                  ) : repoBoard.error ? (
+                    <p className="note repo-board">⚠ {repoBoard.error}</p>
+                  ) : (
+                    !repoBoard.missing && (
+                      <p className="note repo-board">
+                        No board saved in this repo yet, so the agent first maps the code as it is onto the board, then plans your task. The board is saved in the repo as <code>{repoBoard.file}</code>.{" "}
+                        <button className="linkish" onClick={mapRepo}>
+                          Just map it
+                        </button>
+                      </p>
+                    )
+                  ))}
                 {repo === agent?.defaultRepo && (
                   <>
                     <p className="note">This is the sample repo, a tiny URL shortener with tests. Try one of these:</p>
@@ -2461,7 +2511,7 @@ export default function App() {
               }}
               onKeyDown={browseHistory}
               title="↑ and ↓ bring back what you typed before"
-              placeholder={awaitingTask ? "Describe a task for the agent…" : reviewing ? "Ask for changes to the plan…" : s?.carriesOn ? "What's next? A new session starts from this board…" : "Tell the agent something…"}
+              placeholder={awaitingTask || s?.mapReady ? "Describe a task for the agent…" : reviewing ? "Ask for changes to the plan…" : s?.carriesOn ? "What's next? A new session starts from this board…" : "Tell the agent something…"}
             />
             <button type="submit" disabled={!draft.trim()}>
               {awaitingTask ? "Start" : "Send"}

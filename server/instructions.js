@@ -123,3 +123,12 @@ export const CODEX_PLAN_INSTRUCTIONS = forCodex(PLAN_INSTRUCTIONS);
 // first turn (planTurn: Codex, ACP agents) or ends with Claude's ExitPlanMode.
 export const boardInstructions = ({ planTurn = false, shorthand = false } = {}) =>
   planTurn ? (shorthand ? CODEX_SHORTHAND_BOARD_INSTRUCTIONS : CODEX_BOARD_INSTRUCTIONS) : shorthand ? SHORTHAND_BOARD_INSTRUCTIONS : BOARD_INSTRUCTIONS;
+
+// A repo with no board yet (no whiteboard.zip, board-file.js): the first message has the agent map
+// the codebase as it stands before anything else, so the board starts full. With a task, it then
+// plans the task on that map in the same turn; without one, it stops there and the next message is
+// the task.
+export const mapTurn = (task) =>
+  `This repo has no board yet. First map the codebase as it stands onto the board, read-only, so the whole system is on it before any change: project (its name, and a goal saying what the system does today), phase planning, every component that matters (3 to 10, not just the ones a task would touch) with its paths, libs from the manifests, api and grid cell, all v built; their connections with via and api; the parts inside each component; the main flows (1 to 3); the tables from the schema or migrations; and a decision with state accepted for each architectural choice already in the code that you can show evidence for, with that evidence and a check (an existing test, or a command). No tasks for the map. Don't change any files.${
+    task ? `\n\nThen plan this task on that map, as usual:\n${task}` : "\n\nThen stop: say in two sentences what the system is and how it fits together. Don't ask to leave plan mode; the task comes in the next message."
+  }`;

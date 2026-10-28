@@ -279,7 +279,8 @@ export class AcpRun extends Run {
     }
     const ok = !err && stop === "end_turn";
     // The planning turn's end is the plan: the gate, as Claude's ExitPlanMode is.
-    if (this.stage === "planning" && ok) {
+    if (this.mapOnly) this.mapOnly = !(this.mapTurnEnding = true); // the map is drawn; the task is the next message
+    else if (this.stage === "planning" && ok) {
       this.recordPlan("Proposed a plan");
       const answer = await this.ask({ type: "gate" });
       if (answer.stopped) return;

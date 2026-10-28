@@ -237,7 +237,8 @@ export class CodexRun extends Run {
     this.turnId = null;
     const ok = turn.status === "completed";
     // The planning turn's end is the plan: the gate, as Claude's ExitPlanMode is.
-    if (this.stage === "planning" && ok && !this.stopped) {
+    if (this.mapOnly) this.mapOnly = !(this.mapTurnEnding = true); // the map is drawn; the task is the next message
+    else if (this.stage === "planning" && ok && !this.stopped) {
       this.recordPlan("Proposed a plan");
       const answer = await this.ask({ type: "gate" });
       if (answer.stopped) return;

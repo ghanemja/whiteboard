@@ -6,9 +6,10 @@ import { ACP_AGENTS, acpAgent } from "./acp-agents.js";
 import { commitsSince, diff, head, isRepo, snapshot } from "./changes.js";
 import { serveBoardMcp } from "./board-mcp.js";
 import { boardTools } from "./board-tool.js";
-import { boardInstructions, PLAN_INSTRUCTIONS } from "./instructions.js";
+import { boardInstructions, mapTurn, PLAN_INSTRUCTIONS } from "./instructions.js";
 import { stateLines } from "./shorthand.js";
-import { listRecordings, readChain, readDecisions, readRecording, Recorder } from "./recordings.js";
+import { chainIds, importRuns, listRecordings, readChain, readDecisions, readRecording, Recorder } from "./recordings.js";
+import { boardFile, readBoardFile, writeBoardFile } from "./board-file.js";
 import { cloneRepo, folderError, listFolders, startFolder } from "./repos.js";
 import { layerOf, LAYERS, parseColumns, parseSteps, sentenceCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "../src/engine/views.js";
 
@@ -232,7 +233,7 @@ const COMPONENT_STATUS = new Set(["planned", "building", "built", "verified", "f
 const DECISION_STATES = new Set(["proposed", "accepted", "changed", "rejected"]);
 
 export class Run {
-  constructor({ repo, brief, origin = "http://127.0.0.1:5199", from = null, boardState = null, edits = [] }) {
+  constructor({ repo, brief, origin = "http://127.0.0.1:5199", from = null, boardState = null, edits = [], mapFirst = false }) {
     this.id = randomUUID().slice(0, 8);
     // The board over MCP's HTTP transport, for agents that can't take Claude's in-process tool
     // (board-mcp.js). The token stays out of events and recordings.
@@ -259,19 +260,24 @@ export class Run {
     this.git = null; // { base, head, tree, sent, files }: the repo as the run found it, and what it's changed since (changes.js)
     const { model, effort } = settings();
     this.shorthand = shorthand();
-    this.recorder = new Recorder({ id: this.id, brief, repo, model, effort, ...(this.shorthand ? { shorthand: true } : {}), startedAt: new Date(this.started).toISOString(), project: null, ...(from ? { from: from.id } : {}) });
+    const mapOnly = mapFirst && !from && !brief;
+    this.recorder = new Recorder({ id: this.id, brief: mapOnly ? "Map the codebase onto the board" : brief, repo, model, effort, ...(this.shorthand ? { shorthand: true } : {}), startedAt: new Date(this.started).toISOString(), project: null, ...(from ? { from: from.id } : {}) });
     this.brief = brief;
     // A run that carries on from a saved board (a living document): that board is its starting
     // point, and that run's decision log is the handover the agent reads first.
     this.from = from;
     this.boardState = boardState;
+    // A repo with no board yet: the first turn maps the codebase (mapTurn); with no task, that's all
+    // it does, and there's no plan to approve until the next message.
+    this.mapFirst = mapFirst && !from;
+    this.mapOnly = this.mapFirst && !brief;
     this.startEdits = edits;
     if (from) {
       this.seed(from.chain.flat());
       if (this.project || this.goal) this.recorder.update({ ...(this.project ? { project: this.project } : {}), ...(this.goal ? { goal: this.goal } : {}) });
       this.recorder.setPlan(this.planMarkdown());
     }
-    this.recorder.decide({ t: 0, who: "you", title: from ? `Carried on from run ${from.id}` : "Started a task", quote: brief });
+    this.recorder.decide({ t: 0, who: "you", title: from ? `Carried on from run ${from.id}` : mapOnly ? "Asked for a map of the codebase" : "Started a task", quote: brief });
   }
 
   // The saved runs' ops (and approvals), oldest first, replayed into the mirror without being
@@ -295,7 +301,7 @@ export class Run {
   // What starts the session: the task; carrying on, the handover too (the last run's decision log
   // and the board as it is now), and the board edits it started with, if that's how it started.
   get firstTurn() {
-    if (!this.from) return this.brief;
+    if (!this.from) return this.mapFirst ? mapTurn(this.brief) : this.brief;
     const edits = this.startEdits.length ? `I changed the board:\n<board_edits>${JSON.stringify(this.startEdits)}</board_edits>\n\nRespond to these changes and update the code and the board to match.` : this.brief;
     const state = !this.boardState ? "" : this.shorthand ? `\n\n<board_state>\n${stateLines(this.boardState)}\n</board_state>` : `\n\n<board_state>${JSON.stringify(this.boardState)}</board_state>`;
     return `${edits}\n\n<handover from="${this.from.id}">\n${this.from.log ?? ""}\n</handover>${state}`;
@@ -606,7 +612,9 @@ export class Run {
         const tree = await snapshot(this.repo);
         if (tree === this.git.tree) return;
         this.git.tree = tree;
-        const files = await diff(this.repo, this.git.base, tree);
+        // The board's own file in the repo isn't the agent's work.
+        const own = boardFile();
+        const files = (await diff(this.repo, this.git.base, tree)).filter((f) => !own || (f.path !== own && f.path !== `${own}.tmp`));
         const commits = await commitsSince(this.repo, this.git.head);
         const sent = this.git.sent;
         this.git.sent = new Map(files.map((f) => [f.path, f.patch ?? ""]));
@@ -749,9 +757,22 @@ export class Run {
         ],
         quote,
       });
-      this.emit({ type: "done", ok, cost, turns, message: ok ? null : why });
+      // The map-only first turn's end: the board is drawn and the task comes next, so it isn't a finished run.
+      const mapped = this.mapTurnEnding;
+      this.mapTurnEnding = false;
+      this.emit({ type: "done", ok, cost, turns, message: ok ? null : why, ...(mapped && ok ? { mapped: true } : {}) });
+      return this.saveBoardFile().catch((err) => console.warn(`[whiteboard] couldn't save ${boardFile()}: ${err.message}`));
     });
     return this.turnEnd;
+  }
+
+  // The board, saved in the repo (board-file.js): this run and the ones it carried on from.
+  async saveBoardFile() {
+    const name = boardFile();
+    if (!name || this.stopped) return;
+    await this.recorder.flush?.();
+    const runs = chainIds(this.id).map((id) => ({ id, jsonl: readRecording(id), decisions: readDecisions(id) ?? "" })).filter((r) => r.jsonl);
+    writeBoardFile(this.repo, { runs, project: this.project ?? null, goal: this.goal ?? null }, name);
   }
 
   // ---- control from the browser ----
@@ -954,8 +975,10 @@ export class ClaudeRun extends Run {
     }
 
     if (msg.type === "result") {
+      this.mapTurnEnding = this.mapOnly;
       this.finishTurn({ ok: !msg.is_error, why: msg.subtype, cost: msg.total_cost_usd, turns: msg.num_turns });
-      if (!msg.is_error) this.turnEnd.then(() => this.planGateAfterTurn());
+      if (this.mapOnly) this.mapOnly = false; // the map is drawn; the task is the next message
+      else if (!msg.is_error) this.turnEnd.then(() => this.planGateAfterTurn());
     }
   }
 
@@ -1129,7 +1152,10 @@ export function runsMiddleware({ defaultRepo, sandbox = path.resolve("sandbox") 
       const repo = path.resolve(String(body.repo || defaultRepo || ""));
       if (!repo || !existsSync(repo)) return json(res, 400, { error: `There's no folder at ${repo}. Pick one with Browse, or run npm run sandbox to make the sample repo.` });
       if (!statSync(repo).isDirectory()) return json(res, 400, { error: `Not a folder: ${repo}` });
-      if (!body.brief?.trim()) return json(res, 400, { error: "Describe the task first." });
+      // A repo with no board yet is mapped first; with no task, that's the whole run (map only).
+      const own = boardFile();
+      const mapFirst = !body.from && !!own && !existsSync(path.join(repo, own));
+      if (!body.brief?.trim() && !(body.map && mapFirst)) return json(res, 400, { error: body.map ? `This repo already has a board (${own}).` : "Describe the task first." });
       // Carrying on from a saved run: its board (and the runs it carried on from) and its decision log.
       let from = null;
       if (body.from) {
@@ -1140,7 +1166,7 @@ export function runsMiddleware({ defaultRepo, sandbox = path.resolve("sandbox") 
       const engines = { claude: () => ClaudeRun, codex: async () => (await import("./codex-run.js")).CodexRun, acp: async () => (await import("./acp-run.js")).AcpRun };
       const Engine = await engines[engine()]();
       const edits = Array.isArray(body.edits) ? body.edits : [];
-      const run = new Engine({ repo, brief: body.brief.trim(), origin: localOrigin(req.socket), from, boardState: body.board_state ?? null, edits });
+      const run = new Engine({ repo, brief: String(body.brief ?? "").trim(), origin: localOrigin(req.socket), from, boardState: body.board_state ?? null, edits, mapFirst });
       runs.set(run.id, run);
       run.start();
       return json(res, 200, { id: run.id });
@@ -1153,6 +1179,35 @@ export function runsMiddleware({ defaultRepo, sandbox = path.resolve("sandbox") 
       // Plain text so a browser shows the decision log instead of downloading it.
       res.setHeader("content-type", parts[2] === "decisions" ? "text/plain; charset=utf-8" : "application/x-ndjson; charset=utf-8");
       return res.end(body);
+    }
+
+    // The board saved in a repo (board-file.js). GET: is there one, and what is it. POST {repo}: its
+    // runs into recordings/, so the browser opens the latest like a saved run and carries on from it.
+    if (parts[0] === "repo-board" && parts.length === 1 && (req.method === "GET" || req.method === "POST")) {
+      let repoArg = url.searchParams.get("repo");
+      if (req.method === "POST") {
+        try {
+          repoArg = (await readJson(req)).repo;
+        } catch {
+          return json(res, 400, { error: "Request body must be JSON." });
+        }
+      }
+      const dir = path.resolve(String(repoArg || defaultRepo || ""));
+      const name = boardFile();
+      if (!name) return json(res, 200, { file: null, saved: null });
+      if (!existsSync(dir) || !statSync(dir).isDirectory()) return json(res, 200, { file: name, saved: null, missing: true });
+      let saved;
+      try {
+        saved = readBoardFile(dir, name);
+      } catch (err) {
+        return json(res, req.method === "GET" ? 200 : 400, { file: name, saved: null, error: `${name} can't be read: ${err.message}` });
+      }
+      if (req.method === "GET") {
+        const { project, goal, savedAt, latest, runs } = saved?.meta ?? {};
+        return json(res, 200, { file: name, saved: saved ? { project, goal, savedAt, latest, runs: runs.length } : null });
+      }
+      if (!saved) return json(res, 404, { error: `There's no ${name} in ${dir}.` });
+      return json(res, 200, { id: importRuns(saved.runs) });
     }
 
     // Picking the repo: a folder's subfolders for the picker, or a git URL cloned into sandbox/.

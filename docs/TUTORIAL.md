@@ -265,6 +265,10 @@ To work on another repo, use the two buttons beside the field:
 
 ![The start screen with Browse open on sandbox/: a cloned repo and the practice repo, both marked git](../screenshots/tutorial/pick-a-repo.png)
 
+Under the field, a line says whether the repo already has a board. The first time, it doesn't, so the agent starts by drawing the code as it is: every part, how they connect, and the choices already made in it. Then it plans your task on that drawing. **Just map it** draws the map without a task, so you can look first; then type your task in the box. The board is saved in the repo as `whiteboard.zip` after every step. Next time you pick that repo, the line says it has a board: your task carries on from it, and **Open it** shows it first. Commit `whiteboard.zip`, and your teammates get the same board.
+
+In the message box, ↑ and ↓ bring back what you typed before.
+
 Only use repos you trust: the agent loads a repo's own settings, and those can run commands.
 
 A run costs about $0.20–0.40.

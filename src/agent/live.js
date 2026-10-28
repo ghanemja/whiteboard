@@ -19,7 +19,16 @@ async function post(url, body) {
 }
 
 // from: a saved run's id, to carry on from its board (with the board as it is now, and any edits that start it).
-export const startRun = ({ repo, brief, from, board_state, edits }) => post("/api/runs", { repo, brief, from, board_state, edits });
+export const startRun = ({ repo, brief, from, board_state, edits, map }) => post("/api/runs", { repo, brief, from, board_state, edits, map });
+
+// The board saved in a repo (whiteboard.zip, server/board-file.js): { file, saved: { project, goal,
+// savedAt, latest, runs } | null }, file null when it's turned off. Opening it makes its runs saved
+// runs here: { id } of the latest.
+export async function getRepoBoard(repo) {
+  const res = await fetch(`/api/runs/repo-board?repo=${encodeURIComponent(repo)}`);
+  return res.ok ? res.json() : { file: null, saved: null };
+}
+export const openRepoBoard = (repo) => post("/api/runs/repo-board", { repo });
 
 // ---- picking the repo (server/repos.js) ----
 // A folder's subfolders: { path, parent, repo, crumbs, folders: [{ name, path, repo }], more }. With
