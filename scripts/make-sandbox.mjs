@@ -1,10 +1,12 @@
 // Creates (or resets) sandbox/linkshort: a tiny, real repo for the agent to work in.
 // It has no dependencies, so `npm test` (node --test) runs without installing anything.
+// `npm run dev` runs it with --if-missing, so it's there the first time; `npm run sandbox` resets it.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve("sandbox/linkshort");
+if (process.argv.includes("--if-missing") && existsSync(root)) process.exit(0);
 rmSync(root, { recursive: true, force: true });
 
 const files = {

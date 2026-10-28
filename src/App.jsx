@@ -11,6 +11,7 @@ import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour,
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 import { TourCard, TourSpotlight } from "./Tour";
 import { RepoField } from "./RepoPicker";
+import { LiveSetup } from "./LiveSetup";
 
 // Tasks that fit the sample repo (sandbox/linkshort, created by `npm run sandbox`).
 const EXAMPLES = [
@@ -2325,12 +2326,7 @@ export default function App() {
                     </button>
                   </div>
                 )}
-                {agent && !agent.live && (
-                  <p className="note">
-                    This is the scripted demo. To run a real agent on a repo, set <code>ANTHROPIC_API_KEY</code> and restart{" "}
-                    <code>npm run dev</code>.
-                  </p>
-                )}
+                {agent && !agent.live && <LiveSetup className="note" />}
                 <SavedRuns recordings={recordings} onReplay={(id) => replay(id)} onOpen={(id) => replay(id, { instant: true })} />
               </div>
             ))}

@@ -74,12 +74,12 @@ Needs Node 20+ and git.
 git clone https://github.com/ghanemja/whiteboard.git
 cd whiteboard
 npm install                  # also copies Excalidraw's fonts into public/fonts
-npm run sandbox              # a safe repo to try: sandbox/linkshort (run again to reset)
-cp .env.example .env.local   # optional: set AGENT_URL / AGENT_KEY / AGENT_MODEL to run a real agent
-npm run dev                  # http://localhost:5199
+cp .env.example .env.local   # optional, to run a real agent: put your Anthropic API key in it as AGENT_KEY
+npm run dev                  # http://localhost:5199; makes the sample repo (sandbox/linkshort) the first time
 ```
 
-- **Nothing set:** a scripted demo plays.
+- **Nothing set:** a scripted demo plays, and its intro says how to run a real agent.
+- **Sample repo:** `npm run sandbox` resets `sandbox/linkshort` to how it started.
 - **With a model** ([Models](#models): a key for Anthropic's API, or a URL for anything else): the repo field starts at the sandbox (or `AGENT_REPO`); type any local folder, **Browse** for one (git repos are marked), or **Clone** a git URL into `sandbox/`; then describe a task and start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
 - **Saved runs:** `cp fixtures/recordings/* recordings/` adds three real runs under "Saved boards".
 - **Tests:** `npm test`.

@@ -64,11 +64,11 @@ Every run is recorded so it can be replayed, reopened, and read as a decision lo
 
 ```bash
 npm install          # also copies Excalidraw fonts into public/fonts (postinstall)
-npm run sandbox      # creates/resets sandbox/linkshort: a tiny URL shortener with node:test tests
-npm run dev          # http://localhost:5199 (port fixed in vite.config.js)
+npm run dev          # http://localhost:5199 (port fixed in vite.config.js); creates sandbox/linkshort if it's missing
+npm run sandbox      # resets sandbox/linkshort: a tiny URL shortener with node:test tests
 ```
 
-- With `ANTHROPIC_API_KEY` (shell or `.env.local`, see `.env.example`), the app runs **live agent** mode: pick a repo (defaults to `sandbox/linkshort`; **Browse** for a local folder, or **Clone** a git URL into `sandbox/`), describe a task or click a suggestion, and an Agent SDK session starts in that folder.
+- With `AGENT_KEY` in `.env.local` (see `.env.example`; `ANTHROPIC_API_KEY` in the shell works too), the app runs **live agent** mode: pick a repo (defaults to `sandbox/linkshort`; **Browse** for a local folder, or **Clone** a git URL into `sandbox/`), describe a task or click a suggestion, and an Agent SDK session starts in that folder.
 - Without a key it plays the **scripted demo** ("DocQA · chat with your PDFs"). The demo is also reachable in live mode via "Or watch the scripted demo".
 - Settings (dev server only, loaded via `loadEnv` for `ANTHROPIC_` and `AGENT_` prefixes): `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo path).
 - `.claude/launch.json` has a `whiteboard` config (`npm run dev`, port 5199) for the desktop app's preview pane.
@@ -517,6 +517,6 @@ Rules:
 ## 9. Moving to the cloud
 
 - The code is on GitHub: **https://github.com/ghanemja/whiteboard** (branch `main`; the repo is **public**). A cloud session starts from that repo.
-- `.gitignore` excludes `node_modules`, `dist`, `public/fonts`, `sandbox`, `recordings`, `.env*`. `fixtures/recordings/` (136 KB) and `screenshots/` (6.8 MB) are committed; the recordings contain local paths (`/Users/janelle/...`) and agent session ids, nothing secret.
-- In the cloud: `npm install && npm run sandbox && npm run dev`. Live agent runs need `ANTHROPIC_API_KEY` in that environment; without it the app runs the demo, which is enough to build and check most of the Timeline (plus the fixtures for real runs).
+- `.gitignore` excludes `node_modules`, `dist`, `public/fonts`, `sandbox`, `recordings`, `.env*`. `fixtures/recordings/` (136 KB) and `screenshots/` (6.8 MB) are committed; their repo paths are scrubbed to `/home/you/whiteboard/...`, and they hold agent session ids, nothing secret.
+- In the cloud: `npm install && npm run dev` (the dev script makes the sandbox). Live agent runs need `ANTHROPIC_API_KEY` in that environment; without it the app runs the demo, which is enough to build and check most of the Timeline (plus the fixtures for real runs).
 - Not movable: the **cable chamfer** change for the user's `cable` repo lives in a separate local git worktree (`~/Documents/cable-chamfer`, branch `whiteboard/chamfer`), uncommitted, 80/80 tests passing, **waiting for the user's review; don't commit it without them.**

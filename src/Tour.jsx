@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BOARD } from "./engine/tour";
 import { placeCard } from "./engine/spotlight";
+import { LiveSetup } from "./LiveSetup";
 
 // A step's "◇", drawn the way the board draws a decision: D in a purple diamond, dashed until
 // the plan is approved.
@@ -15,7 +16,7 @@ const marked = (s, proposed) =>
 // always there: it does the step for you if you haven't (onSkip), so nobody has to work out what
 // to click. A step that waits for the run (it's still planning, say) says so, and Next waits too.
 // The first step is the intro, a pop-up over the demo as it starts: Show me around, or skip it
-// (with an API key, straight to your own task).
+// (with an API key, straight to your own task; without one, it says how to get there).
 export function TourCard({ step, proposed, n, total, wait, manual, live, onBack, onNext, onSkip, onExit, onOwnTask, finish }) {
   if (step.intro)
     return (
@@ -33,6 +34,7 @@ export function TourCard({ step, proposed, n, total, wait, manual, live, onBack,
             Show me around →
           </button>
         </div>
+        {!live && <LiveSetup />}
       </div>
     );
   const acts = !step.next && !manual;

@@ -22,8 +22,7 @@ You need [Node.js](https://nodejs.org) 20 or newer, and git. In a terminal:
 git clone https://github.com/ghanemja/whiteboard.git
 cd whiteboard
 npm install          # downloads the libraries it uses
-npm run sandbox      # makes a small practice repo in sandbox/linkshort
-npm run dev          # starts the app
+npm run dev          # starts the app (and makes a small practice repo in sandbox/linkshort the first time)
 ```
 
 Open **http://localhost:5199** in your browser. Without an API key, a scripted demo starts by itself. That's all you need for this tutorial.
