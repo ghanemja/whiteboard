@@ -132,8 +132,8 @@ function toolDef(def = UPDATE_BOARD, name = `mcp__board__${def.name}`) {
 // and keys it doesn't have (the demo's cause) are the server's job.
 const OPS = new Set(Op.shape.op.options);
 const KEYS = new Set(Object.keys(Op.shape));
-const COMMA = new Set(["over", "affects", "evidence", "builds_on", "paths", "libs", "options"]);
-const SEMI = new Set(["steps", "columns", "links"]);
+const COMMA = new Set(["over", "affects", "evidence", "builds_on", "paths", "libs", "options", "implements", "uses"]);
+const SEMI = new Set(["steps", "columns", "links", "attrs", "methods"]);
 function toToolOp(a) {
   const op = {};
   for (const [k, v] of Object.entries(a)) {

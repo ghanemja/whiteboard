@@ -67,7 +67,7 @@ test("each bad line gets its number and the reason; good lines still parse", () 
 // The demo's ops, as the agent sends them (the token study's conversion of its tags).
 function demoOps() {
   const keys = new Set(Object.keys(Op.shape)), kinds = new Set(Op.shape.op.options), ops = [];
-  const LIST = new Set(["over", "affects", "evidence", "builds_on", "paths", "libs", "options"]), SEMI = new Set(["steps", "columns", "links"]);
+  const LIST = new Set(["over", "affects", "evidence", "builds_on", "paths", "libs", "options", "implements", "uses"]), SEMI = new Set(["steps", "columns", "links", "attrs", "methods"]);
   const p = createStreamParser({
     onText() {},
     onOp(a) {

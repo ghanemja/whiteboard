@@ -270,6 +270,8 @@ The instructions grow by the line syntax and the chat style; every other rule is
 
 ### Counted (scripts/token-study.mjs, section 12)
 
+These are the counts at `112f34e`, the code the live A/B ran. The instructions have grown since: classifying each request as a question or a change, and the `class` op for the UML view. Rerun on 2026-10-28 after those, the fixed part per request is 5,230 tokens standard and 4,354 in shorthand (instructions 4,012, update_board 216, read_board 126): +412 in shorthand, about $0.003 more for a run's cold first request and well under a cent across its cached ones.
+
 | Fixed, every request | Standard | Shorthand | Change |
 |---|---:|---:|---:|
 | Board instructions | 3,149 | 3,617 | +15% |

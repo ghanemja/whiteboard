@@ -10,6 +10,7 @@ import { boardInstructions, mapTurn, PLAN_INSTRUCTIONS } from "./instructions.js
 import { stateLines } from "./shorthand.js";
 import { chainIds, importRuns, listRecordings, readChain, readDecisions, readRecording, Recorder } from "./recordings.js";
 import { boardFile, readBoardFile, writeBoardFile } from "./board-file.js";
+import { mergeClass, toClassMermaid } from "../src/engine/uml.js";
 import { cloneRepo, folderError, listFolders, startFolder } from "./repos.js";
 import { layerOf, LAYERS, parseColumns, parseSteps, sentenceCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "../src/engine/views.js";
 
@@ -253,6 +254,7 @@ export class Run {
     this.questions = new Map(); // question/assumption id -> { kind, n, text, options, about, state, answer }
     this.flows = new Map(); // flow id -> { id, name, steps: [{ from, to, what }] }
     this.tables = new Map(); // table id -> { id, name, of, columns: [{ name, type, pk, unique, fk }] }
+    this.classes = new Map(); // class id -> { id, of, name, kind, attrs, methods, extends, implements, uses } (uml.js)
     this.goal = null;
     this.tests = new Map(); // test name -> passed?, from the latest test output that printed it
     this.steer = null; // what the user asked this turn, so decisions it changes can say so
@@ -375,7 +377,7 @@ export class Run {
   viewModel() {
     const nodes = Object.fromEntries([...this.nodes].map(([id, n]) => [id, { id, ...n }]));
     const edges = Object.fromEntries([...this.edges].map(([k, e]) => { const [from, to] = k.split(">"); return [k, { from, to, ...e }]; }));
-    return { project: this.project ?? "", nodes, edges, tables: Object.fromEntries(this.tables) };
+    return { project: this.project ?? "", nodes, edges, tables: Object.fromEntries(this.tables), classes: Object.fromEntries(this.classes ?? []) };
   }
 
   planMarkdown() {
@@ -394,6 +396,7 @@ export class Run {
       out.push("### Diagrams", "", "Container view (C4):", "", "```mermaid", toMermaid(model).trimEnd(), "```", "");
       out.push("Data flow:", "", "```mermaid", toDfdMermaid(model).trimEnd(), "```", "");
       if (this.tables.size) out.push("Data model (ER):", "", "```mermaid", toErMermaid(model).trimEnd(), "```", "");
+      if (this.classes?.size) out.push("Classes (UML):", "", "```mermaid", toClassMermaid(model).trimEnd(), "```", "");
       for (const f of this.flows.values()) out.push(`Flow: ${f.name}`, "", "```mermaid", toSequence(model, f).trimEnd(), "```", "");
     }
     if (this.edges.size) {
@@ -569,6 +572,9 @@ export class Run {
         case "remove":
           this.nodes.delete(op.id);
           for (const k of [...this.edges.keys()]) if (k.split(">").includes(op.id)) this.edges.delete(k);
+          break;
+        case "class":
+          if (op.id) (this.classes ??= new Map()).set(op.id, mergeClass(this.classes.get(op.id), op));
           break;
         case "table": {
           const key = op.id || op.name;

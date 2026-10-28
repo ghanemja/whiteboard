@@ -16,7 +16,7 @@
 const POSITIONAL = { request: "kind", phase: "name", edge: "from>to", unlink: "from>to", "adopt-edge": "from>to", "adopt-note": "el", answer: "el" };
 // Always lists. steps, links and columns are lists with two or more items; one item stays a string,
 // which the board splits on ";" as well. A node's api is a list, an edge's the one call.
-const LISTS = new Set(["over", "affects", "evidence", "builds_on", "paths", "libs", "options"]);
+const LISTS = new Set(["over", "affects", "evidence", "builds_on", "paths", "libs", "options", "attrs", "methods", "implements", "uses"]);
 const SPLITS = new Set(["steps", "links", "columns"]);
 const NUMBERS = new Set(["col", "row"]);
 
@@ -173,9 +173,10 @@ export function stateLines(state) {
   for (const e of s.edges ?? []) out.push(toLine({ op: "edge", ...e }));
   for (const d of s.decisions ?? []) out.push(toLine({ op: "decision", ...d }));
   for (const t of s.tasks ?? []) out.push(toLine({ op: "task", ...t }));
+  for (const c of s.classes ?? []) out.push(toLine({ op: "class", ...c }));
   for (const { kind, ...q } of s.questions ?? []) out.push(toLine({ op: kind === "assumption" ? "assumption" : "question", ...q }));
   // Anything else a newer browser sends, kept rather than dropped.
-  const known = new Set(["project", "goal", "phase", "nodes", "edges", "decisions", "tasks", "questions", "free_cells", "notes", "kept"]);
+  const known = new Set(["project", "goal", "phase", "nodes", "edges", "decisions", "tasks", "classes", "questions", "free_cells", "notes", "kept"]);
   for (const [k, v] of Object.entries(s)) if (!known.has(k) && v != null) out.push(`# ${k}: ${JSON.stringify(v)}`);
   if (s.free_cells?.length) out.push(`# free cells (col,row): ${s.free_cells.map((c) => `${c.col},${c.row}`).join(" ")}`);
   if (s.notes) out.push(`# notes: ${s.notes}`);

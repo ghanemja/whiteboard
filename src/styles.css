@@ -2272,6 +2272,26 @@ button:focus-visible {
   color: var(--ink);
 }
 
+/* UML: which of its diagrams to show, ticked; All ticks or clears them all. */
+.uml-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}
+.uml-box input {
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 /* Export's look: Clean (for slides and docs) or Sketch (as on the board), for the SVG and PNG. */
 .export-look {
   display: flex;

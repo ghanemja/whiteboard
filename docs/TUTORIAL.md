@@ -169,6 +169,7 @@ The bar above the board shows the same plan other ways. It never changes the pla
 | **Data flow** | Processes, data stores and outside services, with the data on each arrow |
 | **Database** | The tables each data store holds: columns, keys, and how they relate (an ER diagram) |
 | **Sequence** | One request, step by step, as a sequence diagram (pick the flow under **Flows & export**) |
+| **UML** | UML diagrams: tick **Class**, **Component**, **Sequence** and **Activity**, one or all, and they're drawn one under another |
 
 Each part sits on a colored plate: that's its **layer** (blue Frontend, violet Backend, teal Data, orange ML, grey External; the key under the board says which is which). The colors are the same in every view, and so is the hand-drawn look, so Backend is violet whether you read Pictures, C4, Database or Sequence.
 

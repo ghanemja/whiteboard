@@ -8,6 +8,7 @@ import { buildTimeline, drawTimeline, TL, xToTime } from "./timeline";
 import { c4Tag, dataOf, dfdIds, dfdRole, LAYER_COLOR, LAYERS, layerOf, parseColumns, parseLinks, parseSteps, sentenceCase, tagCase } from "./views";
 import { explodeLayout, explodeOf, explodeSkeletons } from "./explode";
 import { drawEr, drawInside, drawSequence } from "./diagrams";
+import { drawUml, mergeClass } from "./uml";
 import { STICKERS, stickerEdit } from "./stickers";
 
 export { MILESTONE, PHASES, STICKERS };
@@ -290,7 +291,7 @@ export class Board {
   }
 
   reset() {
-    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {}, questions: {}, flows: {}, tables: {}, parts: {}, unowned: [] };
+    this.model = { project: "", goal: null, phase: null, slots: {}, tasks: {}, nodes: {}, edges: {}, notes: [], decisions: {}, questions: {}, flows: {}, tables: {}, parts: {}, classes: {}, unowned: [] };
     this.diagramSig = null; // what the diagram canvas last drew
     this.focus = null; // what the board is narrowed to: { layer } or { flow }, the rest faded; { layer, explode } opens the layer up
     this.exSig = ""; // what the exploded layer last drew (drawExplode)
@@ -544,6 +545,7 @@ export class Board {
       case "node": return this.addNode(a);
       case "flow": return this.setFlow(a);
       case "table": return this.setTable(a);
+      case "class": return this.setClass(a);
       case "part": return this.setPart(a);
       case "edge": return this.addEdge(a);
       case "status": return this.setStatus(a.id, a.v);
@@ -633,6 +635,10 @@ export class Board {
         id, title, chose, over, why, affects, state, ...(verify ? { verify } : {}), ...(proof ? { proof } : {}),
       })),
       tasks: Object.values(m.tasks).map(({ id, phase, text, status }) => ({ id, phase, text, status })),
+      // The classes by name and place only: their members are in the agent's own ops.
+      ...(Object.keys(m.classes ?? {}).length
+        ? { classes: Object.values(m.classes).map(({ id, of, name, kind, extends: ext, implements: impl, uses }) => ({ id, of, name, kind, ...(ext ? { extends: ext } : {}), ...(impl.length ? { implements: impl } : {}), ...(uses.length ? { uses } : {}) })) }
+        : {}),
       ...(Object.keys(m.questions).length
         ? { questions: Object.values(m.questions).map(({ id, kind, text, state, answer }) => ({ id, kind, text, state, ...(answer ? { answer } : {}) })) }
         : {}),
@@ -1611,6 +1617,13 @@ export class Board {
     return [`table:${key}`, ...(this.model.tables[key].of ? [`node:${this.model.tables[key].of}`] : [])];
   }
 
+  // ---- the code's classes, for the UML view's class diagram (uml.js mergeClass) ----
+  setClass(a) {
+    if (!a.id) return [];
+    const c = (this.model.classes[a.id] = mergeClass(this.model.classes[a.id], a));
+    return c.of ? [`node:${c.of}`] : [];
+  }
+
   // ---- inside a component: its parts (the "Look inside" layer views) ----
   // { id, of (the component), name, kind (route, page, job, step, model…), layer (when not its
   // component's: an embedding step in a worker is ml), links: [{ to: part, table or component, what }] }
@@ -1641,7 +1654,7 @@ export class Board {
     const flow = this.model.flows[flowId] ?? Object.values(this.model.flows)[0];
     const sk = this.diagramSkeleton(kind, flowId);
     const sig = JSON.stringify(sk);
-    const which = `${kind}:${kind === "sequence" ? flow?.id : kind === "inside" ? flowId : ""}`;
+    const which = `${kind}:${kind === "sequence" ? flow?.id : kind === "inside" || kind === "uml" ? flowId : ""}`;
     if (sig === this.diagramSig && which === this.diagramWhich) return;
     const refit = which !== this.diagramWhich || !this.diagramSig;
     this.diagramSig = sig;
@@ -1651,10 +1664,15 @@ export class Board {
     if (refit && out.length) setTimeout(() => this.diagramApi.scrollToContent(out, { fitToViewport: true, viewportZoomFactor: 0.9 }), 40);
   }
 
-  // A diagram from the model: kind "er", "sequence" (arg: the flow id, else the first flow) or
-  // "inside" (arg: the layer). The skeleton, then the elements: the diagram canvas draws these,
-  // and so does a view pinned beside the board.
+  // A diagram from the model: kind "er", "sequence" (arg: the flow id, else the first flow),
+  // "inside" (arg: the layer) or "uml" (arg: "class,component|flowId", the UML diagrams ticked and
+  // the flow for sequence and activity). The skeleton, then the elements: the diagram canvas draws
+  // these, and so does a view pinned beside the board.
   diagramSkeleton(kind, arg) {
+    if (kind === "uml") {
+      const [kinds, flowId] = String(arg ?? "").split("|");
+      return drawUml(this.model, { kinds: kinds ? kinds.split(",") : [], flow: this.model.flows[flowId] ?? Object.values(this.model.flows)[0] });
+    }
     const flow = this.model.flows[arg] ?? Object.values(this.model.flows)[0];
     return kind === "er" ? drawEr(this.model) : kind === "sequence" ? drawSequence(this.model, flow) : kind === "inside" ? drawInside(this.model, arg) : [];
   }

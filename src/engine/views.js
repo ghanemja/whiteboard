@@ -82,12 +82,12 @@ export function parseSteps(steps) {
 }
 
 // Text inside a Mermaid label: no quotes, angle brackets or statement breaks.
-const q = (s) => String(s ?? "").replace(/;/g, ",").replace(/"/g, "'").replace(/</g, "#lt;").replace(/>/g, "#gt;").replace(/\s+/g, " ").trim();
-const alias = (id) => `n_${String(id).replace(/[^A-Za-z0-9_]/g, "_")}`;
+export const q = (s) => String(s ?? "").replace(/;/g, ",").replace(/"/g, "'").replace(/</g, "#lt;").replace(/>/g, "#gt;").replace(/\s+/g, " ").trim();
+export const alias = (id) => `n_${String(id).replace(/[^A-Za-z0-9_]/g, "_")}`;
 
 // Mermaid classes in the board's colors, so an export reads like the board: each layer's plate
 // color, people in "you" pink. pairs: [[Mermaid id, layer key or null for a person]].
-function colorClasses(pairs) {
+export function colorClasses(pairs) {
   const lines = [];
   const add = (name, c, ids) => ids.length && lines.push(`  classDef ${name} fill:${c.fill},stroke:${c.stroke},color:#1e1e1e`, `  class ${ids.join(",")} ${name}`);
   for (const l of LAYERS) add(l.key, LAYER_COLOR[l.key], pairs.filter(([, k]) => k === l.key).map(([id]) => id));

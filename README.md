@@ -48,8 +48,18 @@ The bar above the board shows the same plan other ways:
   | Data flow | A data flow diagram (Gane-Sarson): numbered processes, data stores (DS1…), external entities with a shadow, and the data each link carries | Yes |
   | Database | Each data store's tables (an ER diagram): columns and types, PK/FK/UK keys, crow's-foot relations | Read-only |
   | Sequence | One flow as a UML sequence diagram: lifelines, numbered messages, replies dashed | Read-only |
+  | UML | The UML diagrams you tick, one under another: **Class**, **Component**, **Sequence**, **Activity** (**All** ticks them all) | Read-only |
 
   The editable ones redraw the same board, so steering works in all three. Every notation keeps its own shapes (C4's boxes and tags, data flow's processes and stores, ER tables with crow's feet, sequence lifelines) and is drawn in Excalidraw's one hand-drawn look: the same sketchy lines and hand font as Pictures. C4 and Data flow draw their own key under the diagram. Status is color everywhere.
+- **UML** shows the diagrams you tick (remembered), each under its heading:
+  - **Class:** the classes, interfaces and modules in the code the agent read or changed (its `class` op): attributes, operations, and how they relate (inheritance, interfaces, dependencies). A board without any shows the database tables as entities instead, and says so.
+  - **Component:** each component with UML's component symbol, the interfaces it provides (○), and dashed dependencies labelled with how they talk («HTTP»).
+  - **Sequence:** the same as the Sequence view.
+  - **Activity:** the flow picked under **Flows & export** (or the first) as actions in swimlanes, one per part, from the start dot to the end.
+
+  Export takes what's ticked: Clean or Sketch SVG/PNG, and **Copy Mermaid** gives each ticked diagram as its own Mermaid block (`classDiagram`, flowcharts, `sequenceDiagram`).
+
+  ![UML with all four ticked, exported Clean: the class diagram, the component diagram, a sequence diagram and an activity diagram in swimlanes](screenshots/views/7-uml-exported-clean.png)
 - **Color by layer, in every view.** Each part has its layer's color wherever it's drawn: Frontend blue, Backend violet, Data teal, ML orange, External grey. In Pictures, C4 and Data flow it sits on a soft plate in that color (the pictogram or box on it keeps its status color); a data store's tables sit on its plate in Database; a participant and its lifeline take it in Sequence; Zoom into and a pinned view use it too, and so do the Mermaid exports. The key under the board has a Layers row (under Database and Sequence, it's the whole key).
 - **Zoom into** opens one **layer** (Frontend, Backend, Data, ML, External) in place, on the same board: nothing moves or swaps, the other layers fade, and each of its components bursts into what it's made of, as small icons in the layer's colors on dashed leader lines: a browser window for a page, a plug for a route, a gear for a step, a clock for a job, a sparkle for a model, a magnifier for an index, a grid for a table, a page for a stored file, a parcel for a library. The camera zooms to fit. **ML** gathers the model pipeline even where its steps live inside backend components (their pieces keep the ML color). It stays open while the agent works and in every editable notation (Pictures, C4, Data flow); click a piece to open its component's card. **Look inside** on a part's card opens its layer; **Whole system** closes it.
 

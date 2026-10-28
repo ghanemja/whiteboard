@@ -9,6 +9,7 @@ import { buildReview, penMarks } from "./engine/review";
 import { logMarkdown } from "./engine/logfile";
 import { createHistory } from "./engine/history";
 import { presentable } from "./engine/present";
+import { toUmlMermaid, UML_KINDS } from "./engine/uml";
 import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour, stepOf, targets as tourTargets, tourLength, waiting as tourWaiting } from "./engine/tour";
 import { decisionsUrl, getAgentStatus, getRepoBoard, listRecordings } from "./agent/live";
 import { TourCard, TourSpotlight } from "./Tour";
@@ -403,7 +404,10 @@ const DIAGRAMS = [
   { key: "dfd", label: "Data flow", title: "Data flow diagram: processes, data stores, external entities, and the data between them" },
   { key: "er", label: "Database", title: "Entity-relationship (ER) diagram: the tables, their keys, and how they relate" },
   { key: "sequence", label: "Sequence", title: "UML sequence diagram: one flow, step by step" },
+  { key: "uml", label: "UML", title: "UML: class, component, sequence and activity diagrams. Tick the ones to show, one or all" },
 ];
+// The views drawn on their own read-only canvas, rather than by redrawing the editable board.
+const READ_ONLY = ["er", "sequence", "uml"];
 // Labels in sentence case: "proposed" → "Proposed".
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
@@ -1340,7 +1344,25 @@ export default function App() {
     }
   });
   const styleRef = useRef(["c4", "dfd"].includes(diagram) ? diagram : "pictures");
-  const readOnlyDiagram = diagram === "er" || diagram === "sequence";
+  const readOnlyDiagram = READ_ONLY.includes(diagram);
+  // UML: which of its diagrams to show (all of them, or the ones ticked), remembered per browser.
+  const [umlKinds, setUmlKinds] = useState(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem("wb-uml") ?? "null");
+      return Array.isArray(v) && v.length ? v.filter((k) => UML_KINDS.some((u) => u.key === k)) : UML_KINDS.map((u) => u.key);
+    } catch {
+      return UML_KINDS.map((u) => u.key);
+    }
+  });
+  const chooseUml = (keys) => {
+    const next = UML_KINDS.map((u) => u.key).filter((k) => keys.includes(k));
+    setUmlKinds(next);
+    try {
+      localStorage.setItem("wb-uml", JSON.stringify(next));
+    } catch {
+      /* private window: just this page */
+    }
+  };
   // Zoom into a layer (a LAYERS key) or the whole system (null): in place on the board, that
   // layer's components burst open to show their parts while the rest fades, and the camera
   // refits (Board.drawExplode). The board stays the editable one.
@@ -1356,11 +1378,11 @@ export default function App() {
   const chooseDiagram = (v, { keepInside = false } = {}) => {
     setDiagram(v);
     // Pictures, C4 and Data flow keep a layer open (redrawn in that style); the others close it.
-    if (inside && !keepInside && ["er", "sequence"].includes(v)) {
+    if (inside && !keepInside && READ_ONLY.includes(v)) {
       setInside(null);
       sessionRef.current?.board.setFocus(null);
     }
-    if (!["er", "sequence"].includes(v)) {
+    if (!READ_ONLY.includes(v)) {
       styleRef.current = v;
       sessionRef.current?.board.setStyle(v);
     }
@@ -1379,6 +1401,8 @@ export default function App() {
   };
   // Narrow the board to one layer or one flow ({ layer } | { flow } | null); the rest fades.
   const [focus, setFocus] = useState(null);
+  // The UML view's diagrams and flow, as Board.drawDiagram("uml", …) takes them.
+  const umlArg = `${umlKinds.join(",")}|${focus?.flow ?? ""}`;
   const chooseFocus = (f) => {
     if (f) setInside(null); // a flow replaces an opened layer
     setFocus(f);
@@ -1395,7 +1419,9 @@ export default function App() {
       ? { kind: "inside", arg: inside, title: `Inside: ${LAYERS.find((l) => l.key === inside)?.label}` }
       : diagram === "sequence"
         ? { kind: "sequence", arg: flow?.id ?? Object.keys(m.flows)[0], title: `Sequence: ${(flow ?? Object.values(m.flows)[0])?.name ?? ""}` }
-        : { kind: diagram, title: DIAGRAMS.find((d) => d.key === diagram)?.label ?? "View" };
+        : diagram === "uml"
+          ? { kind: "uml", arg: umlArg, title: `UML: ${UML_KINDS.filter((u) => umlKinds.includes(u.key)).map((u) => u.label).join(", ")}` }
+          : { kind: diagram, title: DIAGRAMS.find((d) => d.key === diagram)?.label ?? "View" };
     setPins((ps) => {
       if (ps.some((p) => p.kind === v.kind && p.arg === v.arg)) return ps;
       const area = document.querySelector(".canvases")?.getBoundingClientRect();
@@ -1403,7 +1429,7 @@ export default function App() {
       return [...ps, { ...v, id: `pin-${Date.now()}`, w, h, x: Math.max(0, (area?.width ?? 900) - w - 24 - k * 28), y: 64 + k * 28 }];
     });
   };
-  const pinned = !!pins.find((p) => (inside ? p.kind === "inside" && p.arg === inside : p.kind === diagram && (diagram !== "sequence" || p.arg === (focus?.flow ?? p.arg))));
+  const pinned = !!pins.find((p) => (inside ? p.kind === "inside" && p.arg === inside : p.kind === diagram && (diagram === "uml" ? p.arg === umlArg : diagram !== "sequence" || p.arg === (focus?.flow ?? p.arg))));
 
   // Export what the board shows: Mermaid (the container view, or the flow as a sequence
   // diagram) for a README or PR, or an SVG/PNG with a title.
@@ -1430,12 +1456,17 @@ export default function App() {
     const b = s.board, m = b.model;
     const flow = !inside && focus?.flow && m.flows[focus.flow];
     const layer = focus?.layer && LAYERS.find((l) => l.key === focus.layer);
-    const name = diagram === "er" ? "Data model" : diagram === "sequence" ? "Sequence" : diagram === "dfd" ? "Data flow" : diagram === "c4" ? "Container view" : "Architecture";
-    const view = inside ? `Inside the ${LAYERS.find((l) => l.key === inside)?.label} layer` : flow && diagram !== "er" ? `${name}: ${flow.name}` : layer ? `${name}: ${layer.label} layer` : name;
+    const umlNames = UML_KINDS.filter((u) => umlKinds.includes(u.key)).map((u) => u.label).join(", ");
+    const name = diagram === "uml" ? `UML: ${umlNames}` : diagram === "er" ? "Data model" : diagram === "sequence" ? "Sequence" : diagram === "dfd" ? "Data flow" : diagram === "c4" ? "Container view" : "Architecture";
+    const view = inside ? `Inside the ${LAYERS.find((l) => l.key === inside)?.label} layer` : flow && diagram !== "er" && diagram !== "uml" ? `${name}: ${flow.name}` : layer ? `${name}: ${layer.label} layer` : name;
     const title = [m.project, view].filter(Boolean).join(" · ");
     const file = title.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "board";
     try {
-      if (kind === "mermaid") {
+      if (kind === "mermaid" && diagram === "uml" && !inside) {
+        const blocks = toUmlMermaid(m, { kinds: umlKinds, flow: flow || Object.values(m.flows)[0] });
+        if (!blocks.length) throw new Error("nothing to export");
+        await navigator.clipboard.writeText(blocks.map((b) => `${b.label} diagram:\n\n\`\`\`mermaid\n${b.body}\`\`\`\n`).join("\n"));
+      } else if (kind === "mermaid") {
         const only = layer && new Set(Object.values(m.nodes).filter((n) => [layer.key, null].includes(layerOf(n))).map((n) => n.id));
         const text = inside
           ? toInsideMermaid(m, inside)
@@ -1465,7 +1496,7 @@ export default function App() {
   // The read-only diagram follows the model as it changes (Board skips redraws that change nothing).
   useEffect(() => {
     const b = sessionRef.current?.board;
-    if (readOnlyDiagram) b?.drawDiagram(diagram, focus?.flow);
+    if (readOnlyDiagram) b?.drawDiagram(diagram, diagram === "uml" ? umlArg : focus?.flow);
     // A fresh board (start over, a replay) forgets the opened layer: open it again.
     else if (b && inside && !(b.focus?.explode && b.focus.layer === inside)) b.setFocus({ layer: inside, explode: true });
   });
@@ -2653,6 +2684,27 @@ export default function App() {
                 </button>
               ))}
             </div>
+            {diagram === "uml" && (
+              // Which UML diagrams to show: all of them, or the ones ticked, stacked one under another.
+              <div className="lens-group uml-pick" role="group" aria-label="UML diagrams to show">
+                <span className="lens-label">Show</span>
+                <label className="uml-box" title="Every UML diagram, one under another">
+                  <input
+                    type="checkbox"
+                    checked={umlKinds.length === UML_KINDS.length}
+                    ref={(el) => el && (el.indeterminate = umlKinds.length > 0 && umlKinds.length < UML_KINDS.length)}
+                    onChange={(e) => chooseUml(e.target.checked ? UML_KINDS.map((u) => u.key) : [])}
+                  />
+                  All
+                </label>
+                {UML_KINDS.map((u) => (
+                  <label key={u.key} className="uml-box" title={u.title}>
+                    <input type="checkbox" checked={umlKinds.includes(u.key)} onChange={(e) => chooseUml(e.target.checked ? [...umlKinds, u.key] : umlKinds.filter((k) => k !== u.key))} />
+                    {u.label}
+                  </label>
+                ))}
+              </div>
+            )}
             <div className="lens-group" role="group" aria-label="Zoom into a layer">
               <span className="lens-label">Zoom into</span>
               <button className={`lens ${!inside ? "on" : ""}`} aria-pressed={!inside} onClick={() => chooseInside(null)} title="The whole system: every part, closed">
