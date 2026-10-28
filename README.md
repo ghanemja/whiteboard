@@ -167,10 +167,12 @@ Measured live on the same task and correction, a run cost $0.39 instead of $0.67
 
 ## What happens in a run
 
+Not everything you type is a change. The agent's first step for each request is to classify it, and the board records which (its `request` op): a **question** ("How does a short link get resolved?") gets an answer in the panel, with the parts it's about drawn on the board, and nothing to approve: no plan, no files changed, and the coach says **It answered**. A **change** goes through the steps below. Ask either at any point, in the same box. After a build, a new request puts the agent back in read-only mode: a change gets planned and approved again before anything is built. In a live check, a question was answered in 20 s with no gate and no files touched, and a change asked next in the same box came back as a plan at the gate.
+
 1. **Plan.** The agent starts in plan mode: it can read the repo but not change it. It draws the components the task involves (existing ones blue, new ones grey) and their connections, then asks to exit plan mode. That request waits for you: the board shows ⏸ on the Plan milestone.
 2. **Review.** Edit the board (see [Steering from the board](#steering-from-the-board)) or type a request. **Revise plan** (or **Submit** on the board) sends your changes back so the agent re-plans; **Approve with changes** folds them in and goes on to build; **Approve plan & build** goes straight on.
 3. **Build and verify.** The agent edits files (allowed automatically inside the repo) and the component that owns each file turns orange. It asks before every shell command: **Allow once**, **Allow all** for the rest of the run, or **Deny**. Components turn green when verified, purple ★ when done.
-4. **Afterwards** the session stays open: board edits and messages become new turns. Stop the agent with ■, start over with ↺. Closing the tab stops it, and an idle agent stops after 15 minutes (an hour while it waits on you).
+4. **Afterwards** the session stays open: board edits, questions and new changes become new turns. Stop the agent with ■, start over with ↺. Closing the tab stops it, and an idle agent stops after 15 minutes (an hour while it waits on you).
 
 ## Steering from the board
 

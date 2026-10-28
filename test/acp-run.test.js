@@ -210,13 +210,26 @@ test("an agent that wants signing in: AGENT_AUTH picks its way in, and without i
   } finally {
     await a.cleanup();
   }
-  const b = await setup([[{ say: "hello" }]], { env: { FAKE_ACP_AUTH: "1", AGENT_AUTH: "api-key" } });
+  const b = await setup([[{ board: [{ op: "request", kind: "action" }] }, { say: "hello" }]], { env: { FAKE_ACP_AUTH: "1", AGENT_AUTH: "api-key" } });
   try {
     b.run.start();
     await b.waitFor((e) => e.type === "gate", "the gate");
     assert.ok(b.log().some((l) => l.authenticate === "api-key"));
   } finally {
     await b.cleanup();
+  }
+});
+
+test("a question is answered, not planned: no gate, and the turn's end says it was answered", { timeout: 30000 }, async () => {
+  const a = await setup([[{ board: [{ op: "request", kind: "info" }, { op: "node", id: "api", name: "API", kind: "service", v: "built" }] }, { say: "Links resolve in src/store.js." }]]);
+  try {
+    a.run.start();
+    const done = await a.waitFor((e) => e.type === "done", "the answer");
+    assert.equal(done.answered, true);
+    assert.ok(!a.events.some((e) => e.type === "gate"), "nothing to approve");
+    assert.equal(a.run.stage, "planning", "still read-only");
+  } finally {
+    await a.cleanup();
   }
 });
 

@@ -105,7 +105,7 @@ test("asking for changes at the gate plans again, read-only; stop ends Codex", {
   const home = path.join(tmp, "codex-home");
   mkdirSync(home);
   const model = await fakeResponses([
-    [draw("c1", [{ op: "node", id: "db", name: "Store", kind: "data" }])],
+    [draw("c1", [{ op: "request", kind: "action" }, { op: "node", id: "db", name: "Store", kind: "data" }])],
     [{ text: "Plan: a store." }],
     [draw("c2", [{ op: "rename", id: "db", name: "SQLite store" }])],
     [{ text: "Plan, revised: SQLite." }],
@@ -184,7 +184,7 @@ test("started from the browser, Codex reaches the board on the address the serve
   const tmp = mkdtempSync(path.join(os.tmpdir(), "wb-codex-"));
   const home = path.join(tmp, "codex-home");
   mkdirSync(home);
-  const model = await fakeResponses([[draw("c1", [{ op: "node", id: "api", name: "API", kind: "service" }])], [{ text: "Mapped." }]]);
+  const model = await fakeResponses([[draw("c1", [{ op: "request", kind: "action" }, { op: "node", id: "api", name: "API", kind: "service" }])], [{ text: "Mapped." }]]);
   writeFileSync(path.join(home, "config.toml"), fakeConfig(model.url).map((c) => c.replace("=", " = ")).join("\n"));
   const saved = { AGENT_ENGINE: process.env.AGENT_ENGINE, CODEX_HOME: process.env.CODEX_HOME };
   Object.assign(process.env, { AGENT_ENGINE: "codex", CODEX_HOME: home });
@@ -203,7 +203,7 @@ test("started from the browser, Codex reaches the board on the address the serve
     run.listeners.add((e) => events.push(e));
     for (let i = 0; i < 300 && !events.some((e) => e.type === "gate" || e.type === "closed"); i++) await new Promise((r) => setTimeout(r, 100));
     assert.ok(events.some((e) => e.type === "gate"), JSON.stringify(events.slice(-5)));
-    assert.deepEqual(events.filter((e) => e.type === "op").map((e) => e.op.id), ["api"], "drawn on the board");
+    assert.deepEqual(events.filter((e) => e.type === "op").map((e) => e.op.id ?? e.op.op), ["request", "api"], "classified, then drawn on the board");
   } finally {
     run?.stop();
     for (const [k, v] of Object.entries(saved)) v == null ? delete process.env[k] : (process.env[k] = v);

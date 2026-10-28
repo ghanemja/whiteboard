@@ -13,7 +13,7 @@
 // The same lines describe the board when read_board answers in shorthand (stateLines).
 
 // Where a line's second word goes, when it isn't key=value.
-const POSITIONAL = { phase: "name", edge: "from>to", unlink: "from>to", "adopt-edge": "from>to", "adopt-note": "el", answer: "el" };
+const POSITIONAL = { request: "kind", phase: "name", edge: "from>to", unlink: "from>to", "adopt-edge": "from>to", "adopt-note": "el", answer: "el" };
 // Always lists. steps, links and columns are lists with two or more items; one item stays a string,
 // which the board splits on ";" as well. A node's api is a list, an edge's the one call.
 const LISTS = new Set(["over", "affects", "evidence", "builds_on", "paths", "libs", "options"]);

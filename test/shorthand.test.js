@@ -201,5 +201,5 @@ test("the shorthand instructions keep every rule of the standard ones, and Codex
   const ex = SHORTHAND_BOARD_INSTRUCTIONS.split("## Writing ops as lines")[1].split("\n\n")[2];
   const { ops, errors } = parseLines(ex, Op);
   assert.deepEqual(errors, []);
-  assert.equal(ops.length, 7);
+  assert.equal(ops.length, 8);
 });

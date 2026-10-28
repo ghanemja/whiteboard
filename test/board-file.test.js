@@ -56,7 +56,7 @@ test("a run saves the board in its repo when a turn ends, and a repo without one
   const repo = mkdtempSync(path.join(tmp, "repo-"));
   const run = new Run({ repo, brief: "Add a /health endpoint", mapFirst: true });
   assert.match(run.firstTurn, /^This repo has no board yet\. First map the codebase/);
-  assert.match(run.firstTurn, /Then plan this task on that map, as usual:\nAdd a \/health endpoint$/);
+  assert.match(run.firstTurn, /Then take this request on that map, as usual: classify it .*:\nAdd a \/health endpoint$/);
   assert.equal(run.mapOnly, false);
   const mapOnly = new Run({ repo, brief: "", mapFirst: true });
   assert.equal(mapOnly.mapOnly, true);

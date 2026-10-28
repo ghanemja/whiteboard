@@ -457,7 +457,7 @@ export class Session {
       this.board.onPhase?.(null);
       await this.board.init();
       if (g !== this.gen || r !== this.replay) return;
-      Object.assign(this, { stage: "planning", gate: null, permission: null, agentBusy: false, turnEnds: 0, stickerSettleAt: null, stickerMidTurn: false, mapReady: false, result: null, caption: "", steerText: null, replayT: 0, changes: null, commits: 0 });
+      Object.assign(this, { stage: "planning", gate: null, permission: null, agentBusy: false, turnEnds: 0, stickerSettleAt: null, stickerMidTurn: false, mapReady: false, answered: false, result: null, caption: "", steerText: null, replayT: 0, changes: null, commits: 0 });
       this.drawBase(r.base);
       this.transcript.addUserMessage({ kind: "chat", text: this.brief });
       r.i = 0;
@@ -589,6 +589,7 @@ export class Session {
     this.workingSince = Date.now();
     this.result = null;
     this.mapReady = false;
+    this.answered = false;
     this.stateChanged();
   }
 
@@ -669,6 +670,7 @@ export class Session {
         break;
       case "gate":
         this.turnEnds++;
+        this.answered = this.mapReady = false;
         this.gate = e.requestId;
         this.agentBusy = false;
         this.steerText = null;
@@ -687,7 +689,10 @@ export class Session {
         break;
       case "done":
         this.turnEnds++;
-        this.mapReady = !!e.mapped; // a map with no task yet: nothing to review, the task comes next
+        // A turn with nothing to approve or review: the map drawn, or a question answered. The next
+        // request comes in the box.
+        this.mapReady = !!e.mapped;
+        this.answered = !!(e.mapped || e.answered);
         this.agentBusy = false;
         this.steerText = null;
         this.result = e;

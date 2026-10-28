@@ -42,6 +42,14 @@ Every non-obvious technical choice is a decision op, made while planning, so the
 
 Each decision diamond gets a ✓ or ✗ from its check. After running the tests (verification), report every decision: repeat its op with proof "pass" or "fail" and proof_by: the test's exact name as the runner printed it, or the command and what it showed. Print each test's result line so the board can read them (node --test lists them; use pytest -v, go test -v); don't cut them off with tail. The board compares proofs with that output and corrects any that disagree, and it re-checks them on every later test run. When a check fails, fix the code and run it again, or, if the failure shows the decision itself was wrong, change the decision (new chose, and a why that cites the failure); a changed decision needs checking again.
 
+## First: a change, or a question?
+
+Classify each new request from the user before anything else (the task, and anything they ask later that isn't about the plan or the work in hand), with a request op first in your first update_board call: request {kind: "action"} if it asks for a change to the code, request {kind: "info"} if it only asks for information (how something works, where something is, why it's built that way, what a change would involve).
+
+- A question gets an answer, not a plan. Read what you need, answer in chat (short and exact, with file paths), and show it on the board: the components, connections, parts and flows it's about, drawn as they are (built), or update the ones already there. No tasks or proposed decisions for it, no file changes, and don't ask to leave plan mode. End your turn when you've answered.
+- A change goes through the flow below.
+- Corrections to the plan, "About D2 …", answers to your questions, board edits and stickers belong to the work in hand: no request op for those.
+
 ## The flow
 
 1. Planning (you start in plan mode): read just enough of the repo to understand it. On the board: project with goal, phase planning, 3 to 5 planning tasks, the components this task involves with their paths, libs and api, the parts inside them, their connections with via and api, the main flows, and your decisions. Then call ExitPlanMode. The user approves the plan from the board.
@@ -64,7 +72,7 @@ A message starting "About D2 …" questions that decision: answer the question i
 `.trim();
 
 export const PLAN_INSTRUCTIONS = `
-Explore the repository read-only and work out a plan for the user's request. Draw the plan on the whiteboard with mcp__board__update_board as you go: project with its goal, phase planning, planning tasks, components with their paths, libraries and interfaces, connections with protocol and API, and a decision op for each non-obvious technical choice (what you chose, what you considered, why, the evidence in the repo, and the check that will prove it). Keep your written plan short, a few bullet points at most, since the board and its decisions show the structure and the reasoning. When the plan is complete and on the board, call ExitPlanMode.
+First classify the request (a request op): a question only needs an answer, in chat and on the board, with no plan to approve. For a change: explore the repository read-only and work out a plan for the user's request. Draw the plan on the whiteboard with mcp__board__update_board as you go: project with its goal, phase planning, planning tasks, components with their paths, libraries and interfaces, connections with protocol and API, and a decision op for each non-obvious technical choice (what you chose, what you considered, why, the evidence in the repo, and the check that will prove it). Keep your written plan short, a few bullet points at most, since the board and its decisions show the structure and the reasoning. When the plan is complete and on the board, call ExitPlanMode.
 `.trim();
 
 // Shorthand mode (AGENT_SHORTHAND, server/shorthand.js): the agent draws with one op per line
@@ -73,8 +81,9 @@ Explore the repository read-only and work out a plan for the user's request. Dra
 const SHORTHAND_OPS = `
 ## Writing ops as lines
 
-Send update_board one op per line in \`lines\`: the op, then its id, then key=value pairs. Quote a value that has spaces ("…", JSON escapes). A list joins its items with |, quoted or not (\\| keeps a | inside an item); a list written ["a", "b"] below is a|b. edge, unlink and adopt-edge take from>to where the id goes, phase takes its name, adopt-note and answer the sticker's el. For example:
+Send update_board one op per line in \`lines\`: the op, then its id, then key=value pairs. Quote a value that has spaces ("…", JSON escapes). A list joins its items with |, quoted or not (\\| keeps a | inside an item); a list written ["a", "b"] below is a|b. edge, unlink and adopt-edge take from>to where the id goes, request and phase take their kind and name, adopt-note and answer the sticker's el. For example:
 
+request action
 project name=DocQA goal="People ask questions about their PDFs and every answer cites its page"
 phase planning
 task p1 phase=planning text="Read the API routes" status=done
@@ -130,5 +139,5 @@ export const boardInstructions = ({ planTurn = false, shorthand = false } = {}) 
 // the task.
 export const mapTurn = (task) =>
   `This repo has no board yet. First map the codebase as it stands onto the board, read-only, so the whole system is on it before any change: project (its name, and a goal saying what the system does today), phase planning, every component that matters (3 to 10, not just the ones a task would touch) with its paths, libs from the manifests, api and grid cell, all v built; their connections with via and api; the parts inside each component; the main flows (1 to 3); the tables from the schema or migrations; and a decision with state accepted for each architectural choice already in the code that you can show evidence for, with that evidence and a check (an existing test, or a command). No tasks for the map. Don't change any files.${
-    task ? `\n\nThen plan this task on that map, as usual:\n${task}` : "\n\nThen stop: say in two sentences what the system is and how it fits together. Don't ask to leave plan mode; the task comes in the next message."
+    task ? `\n\nThen take this request on that map, as usual: classify it with a request op, then plan it if it's a change, or answer it if it's a question:\n${task}` : "\n\nThen stop: say in two sentences what the system is and how it fits together. Don't ask to leave plan mode; the task comes in the next message."
   }`;

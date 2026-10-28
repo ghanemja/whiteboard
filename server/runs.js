@@ -269,6 +269,13 @@ export class Run {
     this.boardState = boardState;
     // A repo with no board yet: the first turn maps the codebase (mapTurn); with no task, that's all
     // it does, and there's no plan to approve until the next message.
+    // The user's latest request, as the agent classified it (its request op): "action" (a change:
+    // plan it, approve it, build it) or "info" (a question: answer it, nothing to approve). And how
+    // much plan this turn drew, for an agent that didn't say (planMarks: tasks and proposed decisions).
+    this.request = null;
+    this.planProposed = false; // a plan is waiting for approval (a gate was asked)
+    this.planMarks = 0;
+    this.planMarkAtTurn = 0;
     this.mapFirst = mapFirst && !from;
     this.mapOnly = this.mapFirst && !brief;
     this.startEdits = edits;
@@ -296,6 +303,7 @@ export class Run {
       this.recorder = recorder;
     }
     this.phase = null; // the new session plans first: its new decisions start as proposed
+    this.planMarkAtTurn = this.planMarks; // the saved board's tasks and decisions aren't this turn's plan
   }
 
   // What starts the session: the task; carrying on, the handover too (the last run's decision log
@@ -445,6 +453,12 @@ export class Run {
   emitOps(ops) {
     const notes = [];
     for (const op of ops) {
+      if (op.op === "task" || (op.op === "decision" && !["accepted", "rejected"].includes(op.state) && !op.proof)) this.planMarks++;
+      if (op.op === "request") {
+        this.request = op.kind === "info" ? "info" : "action";
+        const note = this.onRequest(this.request);
+        if (note) notes.push(note);
+      }
       const status = COMPONENT_STATUS.has(op.v) ? op.v : COMPONENT_STATUS.has(op.status) ? op.status : "planned";
       const arr = (v) => (Array.isArray(v) ? v : typeof v === "string" ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
       switch (op.op) {
@@ -647,6 +661,7 @@ export class Run {
   }
 
   ask(event) {
+    if (event.type === "gate") this.planProposed = true;
     const requestId = randomUUID().slice(0, 8);
     return new Promise((resolve) => {
       this.pending.set(requestId, resolve);
@@ -661,6 +676,22 @@ export class Run {
     resolve(result);
     this.emit({ type: "answered", requestId });
     return true;
+  }
+
+  // The agent classified a request (its request op). What it's told back, if anything. Engines
+  // that can change mode for it override this (ClaudeRun).
+  onRequest(kind) {
+    return kind === "info" && !this.planProposed ? "A question: answer it and show it on the board. No tasks, no plan to approve, no file changes." : null;
+  }
+
+  // Called once as each turn ends: does it leave a plan to approve? Yes for a change, or a plan
+  // already waiting; for an agent that didn't classify the request, if it drew tasks or proposed
+  // decisions this turn. Then the next turn starts afresh.
+  turnPlanned() {
+    const planned = this.planProposed || this.request === "action" || (this.request == null && this.planMarks > this.planMarkAtTurn);
+    this.planMarkAtTurn = this.planMarks;
+    this.request = null;
+    return planned;
   }
 
   // The one pending plan gate, if any.
@@ -739,7 +770,9 @@ export class Run {
 
   // The agent's turn ended: the timeline entry and the "done" event, after the repo's last word
   // (so the summary can be checked against it).
-  finishTurn({ ok, why = null, cost = null, turns = null }) {
+  // answered: the turn ended before any building with nothing to approve (a question answered, or
+  // the map drawn), so the browser waits for the next request instead of reviewing a finished run.
+  finishTurn({ ok, why = null, cost = null, turns = null, answered = false }) {
     const quote = this.takeTurnText();
     this.idle = true; // between turns: a shutdown now interrupts nothing
     this.steer = null;
@@ -760,7 +793,7 @@ export class Run {
       // The map-only first turn's end: the board is drawn and the task comes next, so it isn't a finished run.
       const mapped = this.mapTurnEnding;
       this.mapTurnEnding = false;
-      this.emit({ type: "done", ok, cost, turns, message: ok ? null : why, ...(mapped && ok ? { mapped: true } : {}) });
+      this.emit({ type: "done", ok, cost, turns, message: ok ? null : why, ...(mapped && ok ? { mapped: true } : {}), ...(answered && ok ? { answered: true } : {}) });
       return this.saveBoardFile().catch((err) => console.warn(`[whiteboard] couldn't save ${boardFile()}: ${err.message}`));
     });
     return this.turnEnd;
@@ -871,6 +904,8 @@ export class ClaudeRun extends Run {
     if (["mcp__board__update_board", "mcp__board__read_board"].includes(toolName) && (!mcpServer || mcpServer.source === "sdk")) return { behavior: "allow", updatedInput: input };
 
     if (toolName === "ExitPlanMode") {
+      // A question has no plan to approve.
+      if (this.request === "info" && !this.planProposed) return { behavior: "deny", message: "This request is a question: answer it in chat and on the board, then end your turn. There's no plan to approve, so stay in plan mode." };
       if (this.autoApprovePlan) {
         this.recordPlan("Updated the plan with your changes");
         return this.approvePlan(input);
@@ -890,9 +925,23 @@ export class ClaudeRun extends Run {
     return result.behavior === "allow" ? { behavior: "allow", updatedInput: input } : result;
   };
 
+  // A new request after a build: back to read-only (plan mode) either way. A change gets planned and
+  // approved again before anything is built; a question is answered without changing files.
+  onRequest(kind) {
+    if (!this.planApproved) return super.onRequest(kind);
+    this.planApproved = false;
+    this.planProposed = false;
+    this.q?.setPermissionMode("plan").catch(() => {});
+    this.emit({ type: "stage", stage: "planning" });
+    return kind === "action"
+      ? "A new change: you're in plan mode again. Plan it on the board (tasks, decisions with checks), then call ExitPlanMode; the user approves it before you build."
+      : "A question: you're read-only now (plan mode). Answer it and show it on the board; change no files and don't call ExitPlanMode.";
+  }
+
   async approvePlan(input) {
     this.autoApprovePlan = false;
     this.planApproved = true;
+    this.planProposed = false;
     await this.q.setPermissionMode("acceptEdits");
     this.emit({ type: "stage", stage: "building" });
     return { behavior: "allow", updatedInput: input };
@@ -975,10 +1024,12 @@ export class ClaudeRun extends Run {
     }
 
     if (msg.type === "result") {
-      this.mapTurnEnding = this.mapOnly;
-      this.finishTurn({ ok: !msg.is_error, why: msg.subtype, cost: msg.total_cost_usd, turns: msg.num_turns });
-      if (this.mapOnly) this.mapOnly = false; // the map is drawn; the task is the next message
-      else if (!msg.is_error) this.turnEnd.then(() => this.planGateAfterTurn());
+      const planned = this.turnPlanned();
+      const mapped = this.mapOnly; // the map is drawn; the task is the next message
+      this.mapOnly = false;
+      this.mapTurnEnding = mapped;
+      this.finishTurn({ ok: !msg.is_error, why: msg.subtype, cost: msg.total_cost_usd, turns: msg.num_turns, answered: !this.planApproved && !planned });
+      if (!mapped && planned && !msg.is_error) this.turnEnd.then(() => this.planGateAfterTurn());
     }
   }
 

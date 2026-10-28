@@ -555,6 +555,10 @@ export class Board {
       case "adopt-edge": return this.adoptEdge(a);
       case "adopt-note": return this.adoptNote(a.el);
       case "answer": return this.answerSticker(a.el, a.text);
+      // What the user's latest request is (the agent's first op for it): a change, or a question.
+      case "request":
+        this.model.request = a.kind === "info" ? "info" : "action";
+        return [];
       default:
         console.warn("unknown board op", a);
         return [];

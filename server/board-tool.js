@@ -7,7 +7,7 @@ import { issues, parseLines, stateLines } from "./shorthand.js";
 // One board op. Mirrors Board.apply() in src/engine/board.js.
 const strs = z.array(z.string());
 export const Op = z.object({
-  op: z.enum(["project", "phase", "task", "node", "part", "edge", "flow", "table", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note", "answer"]),
+  op: z.enum(["project", "phase", "task", "node", "part", "edge", "flow", "table", "status", "decision", "question", "assumption", "rename", "note", "remove", "unlink", "adopt", "adopt-edge", "adopt-note", "answer", "request"]),
   id: z.string().optional().describe("component id (node/status/rename/remove/adopt), part id (part, e.g. api.ask), task id (task), decision id (decision), flow id (flow), q1… (question) or a1… (assumption)"),
   name: z.string().optional().describe("project name, phase name, component name (≤16 chars, sentence case), part name (≤24 chars), or flow name (≤24 chars)"),
   layer: z.enum(LAYERS.map((l) => l.key)).optional().describe("node: frontend | backend | data | ml | external (defaults from kind; set ml for models, embeddings, evals); part: only when it differs from its component's"),
@@ -16,7 +16,7 @@ export const Op = z.object({
   links: z.union([z.string(), strs]).optional().describe('part: what it hands on, each "target: what" with target a part, table or component id, e.g. ["api.retrieve: the question", "vdb: nearest 8 chunks"]'),
   columns: z.union([z.string(), strs]).optional().describe('table: its columns, each "name type [pk] [unique] [fk>table.column]", e.g. ["id uuid pk", "document_id uuid fk>documents.id", "page int"]'),
   goal: z.string().optional().describe("project: the goal in one sentence"),
-  kind: z.string().optional().describe("node: client | service | data | external | queue | test | user; part: one word, e.g. page, view, route, job, module, step, model, index, bucket, dataset"),
+  kind: z.string().optional().describe("node: client | service | data | external | queue | test | user; part: one word, e.g. page, view, route, job, module, step, model, index, bucket, dataset; request: action (a change to the code) | info (a question)"),
   col: z.number().int().min(0).max(2).optional(),
   row: z.number().int().min(0).max(2).optional(),
   paths: strs.optional().describe("node: repo-relative files or folders this component owns"),
@@ -53,7 +53,7 @@ export const Op = z.object({
 export const UPDATE_BOARD = {
   name: "update_board",
   description:
-    "Draw on the shared whiteboard the user is watching. Pass several ops at once. Ops: project, phase, task, node, part, edge, flow, table, decision, question, assumption, status, rename, note, remove, unlink, adopt, adopt-edge, adopt-note, answer.",
+    "Draw on the shared whiteboard the user is watching. Pass several ops at once. Ops: request (first, for each new request: action or info), project, phase, task, node, part, edge, flow, table, decision, question, assumption, status, rename, note, remove, unlink, adopt, adopt-edge, adopt-note, answer.",
   input: { ops: z.array(Op).min(1) },
 };
 
@@ -83,7 +83,7 @@ export const readBoardReply = (state, shorthand = false) => ({
 export const UPDATE_BOARD_SHORTHAND = {
   name: "update_board",
   description:
-    "Draw on the shared whiteboard the user is watching. Send several ops at once as lines, one op per line: the op, its id, then key=value pairs; quote values with spaces; join list items with |. Ops: project, phase, task, node, part, edge, flow, table, decision, question, assumption, status, rename, note, remove, unlink, adopt, adopt-edge, adopt-note, answer.",
+    "Draw on the shared whiteboard the user is watching. Send several ops at once as lines, one op per line: the op, its id, then key=value pairs; quote values with spaces; join list items with |. Ops: request (first, for each new request: request action or request info), project, phase, task, node, part, edge, flow, table, decision, question, assumption, status, rename, note, remove, unlink, adopt, adopt-edge, adopt-note, answer.",
   input: {
     lines: z.string().optional().describe('ops, one per line, e.g. node api name="API server" kind=service col=1 row=0 libs=fastify@4.28'),
     ops: z.array(z.record(z.string(), z.unknown())).optional().describe("the same ops as JSON objects, only if a line can't say it"),

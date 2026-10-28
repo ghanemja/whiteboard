@@ -222,6 +222,7 @@ export class AcpRun extends Run {
   // switchMode: false when the agent leaves its plan mode itself.
   async startBuilding({ switchMode = true } = {}) {
     this.stage = "building";
+    this.planProposed = false;
     this.emit({ type: "stage", stage: "building" });
     if (switchMode) await this.setMode(this.buildMode()).catch((err) => console.warn(`[acp] couldn't switch ${this.name} out of plan mode: ${err.message}`));
   }
@@ -279,15 +280,16 @@ export class AcpRun extends Run {
     }
     const ok = !err && stop === "end_turn";
     // The planning turn's end is the plan: the gate, as Claude's ExitPlanMode is.
+    const planned = this.turnPlanned();
     if (this.mapOnly) this.mapOnly = !(this.mapTurnEnding = true); // the map is drawn; the task is the next message
-    else if (this.stage === "planning" && ok) {
+    else if (this.stage === "planning" && ok && planned) {
       this.recordPlan("Proposed a plan");
       const answer = await this.ask({ type: "gate" });
       if (answer.stopped) return;
       if (answer.approve) await this.startBuilding();
       return this.prompt(answer.message);
     }
-    await this.finishTurn({ ok, why: err?.message ?? stop, cost: this.cost, turns: this.turns });
+    await this.finishTurn({ ok, why: err?.message ?? stop, cost: this.cost, turns: this.turns, answered: this.stage === "planning" });
     if (this.waiting.length && !this.stopped) return this.prompt(this.waiting.splice(0).join("\n\n"));
   }
 

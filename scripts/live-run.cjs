@@ -51,7 +51,7 @@ const allowed = (cmd) => {
   await page.waitForTimeout(3000);
   const own = page.getByText("Start my own task");
   if (await own.count()) await own.first().click();
-  await page.getByPlaceholder("Describe a task for the agent…").fill(brief);
+  await page.locator("#ask").fill(brief);
   await page.getByRole("button", { name: "Start", exact: true }).click();
 
   let file = null;
