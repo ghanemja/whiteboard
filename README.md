@@ -83,7 +83,7 @@ npm run dev                  # http://localhost:5199; makes the sample repo (san
 - **With a model** ([Models](#models): a key for Anthropic's API, or a URL for anything else): the repo field starts at the sandbox (or `AGENT_REPO`); type any local folder, **Browse** for one (git repos are marked), or **Clone** a git URL into `sandbox/`; then describe a task and start. A [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) session works in that folder and asks before every shell command.
 - **Saved runs:** `cp fixtures/recordings/* recordings/` adds three real runs under "Saved boards".
 - **Tests:** `npm test`.
-- **Settings** (`.env.local`): `AGENT_URL`, `AGENT_KEY`, `AGENT_MODEL` ([Models](#models)), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo), `AGENT_ENGINE=codex` to run [Codex](#codex) instead of Claude, `AGENT_SHORTHAND` ([Shorthand mode](#shorthand-mode), on by default).
+- **Settings** (`.env.local`): `AGENT_URL`, `AGENT_KEY`, `AGENT_MODEL` ([Models](#models)), `AGENT_EFFORT` (default `low`), `AGENT_REPO` (default repo), `AGENT_ENGINE` to run another coding agent instead of Claude ([Codex](#codex), or `gemini`, `opencode`, `cursor`, `copilot` and other [ACP agents](#other-agents)), `AGENT_COMMAND` for any other ACP agent, `AGENT_SHORTHAND` ([Shorthand mode](#shorthand-mode), on by default).
 
 ## Models
 
@@ -107,7 +107,7 @@ Restart `npm run dev` after changing them; the **Agent** badge at the top of the
 - **How it works:** the agent is the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) (the engine behind Claude Code): its file and shell tools, permission prompts, plan mode and the board's `update_board` and `read_board` tools. The server passes these three settings to it as the variables it reads. For a URL other than Anthropic's, the same model also does the SDK's background work.
 - **Non-Claude models are unofficial.** The board needs a model that calls tools reliably, because it draws only through `update_board`. A weaker model may write the code but draw little on the board. Use the strongest coding model you can run, with at least 64K of context. Only Anthropic's API has been tested with this app so far.
 - **Claude on Bedrock, Vertex AI or Foundry:** set Claude Code's own variables instead (`CLAUDE_CODE_USE_BEDROCK=1` and AWS credentials, `CLAUDE_CODE_USE_VERTEX=1` with `CLOUD_ML_REGION` and `ANTHROPIC_VERTEX_PROJECT_ID`, `CLAUDE_CODE_USE_FOUNDRY=1` with `ANTHROPIC_FOUNDRY_RESOURCE`); see the [Bedrock](https://code.claude.com/docs/en/amazon-bedrock), [Vertex AI](https://code.claude.com/docs/en/google-vertex-ai) and [Foundry](https://code.claude.com/docs/en/microsoft-foundry) guides. The `ANTHROPIC_*` variables Claude Code reads also work.
-- **Other coding agents:** Codex works (below). opencode and pi aren't wired in yet; each run already serves its board as an MCP server they could use.
+- **Other coding agents:** [Codex](#codex), and any agent that speaks ACP: Gemini CLI, OpenCode, Cursor, GitHub Copilot, goose, Cline and more ([Other agents](#other-agents)). Through those, any model they can use.
 
 ### Codex
 
@@ -121,6 +121,38 @@ It's the same board and the same steps. The differences:
 - Each run starts its own `codex app-server` and gives it the run's board as an MCP server (`/api/runs/<id>/mcp`, with a per-run token). Your own `~/.codex/config.toml` still applies.
 - If Codex can't connect to the board, the run stops before planning and says why.
 
+### Other agents
+
+Any coding agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com) (ACP), the protocol editors such as Zed and JetBrains use to drive agents, can work the board: Gemini CLI, OpenCode, Cursor, GitHub Copilot, goose, Cline, Qwen Code and [the rest of the ACP registry](https://agentclientprotocol.com/overview/agents), plus Claude and Codex through their ACP adapters. Install the agent, sign in to it once in a terminal as you normally would, then name it in `.env.local` and restart `npm run dev`:
+
+| Agent | `AGENT_ENGINE` | Install |
+| --- | --- | --- |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `gemini` | `npm i -g @google/gemini-cli` |
+| [OpenCode](https://opencode.ai) | `opencode` | `npm i -g opencode-ai` |
+| [Cursor](https://cursor.com/docs/cli/acp) | `cursor` | `curl https://cursor.com/install -fsS \| bash` |
+| [GitHub Copilot](https://github.com/features/copilot/cli/) | `copilot` | `npm i -g @github/copilot` |
+| [goose](https://block.github.io/goose) | `goose` | its [install guide](https://block.github.io/goose/docs/getting-started/installation) |
+| [Cline](https://cline.bot/cli) | `cline` | `npm i -g cline` |
+| [Qwen Code](https://github.com/QwenLM/qwen-code) | `qwen` | `npm i -g @qwen-code/qwen-code` |
+| [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) | `kimi` | `uv tool install kimi-cli` |
+| [Auggie](https://github.com/augmentcode/auggie) | `auggie` | `npm i -g @augmentcode/auggie` |
+| [Kilo](https://kilo.ai/) | `kilo` | `npm i -g @kilocode/cli` |
+| [Factory Droid](https://factory.ai/product/cli) | `droid` | `npm i -g droid` |
+| [Mistral Vibe](https://github.com/mistralai/mistral-vibe) | `vibe` | `uv tool install mistral-vibe` |
+| pi, through its [ACP adapter](https://github.com/svkozak/pi-acp) | `pi` | `npm i -g pi-acp`, and pi itself |
+| Claude, through its [ACP adapter](https://github.com/agentclientprotocol/claude-agent-acp) | `claude-acp` | `npm i -g @agentclientprotocol/claude-agent-acp` |
+
+Any other ACP agent: set `AGENT_COMMAND` to the command that starts it in ACP mode, such as `AGENT_COMMAND=npx -y @google/gemini-cli --acp` (nothing to install first) or `AGENT_COMMAND=/path/to/my-agent --acp`. `AGENT_ENGINE` then names it on the **Agent** badge. A command for a named agent replaces the one in the table (`server/acp-agents.js`).
+
+- **Any model:** the agent uses whatever model its own settings say. OpenCode, goose, Cline, Kilo and others take OpenAI, Gemini, OpenRouter, local models and many more there. If the agent offers a choice of models (or thinking levels) over ACP, `AGENT_MODEL` (or `AGENT_EFFORT`) picks one by its id or name.
+- **Planning:** ACP has no plan approval of its own. An agent with a plan mode (Claude's adapter, OpenCode) plans in it, and its asking to leave plan mode is the gate; otherwise, as with Codex, the end of its planning turn is the plan. While it plans, the whiteboard turns down every edit it asks to make.
+- **Building:** once you approve, edits inside the repo go ahead, and commands (and edits outside the repo) ask you: **Allow once**, **Allow all** or **Deny**. An agent that its own settings let run commands without asking won't ask.
+- **The board** reaches it as an MCP server: over HTTP with the run's token, or, for an agent that takes MCP servers only as commands, through `server/board-stdio.js`. ACP has no system prompt, so the board's instructions open the first message.
+- **Signing in:** an agent that isn't signed in stops the run before planning and says so. Run it once in a terminal and sign in, or set `AGENT_AUTH` to one of the ways in that the message lists.
+- **Cost** shows at the end of a run when the agent reports it in dollars.
+- **Your agent's own settings apply**, unlike Claude's run, which loads only the repo's: its config, its hooks, its permission rules.
+- **Tested:** Claude's ACP adapter, live in the app on the sample task (plan, a correction, approve, build): both gates came up (its asking to leave plan mode, then the end of a planning turn), 8 of 8 tests passed, every decision was proven, $0.55. OpenCode as far as its first model call (the test machine has no key it can use): it took the board over HTTP, and its model, effort and plan mode were set over ACP. A scripted ACP agent covers the rest in `test/acp-run.test.js`. The other agents in the table speak the same protocol but haven't been run with the whiteboard yet.
+
 ### Shorthand mode
 
 On by default; `AGENT_SHORTHAND=off` in `.env.local` turns it off. It changes how the agent talks to the board, not what it draws:
@@ -129,7 +161,7 @@ On by default; `AGENT_SHORTHAND=off` in `.env.local` turns it off. It changes ho
 - **Only the tools it uses.** A Claude run gets Read, Glob, Grep, Edit, Write, Bash and ExitPlanMode (the plan gate), not all of Claude Code's built-in tools. That's most of the saving: its first request drops from about 41,800 tokens to 15,200 here (a cloud container ships extra tools, so a local install saves less). It can't search the web or start subagents.
 - **Terse chat.** Results first, file:line and numbers, no filler; names, errors, questions for you and the final summary stay whole.
 
-Measured live on the same task and correction, a run cost $0.39 instead of $0.67 with a cold cache, and $0.27 instead of $0.38 with a warm one, with the same tests passing and every decision proven ([the numbers](docs/TOKEN_STUDY.md#shorthand-mode)). Codex gets the lines and the terse chat; it keeps its own tools.
+Measured live on the same task and correction, a run cost $0.39 instead of $0.67 with a cold cache, and $0.27 instead of $0.38 with a warm one, with the same tests passing and every decision proven ([the numbers](docs/TOKEN_STUDY.md#shorthand-mode)). Codex and ACP agents get the lines and the terse chat; they keep their own tools.
 
 **What the board costs in tokens:** [docs/TOKEN_STUDY.md](docs/TOKEN_STUDY.md) compares it with a chat assistant and with the same agent without the board (counted with `scripts/token-study.mjs`; set `ANTHROPIC_API_KEY` for exact Claude counts).
 
@@ -225,7 +257,7 @@ In a replay the Timeline shows the whole run, with what hasn't happened yet fade
 
 Select a component to see what changed it: its card lists its files with +/−, and **See the code** opens the diffs in Plan details. The downloaded log (**⇩**) lists everything the agent read, edited and ran, and whether each command passed.
 
-The agent loads the repo's project settings and `CLAUDE.md`, not your global Claude Code settings or hooks. A repo's own settings can run commands (hooks) as soon as the agent starts there, so only run it on, or clone, repos you trust. It's told never to push, publish or deploy; "Ship" means tests pass and docs match.
+Claude's run loads the repo's project settings and `CLAUDE.md`, not your global Claude Code settings or hooks (Codex and ACP agents run with their own settings). A repo's own settings can run commands (hooks) as soon as the agent starts there, so only run it on, or clone, repos you trust. It's told never to push, publish or deploy; "Ship" means tests pass and docs match.
 
 **Clone** runs `git clone` with no shell and never waits for a password: a private repo works only if git is already signed in (an SSH key, or a saved login). It takes https://, ssh://, git:// and `git@host:path` URLs.
 
@@ -237,7 +269,10 @@ The agent loads the repo's project settings and `CLAUDE.md`, not your global Cla
 | `server/recordings.js` | Writes each run to `recordings/` (events + decision log), lists and serves them |
 | `server/board-tool.js` | The `update_board` and `read_board` tools: their schemas and replies, shared by both ways of serving them |
 | `server/codex-run.js` | `CodexRun`: Codex as the agent, through `codex app-server` (JSON-RPC over stdio). Plans in a read-only turn (the gate), builds in a workspace-write one; its command approvals are the permission prompts |
-| `server/board-mcp.js` | The same tool as an MCP server over HTTP, for agents other than Claude (Codex, opencode): each run's board at `/api/runs/<id>/mcp`, behind that run's bearer token |
+| `server/acp-run.js` | `AcpRun`: any ACP agent as the agent (JSON-RPC over stdio). Plans in its plan mode or a planning turn (the gate), turns down edits until the plan is approved; its permission requests are the prompts |
+| `server/acp-agents.js` | The ACP agents `AGENT_ENGINE` names, how to start and install each, and `AGENT_COMMAND` |
+| `server/board-mcp.js` | The same tools as an MCP server over HTTP, for agents other than Claude's in-process run (Codex, ACP agents): each run's board at `/api/runs/<id>/mcp`, behind that run's bearer token |
+| `server/board-stdio.js` | That MCP server as a command (stdio), for an ACP agent that takes MCP servers only that way |
 | `server/changes.js` | What a run changed in the repo, from git: working-tree snapshots through a throwaway index, and their diff |
 | `server/repos.js` | Picking the repo: a folder's subfolders for Browse (names only, git repos marked), and Clone (`git clone` into `sandbox/`) |
 | `server/instructions.js` | What the agent is told about the board (appended to the Claude Code system prompt) |

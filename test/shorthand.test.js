@@ -193,8 +193,8 @@ test("the shorthand instructions keep every rule of the standard ones, and Codex
   assert.match(SHORTHAND_BOARD_INSTRUCTIONS, /## Chat: terse/);
   assert.match(SHORTHAND_BOARD_INSTRUCTIONS, /final summary/);
   assert.equal(boardInstructions(), BOARD_INSTRUCTIONS);
-  assert.equal(boardInstructions({ codex: true }), CODEX_BOARD_INSTRUCTIONS);
-  const codex = boardInstructions({ codex: true, shorthand: true });
+  assert.equal(boardInstructions({ planTurn: true }), CODEX_BOARD_INSTRUCTIONS);
+  const codex = boardInstructions({ planTurn: true, shorthand: true });
   assert.match(codex, /## Writing ops as lines/);
   assert.doesNotMatch(codex, /ExitPlanMode/);
   // The examples in the syntax section all parse.

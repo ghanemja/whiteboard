@@ -102,9 +102,9 @@ const forShorthand = (text) =>
 
 export const SHORTHAND_BOARD_INSTRUCTIONS = forShorthand(BOARD_INSTRUCTIONS);
 
-// The same for Codex (codex-run.js). It reaches the board as the MCP server "board", and it has no
-// plan mode: its first turn runs read-only, the end of that turn is the plan, and the next message
-// approves it (or asks for changes).
+// The same for an agent without Claude's plan mode: Codex (codex-run.js) and any ACP agent
+// (acp-run.js). It reaches the board as the MCP server "board": its first turn runs read-only, the
+// end of that turn is the plan, and the next message approves it (or asks for changes).
 const forCodex = (text) =>
   [
     ["with the mcp__board__update_board tool", "with the update_board tool (the board MCP server)"],
@@ -119,6 +119,7 @@ export const CODEX_BOARD_INSTRUCTIONS = forCodex(BOARD_INSTRUCTIONS);
 export const CODEX_SHORTHAND_BOARD_INSTRUCTIONS = forCodex(SHORTHAND_BOARD_INSTRUCTIONS);
 export const CODEX_PLAN_INSTRUCTIONS = forCodex(PLAN_INSTRUCTIONS);
 
-// The board instructions an engine appends, by engine and mode.
-export const boardInstructions = ({ codex = false, shorthand = false } = {}) =>
-  codex ? (shorthand ? CODEX_SHORTHAND_BOARD_INSTRUCTIONS : CODEX_BOARD_INSTRUCTIONS) : shorthand ? SHORTHAND_BOARD_INSTRUCTIONS : BOARD_INSTRUCTIONS;
+// The board instructions an engine gives its agent, by mode, and by whether the agent's plan is its
+// first turn (planTurn: Codex, ACP agents) or ends with Claude's ExitPlanMode.
+export const boardInstructions = ({ planTurn = false, shorthand = false } = {}) =>
+  planTurn ? (shorthand ? CODEX_SHORTHAND_BOARD_INSTRUCTIONS : CODEX_BOARD_INSTRUCTIONS) : shorthand ? SHORTHAND_BOARD_INSTRUCTIONS : BOARD_INSTRUCTIONS;

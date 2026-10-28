@@ -10,7 +10,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { boardInstructions, CODEX_PLAN_INSTRUCTIONS } from "./instructions.js";
-import { Run, settings } from "./runs.js";
+import { gateAnswer, Run, settings, userMessage } from "./runs.js";
 
 const rel = (repo, p) => (p ? path.relative(repo, path.resolve(repo, p)) || "." : "");
 const text = (t) => [{ type: "text", text: t, text_elements: [] }];
@@ -102,7 +102,7 @@ export class CodexRun extends Run {
     try {
       await this.call("initialize", { clientInfo: { name: "whiteboard", title: "Agent Whiteboard", version: "0.1.0" }, capabilities: null });
       this.notify("initialized");
-      const { thread } = await this.call("thread/start", { cwd: this.repo, ...(model ? { model } : {}), approvalPolicy: "never", sandbox: "read-only", developerInstructions: boardInstructions({ codex: true, shorthand: this.shorthand }) });
+      const { thread } = await this.call("thread/start", { cwd: this.repo, ...(model ? { model } : {}), approvalPolicy: "never", sandbox: "read-only", developerInstructions: boardInstructions({ planTurn: true, shorthand: this.shorthand }) });
       this.threadId = thread.id;
       // The agent's own session id: what a later run would resume from.
       this.recorder.update({ sessionId: thread.id });
@@ -274,26 +274,16 @@ export class CodexRun extends Run {
   }
 
   // ---- the user's side ----
-  deliver(body, { confirmed, edits, gate }) {
+  deliver(body, ctx) {
     switch (body.type) {
       case "approve":
-        if (!gate) return false;
-        return this.answer(gate, {
-          approve: true,
-          message: edits
-            ? `The user approved the plan with these changes to the board:\n${edits}${confirmed}\n\nApply them to the plan and the board with update_board, then build it.`
-            : "The plan is approved. Build it now: phase implementation, then verification, as your instructions say.",
-        });
+        return ctx.gate ? this.answer(ctx.gate, gateAnswer(body, ctx)) : false;
       case "revise":
-      case "chat": {
-        const said = body.type === "chat" ? `The user says: ${body.text}` : `The user changed the board:\n${edits}`;
-        if (gate) return this.answer(gate, { approve: false, message: `Not approved yet. ${said}${confirmed}\n\nRevise the plan and the board with update_board to match, then end your turn.` });
-        this.say(`${said}${confirmed}`).catch((err) => this.emit({ type: "error", message: err.message }));
-        this.emit({ type: "turn" });
-        return true;
-      }
+      case "chat":
+        if (ctx.gate) return this.answer(ctx.gate, gateAnswer(body, ctx));
+      // falls through: said outside the gate
       case "edits":
-        this.say(`I changed the board:\n${edits}${confirmed}\n\nRespond to these changes and update the code and the board to match.`).catch((err) => this.emit({ type: "error", message: err.message }));
+        this.say(userMessage(body, ctx)).catch((err) => this.emit({ type: "error", message: err.message }));
         this.emit({ type: "turn" });
         return true;
       case "permission": {

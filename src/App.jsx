@@ -2135,9 +2135,11 @@ export default function App() {
     ? st.replaying ? (st.paused ? "Resume the replay" : "Pause the replay") : "Play the recording again"
     : agentMode && st.busy ? "Stop the agent" : st.paused ? "Resume" : st.busy ? "Pause" : reviewing ? "Continue: approve the plan" : s?.parent ? "Replay the run this board came from" : agentMode ? "Run the task again" : "Replay";
   const modeLabel = replayMode ? "Replay" : agentMode || awaitingTask ? "Agent" : "Demo";
+  // Which agent, where its model runs (Claude's), its model and effort (when set).
+  const claudeSdk = !agent?.engine || agent.engine === "Claude Agent SDK";
   const modeTitle = agent?.live
-    ? `Claude Agent SDK · ${agent.provider ?? "Anthropic API"} · ${agent.model} · effort ${agent.effort}`
-    : "Scripted demo. To run a real agent, set AGENT_KEY (Anthropic) or AGENT_URL (any other model) in .env.local and restart the dev server.";
+    ? [agent.engine ?? "Claude Agent SDK", claudeSdk && (agent.provider ?? "Anthropic API"), agent.model, agent.effort && `effort ${agent.effort}`].filter(Boolean).join(" · ")
+    : "Scripted demo. To run a real agent, set AGENT_KEY (Anthropic), AGENT_URL (any other model) or AGENT_ENGINE (another coding agent) in .env.local and restart the dev server.";
 
   return (
     <div className="app" data-theme={theme}>

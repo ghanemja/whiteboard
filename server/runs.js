@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
+import { ACP_AGENTS, acpAgent } from "./acp-agents.js";
 import { commitsSince, diff, head, isRepo, snapshot } from "./changes.js";
 import { serveBoardMcp } from "./board-mcp.js";
 import { boardTools } from "./board-tool.js";
@@ -39,13 +40,21 @@ export function stopAllRuns() {
   runs.clear();
 }
 
-// Which agent runs the task: Claude (the Claude Agent SDK, the default) or Codex (its app-server,
-// codex-run.js), from AGENT_ENGINE.
-export const engine = (env = process.env) => (String(env.AGENT_ENGINE ?? "").trim().toLowerCase() === "codex" ? "codex" : "claude");
+// Which agent runs the task, from AGENT_ENGINE: Claude (the Claude Agent SDK, the default), Codex (its
+// app-server, codex-run.js), or any agent that speaks ACP (acp-run.js): one acp-agents.js names, or
+// whatever AGENT_COMMAND starts.
+export function engine(env = process.env) {
+  const id = String(env.AGENT_ENGINE ?? "").trim().toLowerCase();
+  if (id === "codex" || id === "claude") return id;
+  return id === "acp" || ACP_AGENTS[id] || env.AGENT_COMMAND?.trim() ? "acp" : "claude";
+}
 
-// Codex picks its own model and effort unless AGENT_MODEL / AGENT_EFFORT say otherwise.
+// The agent's name, for the top bar.
+export const agentName = (env = process.env) => ({ claude: "Claude Agent SDK", codex: "Codex", acp: `${acpAgent(env)?.name ?? "An ACP agent"} (ACP)` })[engine(env)];
+
+// Codex and ACP agents pick their own model and effort unless AGENT_MODEL / AGENT_EFFORT say otherwise.
 export const settings = (env = process.env) =>
-  engine(env) === "codex"
+  engine(env) !== "claude"
     ? { model: env.AGENT_MODEL || null, effort: env.AGENT_EFFORT || null }
     : { model: env.AGENT_MODEL || env.ANTHROPIC_MODEL || "claude-opus-5-5", effort: env.AGENT_EFFORT || "low" };
 
@@ -88,8 +97,9 @@ export function agentEnv(env = process.env) {
 // Where the agent's model runs, for the top bar. null: nothing is configured, so the browser
 // plays the scripted demo.
 export function provider(raw = process.env) {
-  // Codex signs in by itself (`codex login`, or OPENAI_API_KEY): if it isn't, the run says so.
+  // Codex and ACP agents sign in by themselves (`codex login`, `gemini`…): if one isn't, the run says so.
   if (engine(raw) === "codex") return "Codex";
+  if (engine(raw) === "acp") return acpAgent(raw)?.name ?? "An ACP agent";
   const env = agentEnv(raw);
   const on = (v) => ["1", "true"].includes(String(env[v] ?? "").toLowerCase());
   if (on("CLAUDE_CODE_USE_BEDROCK") || on("CLAUDE_CODE_USE_MANTLE")) return "Amazon Bedrock";
@@ -167,6 +177,23 @@ function inbox() {
 }
 
 const userTurn = (text) => ({ type: "user", message: { role: "user", content: text }, parent_tool_use_id: null });
+
+// For an agent without Claude's plan mode (Codex, ACP agents) the plan gate is the end of its
+// planning turn, and the user's answer is its next message. approve: whether it approves the plan.
+export function gateAnswer(body, { confirmed, edits }) {
+  if (body.type === "approve")
+    return {
+      approve: true,
+      message: edits
+        ? `The user approved the plan with these changes to the board:\n${edits}${confirmed}\n\nApply them to the plan and the board with update_board, then build it.`
+        : "The plan is approved. Build it now: phase implementation, then verification, as your instructions say.",
+    };
+  return { approve: false, message: `Not approved yet. ${userSaid(body, edits)}${confirmed}\n\nRevise the plan and the board with update_board to match, then end your turn.` };
+}
+// What the user said or changed, as a message to such an agent outside the gate.
+export const userMessage = (body, { confirmed, edits }) =>
+  body.type === "edits" ? `I changed the board:\n${edits}${confirmed}\n\nRespond to these changes and update the code and the board to match.` : `${userSaid(body, edits)}${confirmed}`;
+const userSaid = (body, edits) => (body.type === "chat" ? `The user says: ${body.text}` : `The user changed the board:\n${edits}`);
 
 const rel = (repo, p) => (p ? path.relative(repo, path.resolve(repo, p)) || "." : "");
 
@@ -1056,6 +1083,7 @@ export function runsMiddleware({ defaultRepo, sandbox = path.resolve("sandbox") 
     if (req.method === "GET" && parts[0] === "status") {
       return json(res, 200, {
         live: Boolean(provider()),
+        engine: agentName(),
         provider: provider(),
         ...settings(),
         shorthand: shorthand(),
@@ -1081,7 +1109,8 @@ export function runsMiddleware({ defaultRepo, sandbox = path.resolve("sandbox") 
         if (!chain.length) return json(res, 404, { error: `No saved run ${body.from} to carry on from.` });
         from = { id: String(body.from), chain, log: readDecisions(String(body.from)) };
       }
-      const Engine = engine() === "codex" ? (await import("./codex-run.js")).CodexRun : ClaudeRun;
+      const engines = { claude: () => ClaudeRun, codex: async () => (await import("./codex-run.js")).CodexRun, acp: async () => (await import("./acp-run.js")).AcpRun };
+      const Engine = await engines[engine()]();
       const edits = Array.isArray(body.edits) ? body.edits : [];
       const run = new Engine({ repo, brief: body.brief.trim(), origin: localOrigin(req.socket), from, boardState: body.board_state ?? null, edits });
       runs.set(run.id, run);

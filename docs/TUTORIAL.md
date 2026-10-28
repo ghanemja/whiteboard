@@ -271,6 +271,8 @@ A run costs about $0.20–0.40.
 
 To use OpenAI's Codex instead of Claude: install it (`npm i -g @openai/codex`), sign in (`codex login`), put `AGENT_ENGINE=codex` in `.env.local`, and restart. Everything works the same; the README's *Codex* section has the details.
 
+Other coding agents work too: Gemini CLI, OpenCode, Cursor, GitHub Copilot and any other agent that speaks ACP (the Agent Client Protocol). Install the agent and sign in to it once, put its name in `.env.local` (for example `AGENT_ENGINE=gemini`), and restart. The agent uses its own model settings, so this is also how to run the board on GPT, Gemini or a local model. The README's *Other agents* section lists them.
+
 ## Tips
 
 - The yellow **tips** card always says which step you're on and what to do. **Hide tips** puts it away; the **?** button brings it back.
