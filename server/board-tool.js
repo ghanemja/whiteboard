@@ -2,6 +2,7 @@
 // (runs.js); any other agent over MCP's HTTP transport (board-mcp.js). Both draw through Run.emitOps.
 import { z } from "zod";
 import { LAYERS } from "../src/engine/views.js";
+import { issues, parseLines, stateLines } from "./shorthand.js";
 
 // One board op. Mirrors Board.apply() in src/engine/board.js.
 const strs = z.array(z.string());
@@ -70,7 +71,49 @@ export const READ_BOARD = {
   input: {},
 };
 
-// The board's state as JSON, or a plain line when no browser is showing the board to read it from.
-export const readBoardReply = (state) => ({
-  content: [{ type: "text", text: state ? JSON.stringify(state) : "The whiteboard isn't open in a browser, so its current state can't be read. Work from the messages and your own updates." }],
+// The board's state as JSON (or shorthand lines), or a plain line when no browser is showing the
+// board to read it from.
+export const readBoardReply = (state, shorthand = false) => ({
+  content: [{ type: "text", text: state ? (shorthand ? stateLines(state) : JSON.stringify(state)) : "The whiteboard isn't open in a browser, so its current state can't be read. Work from the messages and your own updates." }],
 });
+
+// Shorthand mode (AGENT_SHORTHAND): update_board takes one op per line (shorthand.js), and its
+// schema is that one string, not every op's fields (the instructions describe those). JSON ops are
+// still taken, checked here with Op instead of by the schema.
+export const UPDATE_BOARD_SHORTHAND = {
+  name: "update_board",
+  description:
+    "Draw on the shared whiteboard the user is watching. Send several ops at once as lines, one op per line: the op, its id, then key=value pairs; quote values with spaces; join list items with |. Ops: project, phase, task, node, part, edge, flow, table, decision, question, assumption, status, rename, note, remove, unlink, adopt, adopt-edge, adopt-note, answer.",
+  input: {
+    lines: z.string().optional().describe('ops, one per line, e.g. node api name="API server" kind=service col=1 row=0 libs=fastify@4.28'),
+    ops: z.array(z.record(z.string(), z.unknown())).optional().describe("the same ops as JSON objects, only if a line can't say it"),
+  },
+};
+
+export const READ_BOARD_SHORTHAND = { ...READ_BOARD, description: `${READ_BOARD.description} It answers in the same lines update_board takes.` };
+
+// Shorthand lines (and any JSON ops) → drawn ops, and the reply: what was drawn, the board's
+// notes, and an error for each line it couldn't draw, so the agent resends only those.
+export function drawShorthand({ lines, ops = [] }, draw) {
+  const { ops: fromLines, errors } = lines != null ? parseLines(lines, Op) : { ops: [], errors: [] };
+  const fromJson = ops.flatMap((o, i) => {
+    const r = Op.safeParse(o);
+    if (r.success) return [r.data];
+    errors.push(`ops[${i}]: ${issues(r.error)}`);
+    return [];
+  });
+  const all = [...fromLines, ...fromJson];
+  const failed = errors.length ? `\n${errors.length} not drawn; fix and resend only these:\n${errors.join("\n")}` : "";
+  if (!all.length) return { content: [{ type: "text", text: `Nothing drawn.${failed || " Send ops as lines."}` }], isError: true };
+  const reply = boardReply(all, draw(all));
+  reply.content[0].text += failed;
+  return reply;
+}
+
+// The two tools as an engine registers them: { name, description, input, run(args, { draw, read }) }.
+export const boardTools = (shorthand = false) => [
+  shorthand
+    ? { ...UPDATE_BOARD_SHORTHAND, run: (args, { draw }) => drawShorthand(args, draw) }
+    : { ...UPDATE_BOARD, run: ({ ops }, { draw }) => boardReply(ops, draw(ops)) },
+  { ...(shorthand ? READ_BOARD_SHORTHAND : READ_BOARD), run: async (_, { read }) => readBoardReply(await read(), shorthand) },
+];

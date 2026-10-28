@@ -5,7 +5,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { boardReply, readBoardReply, READ_BOARD, UPDATE_BOARD } from "./board-tool.js";
+import { boardTools } from "./board-tool.js";
 
 const same = (a, b) => {
   const x = Buffer.from(String(a)), y = Buffer.from(String(b));
@@ -13,9 +13,10 @@ const same = (a, b) => {
 };
 
 // One MCP request against one run's board. `draw(ops)` applies the ops (Run.emitOps) and returns
-// its notes for the agent; `read()` resolves to the board as it is now (Run.readBoard). Stateless:
-// a fresh server and transport per request, so nothing lingers.
-export async function serveBoardMcp(req, res, { token, draw, read }) {
+// its notes for the agent; `read()` resolves to the board as it is now (Run.readBoard). `shorthand`
+// serves the tools that take and give one op per line (AGENT_SHORTHAND). Stateless: a fresh server
+// and transport per request, so nothing lingers.
+export async function serveBoardMcp(req, res, { token, draw, read, shorthand = false }) {
   const auth = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? "")?.[1];
   if (!token || !auth || !same(auth, token)) {
     res.statusCode = 401;
@@ -24,8 +25,7 @@ export async function serveBoardMcp(req, res, { token, draw, read }) {
     return res.end(JSON.stringify({ error: "This run's board token is required." }));
   }
   const server = new McpServer({ name: "board", version: "1.0.0" });
-  server.registerTool(UPDATE_BOARD.name, { description: UPDATE_BOARD.description, inputSchema: UPDATE_BOARD.input }, async ({ ops }) => boardReply(ops, draw(ops)));
-  server.registerTool(READ_BOARD.name, { description: READ_BOARD.description, inputSchema: READ_BOARD.input }, async () => readBoardReply(await read()));
+  for (const t of boardTools(shorthand)) server.registerTool(t.name, { description: t.description, inputSchema: t.input }, async (args) => t.run(args, { draw, read }));
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on("close", () => {
     transport.close();

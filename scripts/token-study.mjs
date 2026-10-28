@@ -23,8 +23,9 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { BOARD_INSTRUCTIONS, CODEX_BOARD_INSTRUCTIONS, CODEX_PLAN_INSTRUCTIONS, PLAN_INSTRUCTIONS } from "../server/instructions.js";
-import { boardReply, Op, READ_BOARD, UPDATE_BOARD } from "../server/board-tool.js";
+import { BOARD_INSTRUCTIONS, CODEX_BOARD_INSTRUCTIONS, CODEX_PLAN_INSTRUCTIONS, CODEX_SHORTHAND_BOARD_INSTRUCTIONS, PLAN_INSTRUCTIONS, SHORTHAND_BOARD_INSTRUCTIONS } from "../server/instructions.js";
+import { boardReply, Op, READ_BOARD, READ_BOARD_SHORTHAND, UPDATE_BOARD, UPDATE_BOARD_SHORTHAND } from "../server/board-tool.js";
+import { stateLines, toLine } from "../server/shorthand.js";
 import { ClaudeRun, settings } from "../server/runs.js";
 import { renderDecisions } from "../server/recordings.js";
 import { createStreamParser } from "../src/engine/parser.js";
@@ -575,6 +576,8 @@ async function correct({ label, typed, body, reply, local }) {
     wbOut: (await count(r.text)) + (await count(callJson(r.ops))),
     wbResult: await count(resultText(r.ops)),
     ops: r.ops.length,
+    replyOps: r.ops,
+    snap: board.snapshot(),
     aFull: await count(`${r.text}\n\n${after}`),
     aDelta: await count(`${r.text}\n\n${diff.added}`),
     bEdit: await count(`${r.text}\n\n${diff.removed}\n\n${diff.added}`),
@@ -906,3 +909,58 @@ table(
 );
 if (tok.short === "chars/4") console.log("These are rough chars/4 estimates. For o200k_base counts: npm i --no-save js-tiktoken. For exact Claude counts: set ANTHROPIC_API_KEY.");
 else if (!tok.exact) console.log(`These are ${tok.short} counts. Set ANTHROPIC_API_KEY for exact Claude counts.`);
+
+// 12. Shorthand mode (AGENT_SHORTHAND): the same ops as one line each, read_board in the same lines,
+// a tool schema of one string, and longer instructions (the line syntax and terse chat). What the
+// agent writes is counted as it sends it: the tool call's JSON input, where a line's quotes and
+// newlines are escaped.
+h("12. Shorthand mode: the same board in lines (AGENT_SHORTHAND)");
+const linesOf = (ops) => ops.map(toLine).join("\n");
+const callLines = (ops) => JSON.stringify({ lines: linesOf(ops) });
+const shortParts = {
+  instructions: await tok.system(SHORTHAND_BOARD_INSTRUCTIONS),
+  tool: await tok.tool(toolDef(UPDATE_BOARD_SHORTHAND)),
+  readTool: await tok.tool(toolDef(READ_BOARD_SHORTHAND)),
+};
+const SHORT_FIXED = shortParts.instructions + shortParts.tool + shortParts.readTool;
+const codexShort = { instructions: await count(CODEX_SHORTHAND_BOARD_INSTRUCTIONS), tool: await tok.tool(toolDef(UPDATE_BOARD_SHORTHAND, UPDATE_BOARD_SHORTHAND.name)), readTool: await tok.tool(toolDef(READ_BOARD_SHORTHAND, READ_BOARD_SHORTHAND.name)) };
+dump("shorthand-tool.json", JSON.stringify(toolDef(UPDATE_BOARD_SHORTHAND), null, 1));
+const vs = (a, b) => [fmt(a), fmt(b), pct(b / a - 1)];
+table(
+  ["Fixed, every request", "Standard", "Shorthand", "Change"],
+  [
+    ["Board instructions", ...vs(fixedParts.instructions, shortParts.instructions)],
+    ["update_board tool definition", ...vs(fixedParts.tool, shortParts.tool)],
+    ["read_board tool definition", ...vs(fixedParts.readTool, shortParts.readTool)],
+    ["**Total**", ...vs(FIXED, SHORT_FIXED).map((x) => `**${x}**`)],
+    ["Codex: the three together", ...vs(codexParts.instructions + codexParts.tool + codexParts.readTool, codexShort.instructions + codexShort.tool + codexShort.readTool)],
+  ],
+);
+console.log("Claude Code's own prompt and tools aren't in these counts. Shorthand also gives a Claude run only the built-in tools it uses (runs.js SHORTHAND_TOOLS); scripts/prompt-size.mjs measures the whole first request both ways with a real one-turn call.\n");
+
+const buildOpsAll = build.flatMap((p) => p.ops);
+const allReplyOps = corrections.flatMap((c) => c.replyOps);
+// Each of the build's calls is counted on its own, as it's sent.
+const calls = async (form, groups) => (await Promise.all(groups.map((ops) => count(form(ops))))).reduce((a, b) => a + b, 0);
+const buildGroups = build.filter((p) => p.ops.length).map((p) => p.ops);
+const opRows = [];
+for (const [label, groups] of [[`First plan (${plan.ops.length} ops, one call)`, [plan.ops]], [`The three corrections' replies (${allReplyOps.length} ops)`, corrections.map((c) => c.replyOps)], [`The build (${buildOpsAll.length} ops, ${buildCalls} calls)`, buildGroups]]) {
+  const json = await calls(callJson, groups), lines = await calls(callLines, groups);
+  opRows.push([label, ...vs(json, lines), fmt(await calls(linesOf, groups))]);
+  opRows.totals = { json: (opRows.totals?.json ?? 0) + json, lines: (opRows.totals?.lines ?? 0) + lines };
+}
+dump("plan-0-update_board-lines.txt", linesOf(plan.ops));
+table(["Board ops the agent writes (output)", "JSON call", "Lines call", "Change", "The lines alone, unescaped"], opRows);
+
+const reads = [];
+for (const c of corrections) reads.push([`After: ${c.label}`, ...vs(await count(JSON.stringify(c.snap)), await count(stateLines(c.snap)))]);
+for (const r of rows) reads.push([`Carry-on <board_state>, run ${r.meta.id}`, ...vs(await count(JSON.stringify(r.snap)), await count(stateLines(r.snap)))]);
+dump("read-board-result-lines.txt", stateLines(corrections.at(-1).snap));
+table(["The board as the agent reads it (input)", "JSON", "Lines", "Change"], reads);
+
+// What it adds up to on the full run (scenario 3): the fixed part on every request (one write,
+// the rest reads), and the board ops written.
+const nReq = reqs.wb.length + buildWb.length;
+const dFixed = FIXED - SHORT_FIXED, dOut = opRows.totals.json - opRows.totals.lines;
+console.log(`Full run (scenario 3, ${nReq} requests): the fixed part is ${fmt(dFixed)} tokens smaller on every request (${money(usd(dFixed, PRICE.write))} on the write, ${money(usd(dFixed * (nReq - 1), PRICE.read))} over the reads; ${money(usd(dFixed, 8))} at the 1-hour write rate the live runs paid), and the ops are ${fmt(dOut)} output tokens shorter (${money(usd(dOut, PRICE.output))}). Together about ${money(usd(dFixed, PRICE.write) + usd(dFixed * (nReq - 1), PRICE.read) + usd(dOut, PRICE.output))} a run, before the trimmed tools and terse chat.`);
+

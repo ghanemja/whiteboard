@@ -9,7 +9,7 @@
 // rows, component status and test results through the same Run methods Claude's tool calls use.
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { CODEX_BOARD_INSTRUCTIONS, CODEX_PLAN_INSTRUCTIONS } from "./instructions.js";
+import { boardInstructions, CODEX_PLAN_INSTRUCTIONS } from "./instructions.js";
 import { Run, settings } from "./runs.js";
 
 const rel = (repo, p) => (p ? path.relative(repo, path.resolve(repo, p)) || "." : "");
@@ -102,7 +102,7 @@ export class CodexRun extends Run {
     try {
       await this.call("initialize", { clientInfo: { name: "whiteboard", title: "Agent Whiteboard", version: "0.1.0" }, capabilities: null });
       this.notify("initialized");
-      const { thread } = await this.call("thread/start", { cwd: this.repo, ...(model ? { model } : {}), approvalPolicy: "never", sandbox: "read-only", developerInstructions: CODEX_BOARD_INSTRUCTIONS });
+      const { thread } = await this.call("thread/start", { cwd: this.repo, ...(model ? { model } : {}), approvalPolicy: "never", sandbox: "read-only", developerInstructions: boardInstructions({ codex: true, shorthand: this.shorthand }) });
       this.threadId = thread.id;
       // The agent's own session id: what a later run would resume from.
       this.recorder.update({ sessionId: thread.id });

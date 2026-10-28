@@ -4,8 +4,9 @@ import path from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import { commitsSince, diff, head, isRepo, snapshot } from "./changes.js";
 import { serveBoardMcp } from "./board-mcp.js";
-import { boardReply, readBoardReply, READ_BOARD, UPDATE_BOARD } from "./board-tool.js";
-import { BOARD_INSTRUCTIONS, PLAN_INSTRUCTIONS } from "./instructions.js";
+import { boardTools } from "./board-tool.js";
+import { boardInstructions, PLAN_INSTRUCTIONS } from "./instructions.js";
+import { stateLines } from "./shorthand.js";
 import { listRecordings, readChain, readDecisions, readRecording, Recorder } from "./recordings.js";
 import { cloneRepo, folderError, listFolders, startFolder } from "./repos.js";
 import { layerOf, LAYERS, parseColumns, parseSteps, sentenceCase, toDfdMermaid, toErMermaid, toMermaid, toSequence } from "../src/engine/views.js";
@@ -47,6 +48,19 @@ export const settings = (env = process.env) =>
   engine(env) === "codex"
     ? { model: env.AGENT_MODEL || null, effort: env.AGENT_EFFORT || null }
     : { model: env.AGENT_MODEL || env.ANTHROPIC_MODEL || "claude-opus-5-5", effort: env.AGENT_EFFORT || "low" };
+
+// Shorthand mode (AGENT_SHORTHAND, README "Settings"): the agent draws with one op per line instead
+// of JSON, reads the board in the same lines, chats tersely, and (Claude) gets only the built-in
+// tools it uses, which cuts Claude Code's own prompt by about two thirds. Off with 0, false, off or no.
+export const SHORTHAND_DEFAULT = false;
+export const shorthand = (env = process.env) => {
+  const v = String(env.AGENT_SHORTHAND ?? "").trim().toLowerCase();
+  return v ? !["0", "false", "off", "no"].includes(v) : SHORTHAND_DEFAULT;
+};
+// The built-in tools a shorthand Claude run gets: the ones agents used across six live runs, plus
+// ExitPlanMode, which a tools list drops unless it's named (and the plan gate needs it). The board's
+// own tools come from its MCP server, which this list doesn't touch.
+export const SHORTHAND_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "ExitPlanMode"];
 
 // The agent's environment, from the three settings people set (README: "Models"):
 //   AGENT_URL    where the model is: any Anthropic-format endpoint (Ollama, LiteLLM, OpenRouter…);
@@ -209,7 +223,8 @@ export class Run {
     this.turnText = ""; // what the agent has said since the last user turn
     this.git = null; // { base, head, tree, sent, files }: the repo as the run found it, and what it's changed since (changes.js)
     const { model, effort } = settings();
-    this.recorder = new Recorder({ id: this.id, brief, repo, model, effort, startedAt: new Date(this.started).toISOString(), project: null, ...(from ? { from: from.id } : {}) });
+    this.shorthand = shorthand();
+    this.recorder = new Recorder({ id: this.id, brief, repo, model, effort, ...(this.shorthand ? { shorthand: true } : {}), startedAt: new Date(this.started).toISOString(), project: null, ...(from ? { from: from.id } : {}) });
     this.brief = brief;
     // A run that carries on from a saved board (a living document): that board is its starting
     // point, and that run's decision log is the handover the agent reads first.
@@ -247,7 +262,7 @@ export class Run {
   get firstTurn() {
     if (!this.from) return this.brief;
     const edits = this.startEdits.length ? `I changed the board:\n<board_edits>${JSON.stringify(this.startEdits)}</board_edits>\n\nRespond to these changes and update the code and the board to match.` : this.brief;
-    const state = this.boardState ? `\n\n<board_state>${JSON.stringify(this.boardState)}</board_state>` : "";
+    const state = !this.boardState ? "" : this.shorthand ? `\n\n<board_state>\n${stateLines(this.boardState)}\n</board_state>` : `\n\n<board_state>${JSON.stringify(this.boardState)}</board_state>`;
     return `${edits}\n\n<handover from="${this.from.id}">\n${this.from.log ?? ""}\n</handover>${state}`;
   }
 
@@ -826,37 +841,36 @@ export class ClaudeRun extends Run {
     return { behavior: "allow", updatedInput: input };
   }
 
-  async start() {
-    const { model, effort } = settings();
-    await this.trackRepo();
+  // The Agent SDK options for this run (scripts/prompt-size.mjs measures the prompt they make).
+  queryOptions({ model, effort }) {
     const board = createSdkMcpServer({
       name: "board",
       version: "1.0.0",
       alwaysLoad: true, // the agent needs it from the first turn; don't hide it behind tool search
-      tools: [
-        tool(UPDATE_BOARD.name, UPDATE_BOARD.description, UPDATE_BOARD.input, async ({ ops }) => boardReply(ops, this.emitOps(ops))),
-        tool(READ_BOARD.name, READ_BOARD.description, READ_BOARD.input, async () => readBoardReply(await this.readBoard())),
-      ],
+      tools: boardTools(this.shorthand).map((t) => tool(t.name, t.description, t.input, (args) => t.run(args, { draw: (ops) => this.emitOps(ops), read: () => this.readBoard() }))),
     });
+    return {
+      cwd: this.repo,
+      model,
+      effort,
+      permissionMode: "plan",
+      planModeInstructions: PLAN_INSTRUCTIONS,
+      systemPrompt: { type: "preset", preset: "claude_code", append: boardInstructions({ shorthand: this.shorthand }) },
+      ...(this.shorthand ? { tools: SHORTHAND_TOOLS } : {}),
+      // Repo settings and CLAUDE.md only; keep the user's global hooks and settings out of this agent.
+      settingSources: ["project"],
+      env: agentEnv(process.env),
+      mcpServers: { board },
+      canUseTool: this.canUseTool,
+      includePartialMessages: true,
+      abortController: this.abort,
+    };
+  }
 
-    this.q = query({
-      prompt: this.inbox,
-      options: {
-        cwd: this.repo,
-        model,
-        effort,
-        permissionMode: "plan",
-        planModeInstructions: PLAN_INSTRUCTIONS,
-        systemPrompt: { type: "preset", preset: "claude_code", append: BOARD_INSTRUCTIONS },
-        // Repo settings and CLAUDE.md only; keep the user's global hooks and settings out of this agent.
-        settingSources: ["project"],
-        env: agentEnv(process.env),
-        mcpServers: { board },
-        canUseTool: this.canUseTool,
-        includePartialMessages: true,
-        abortController: this.abort,
-      },
-    });
+  async start() {
+    const { model, effort } = settings();
+    await this.trackRepo();
+    this.q = query({ prompt: this.inbox, options: this.queryOptions({ model, effort }) });
     this.emit({ type: "stage", stage: "planning", model, repo: this.repo });
 
     try {
@@ -1042,6 +1056,7 @@ export function runsMiddleware({ defaultRepo, sandbox = path.resolve("sandbox") 
         live: Boolean(provider()),
         provider: provider(),
         ...settings(),
+        shorthand: shorthand(),
         defaultRepo,
       });
     }
@@ -1111,7 +1126,7 @@ export function runsMiddleware({ defaultRepo, sandbox = path.resolve("sandbox") 
     if (!run) return parts.length ? json(res, 404, { error: "No such run." }) : next();
 
     // The run's board as an MCP server (POST, plus GET and DELETE per the transport).
-    if (parts[1] === "mcp" && parts.length === 2) return serveBoardMcp(req, res, { token: run.boardMcp.token, draw: (ops) => run.emitOps(ops), read: () => run.readBoard() });
+    if (parts[1] === "mcp" && parts.length === 2) return serveBoardMcp(req, res, { token: run.boardMcp.token, draw: (ops) => run.emitOps(ops), read: () => run.readBoard(), shorthand: run.shorthand });
 
     // The browser's answer to a read_board request on the event stream (Run.readBoard).
     if (req.method === "POST" && parts[1] === "board") {

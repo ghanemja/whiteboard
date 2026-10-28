@@ -67,6 +67,41 @@ export const PLAN_INSTRUCTIONS = `
 Explore the repository read-only and work out a plan for the user's request. Draw the plan on the whiteboard with mcp__board__update_board as you go: project with its goal, phase planning, planning tasks, components with their paths, libraries and interfaces, connections with protocol and API, and a decision op for each non-obvious technical choice (what you chose, what you considered, why, the evidence in the repo, and the check that will prove it). Keep your written plan short, a few bullet points at most, since the board and its decisions show the structure and the reasoning. When the plan is complete and on the board, call ExitPlanMode.
 `.trim();
 
+// Shorthand mode (AGENT_SHORTHAND, server/shorthand.js): the agent draws with one op per line
+// instead of JSON, read_board answers in the same lines, and chat is an engineer's terse log. Every
+// rule above still holds; only how ops are written and how chat reads change.
+const SHORTHAND_OPS = `
+## Writing ops as lines
+
+Send update_board one op per line in \`lines\`: the op, then its id, then key=value pairs. Quote a value that has spaces ("…", JSON escapes). A list joins its items with |, quoted or not (\\| keeps a | inside an item); a list written ["a", "b"] below is a|b. edge, unlink and adopt-edge take from>to where the id goes, phase takes its name, adopt-note and answer the sticker's el. For example:
+
+project name=DocQA goal="People ask questions about their PDFs and every answer cites its page"
+phase planning
+task p1 phase=planning text="Read the API routes" status=done
+node api name="API server" kind=service col=1 row=0 paths=api/ libs=fastapi@0.115|pydantic@2.9 api="POST /ask|POST /documents" v=built
+edge web>api via=HTTP api="POST /ask {question}"
+flow f1 name="Ask a question" steps="web>api: POST /ask|api>vdb: top 8 chunks|api>web: answer + citations"
+decision d1 title="Where vectors live" chose="pgvector in the existing Postgres" over="Pinecone|FAISS on disk" why="One database to run and back up; slower past ~10M chunks" affects=api|vdb evidence="docker-compose.yml already runs postgres:16" verify="test 'ask cites the page' passes"
+
+A line that can't be drawn comes back with its number and the reason: resend only those lines. read_board answers in the same lines, plus # lines for free cells, notes and kept items.`.trim();
+
+const TERSE_CHAT = `
+## Chat: terse
+
+Write chat as an engineer's log, not prose: the result first, no filler, no greetings, no restating the task or what the board already shows. Fragments are fine. Point at code as file:line, and give numbers (8/8 tests pass, +12 −3 lines). Keep these whole and exact: identifiers, paths, commands, error messages, commit messages, questions for the user, and the final summary (two or three plain sentences on what changed and how to try it).`.trim();
+
+const forShorthand = (text) =>
+  [
+    ["and keep your chat text short: one or two plain sentences between steps.", "and keep your chat text terse (below)."],
+    ["## Ops (pass several in one update_board call)", `${SHORTHAND_OPS}\n\n## Ops (send several in one update_board call)`],
+    ["## Decisions: show your reasoning", `${TERSE_CHAT}\n\n## Decisions: show your reasoning`],
+  ].reduce((t, [from, to]) => {
+    if (!t.includes(from)) throw new Error(`instructions.js: shorthand can't find "${from}"`);
+    return t.replace(from, to);
+  }, text);
+
+export const SHORTHAND_BOARD_INSTRUCTIONS = forShorthand(BOARD_INSTRUCTIONS);
+
 // The same for Codex (codex-run.js). It reaches the board as the MCP server "board", and it has no
 // plan mode: its first turn runs read-only, the end of that turn is the plan, and the next message
 // approves it (or asks for changes).
@@ -81,4 +116,9 @@ const forCodex = (text) =>
   ].reduce((t, [from, to]) => t.replace(from, to), text);
 
 export const CODEX_BOARD_INSTRUCTIONS = forCodex(BOARD_INSTRUCTIONS);
+export const CODEX_SHORTHAND_BOARD_INSTRUCTIONS = forCodex(SHORTHAND_BOARD_INSTRUCTIONS);
 export const CODEX_PLAN_INSTRUCTIONS = forCodex(PLAN_INSTRUCTIONS);
+
+// The board instructions an engine appends, by engine and mode.
+export const boardInstructions = ({ codex = false, shorthand = false } = {}) =>
+  codex ? (shorthand ? CODEX_SHORTHAND_BOARD_INSTRUCTIONS : CODEX_BOARD_INSTRUCTIONS) : shorthand ? SHORTHAND_BOARD_INSTRUCTIONS : BOARD_INSTRUCTIONS;
