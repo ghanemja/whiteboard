@@ -1,6 +1,6 @@
-{"type":"meta","id":"f0b64cdb","brief":"Support custom aliases like /launch","repo":"/Users/janelle/Documents/whiteboard/sandbox/linkshort","model":"claude-opus-5-5","effort":"low","startedAt":"2026-10-25T01:59:01.639Z","project":null}
+{"type":"meta","id":"f0b64cdb","brief":"Support custom aliases like /launch","repo":"/home/you/whiteboard/sandbox/linkshort","model":"claude-opus-5-5","effort":"low","startedAt":"2026-10-25T01:59:01.639Z","project":null}
 {"type":"decision","t":0,"who":"you","title":"Started a task","quote":"Support custom aliases like /launch"}
-{"type":"stage","stage":"planning","model":"claude-opus-5-5","repo":"/Users/janelle/Documents/whiteboard/sandbox/linkshort","t":9}
+{"type":"stage","stage":"planning","model":"claude-opus-5-5","repo":"/home/you/whiteboard/sandbox/linkshort","t":9}
 {"type":"meta-update","sessionId":"5b53d01b-66d5-4eca-8b95-0640c9ed7c91"}
 {"type":"activity","toolUseId":"toolu_01QxBJfAsKwnCd6Sa6gXSitg","kind":"command","label":"git ls-files && cat package.json && cat src/*.js 2>/dev/null | head -200","t":3589}
 {"type":"activity-result","toolUseId":"toolu_01QxBJfAsKwnCd6Sa6gXSitg","ok":true,"summary":"}","t":5295}

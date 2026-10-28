@@ -1,7 +1,7 @@
 # Decisions: linkshort stats
 
 - **Task:** Count clicks per link and add GET /stats/:code
-- **Repo:** `/Users/janelle/Documents/whiteboard/sandbox/linkshort`
+- **Repo:** `/home/you/whiteboard/sandbox/linkshort`
 - **Started:** 2026-10-25T02:11:19.783Z · claude-opus-5-5 (effort low)
 - **Agent session:** `b4740779-68b3-4676-b5db-63e67d78485f`
 - **Recording:** `recordings/dafce9c8.jsonl` (replay or reopen it in Agent Whiteboard)

@@ -1,6 +1,6 @@
-{"type":"meta","id":"dafce9c8","brief":"Count clicks per link and add GET /stats/:code","repo":"/Users/janelle/Documents/whiteboard/sandbox/linkshort","model":"claude-opus-5-5","effort":"low","startedAt":"2026-10-25T02:11:19.783Z","project":null}
+{"type":"meta","id":"dafce9c8","brief":"Count clicks per link and add GET /stats/:code","repo":"/home/you/whiteboard/sandbox/linkshort","model":"claude-opus-5-5","effort":"low","startedAt":"2026-10-25T02:11:19.783Z","project":null}
 {"type":"decision","t":0,"who":"you","title":"Started a task","quote":"Count clicks per link and add GET /stats/:code"}
-{"type":"stage","stage":"planning","model":"claude-opus-5-5","repo":"/Users/janelle/Documents/whiteboard/sandbox/linkshort","t":11}
+{"type":"stage","stage":"planning","model":"claude-opus-5-5","repo":"/home/you/whiteboard/sandbox/linkshort","t":11}
 {"type":"meta-update","sessionId":"b4740779-68b3-4676-b5db-63e67d78485f"}
 {"type":"activity","toolUseId":"toolu_01AHd7KKbFiZeSBnCd9FTwLM","kind":"command","label":"cat src/*.js package.json && ls test && git diff --stat","t":3137}
 {"type":"activity-result","toolUseId":"toolu_01AHd7KKbFiZeSBnCd9FTwLM","ok":true,"summary":"4 files changed, 57 insertions(+), 5 deletions(-)","t":4820}

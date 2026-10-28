@@ -1,7 +1,7 @@
 # Decisions: linkshort aliases
 
 - **Task:** Support custom aliases like /launch
-- **Repo:** `/Users/janelle/Documents/whiteboard/sandbox/linkshort`
+- **Repo:** `/home/you/whiteboard/sandbox/linkshort`
 - **Started:** 2026-10-25T01:59:01.639Z · claude-opus-5-5 (effort low)
 - **Agent session:** `5b53d01b-66d5-4eca-8b95-0640c9ed7c91`
 - **Recording:** `recordings/f0b64cdb.jsonl` (replay or reopen it in Agent Whiteboard)
