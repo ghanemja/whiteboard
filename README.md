@@ -14,7 +14,7 @@ The board takes the left of the window and the panel the right. Everything aroun
 
 - **Above the board:** the project and its four phases; the tabs (**Architecture**, **Reasoning**, **Timeline**) with **Flows & export** and **+ Pin this view**; **Draw as** and **Zoom into**; and **Edit the plan**, with the glass switch first. While the plan is editable, the sticker tray sits at the board's top right. The color key runs along the bottom.
 - **The panel's title bar:** a **Demo**, **Agent** or **Replay** badge (hover it to see the model and where it runs), then play or pause (■ stops a live agent), ↺ to start over, the speed (1×, 2×, 4×; not for a live agent), ⛶ to fit the board and ⇩ to download the log. With tips hidden, a flag (the tour) and **?** (tips) join them. Under the bar, a status line says what the agent is doing right now.
-- **The panel, top to bottom:** the coach; the agent's latest reply (**Its reply**) or why it stopped (**⚠ It stopped**); the review, when a run ends; then **Plan details**: the goal, what's waiting **For you**, and closed sections you open (Architecture, Connections, Data model, Flows, Code, Steps, Decisions), each with its count. The plan gate and command prompts sit at the bottom, above the message box.
+- **The panel, top to bottom:** the coach; the agent's latest reply (**Its reply**) or why it stopped (**⚠ It stopped**); the review, when a run ends; then **Plan details**: the goal, what's waiting **For you**, and closed sections you open (Architecture, Connections, Data model, Flows, Code, Steps, Decisions), each with its count. The plan gate and command prompts sit at the bottom, above the message box; in the box, ↑ and ↓ bring back what you typed before (tasks and messages, kept in this browser).
 
 ## Take the tour
 
@@ -197,7 +197,7 @@ Three stickers sit in a tray at the board's top right, in sight whenever the pla
 | **Not needed** | remove it | reject it | ▢ / ◇ |
 | **Keep this** | leave it as it is: no renaming, removing or reworking without asking you | don't change that decision | ✐ |
 
-A sticker goes to the agent as soon as you drop it, and its answer pops up in a speech bubble beside it on the board (the agent's `answer` op; the demo answers the same way). The sticker and its bubble stay until you delete the sticker. Keep this is a standing constraint: the agent sees it in every message's board state. A sticker dropped on empty board is just a drawing: nothing is sent.
+A sticker goes to the agent as soon as you drop it, and a "…" bubble beside it says it's been heard; the answer replaces it (the agent's `answer` op; the demo answers the same way). A live agent answers in seconds, mid-build too: in a live check, 2 s at the plan gate and 12 s while it was building. Dropped at the plan gate, it doesn't lose the gate: if the agent answers without asking again, the board asks for approval itself. The sticker and its bubble stay until you delete the sticker. Keep this is a standing constraint: the agent sees it in every message's board state. A sticker dropped on empty board is just a drawing: nothing is sent.
 
 ## Marks on the board
 

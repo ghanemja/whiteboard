@@ -113,3 +113,14 @@ test("three settings: AGENT_URL (left out for Anthropic), AGENT_KEY (left out wh
   // Nothing new set: the environment passes through as it was.
   assert.deepEqual(agentEnv({ PATH: "/bin", ANTHROPIC_API_KEY: "sk-ant-x" }), { PATH: "/bin", ANTHROPIC_API_KEY: "sk-ant-x" });
 });
+
+test("an agent doesn't inherit the Claude Code session the dev server was started from", () => {
+  const host = { CLAUDE_CODE_SESSION_ID: "4f1e", CLAUDE_CODE_REMOTE_SESSION_ID: "cse_1", CLAUDE_CODE_REMOTE_SDK_URL: "https://x/sessions/cse_1", CLAUDE_CODE_CHILD_SESSION: "1", CLAUDE_CODE_MESSAGING_TOKEN: "x", CLAUDE_PID: "95" };
+  const env = agentEnv({ ...host, PATH: "/bin", HTTPS_PROXY: "http://proxy", CLAUDE_CODE_USE_BEDROCK: "1", CLAUDE_CODE_REMOTE: "true", CLAUDECODE: "1" });
+  for (const k of Object.keys(host)) assert.equal(k in env, false, k);
+  assert.equal(env.PATH, "/bin");
+  assert.equal(env.HTTPS_PROXY, "http://proxy", "the network still goes where it did");
+  assert.equal(env.CLAUDE_CODE_USE_BEDROCK, "1", "Claude Code's own settings still work");
+  assert.equal(env.CLAUDE_CODE_REMOTE, "true", "how it signs in in a cloud container is left alone");
+});
+

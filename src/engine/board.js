@@ -1880,29 +1880,46 @@ export class Board {
       const ids = [d.elId, ...els.filter((e) => e.containerId === d.elId).map((e) => e.id)];
       ids.forEach((id) => this.known.add(id));
       this.stickers.set(d.elId, { sticker: d.sticker, ids });
+      // A "…" bubble at once, so you see it's been heard; the answer replaces it.
+      this.answerSticker(d.elId, "…", { pending: true });
       if (d.sticker === "keep") (this.model.kept ??= []).push({ elId: d.elId, ...(d.node ? { node: d.node } : { decision: d.decision }) });
     }
   }
 
+  // Stickers sent that have no answer beside them yet (only their "…", or nothing).
+  unansweredStickers() {
+    const answered = new Set(this.scene().filter((e) => !e.isDeleted && e.customData?.answers && !e.customData.pending).map((e) => e.customData.answers));
+    return [...this.stickers.keys()].filter((el) => !answered.has(el));
+  }
+
   // The turn that answers them is over. They stay on the board with their answers beside them;
-  // one it didn't answer on the board gets the start of its reply (fallback) instead.
+  // one it didn't answer on the board gets the start of its reply (fallback) instead of its "…"
+  // (or loses the "…", with nothing to say).
   settleStickers(fallback) {
-    const answered = new Set(this.scene().filter((e) => !e.isDeleted && e.customData?.answers).map((e) => e.customData.answers));
-    for (const [el] of this.stickers) if (fallback && !answered.has(el)) this.answerSticker(el, fallback);
+    const waiting = new Set();
+    for (const el of this.unansweredStickers()) {
+      if (fallback) this.answerSticker(el, fallback);
+      else waiting.add(el);
+    }
     this.stickers.clear();
+    if (waiting.size) {
+      const now = this.scene();
+      this.kill(now, new Set(now.filter((e) => !e.isDeleted && e.customData?.pending && waiting.has(e.customData.answers)).map((e) => e.id)));
+      this.commit(now);
+    }
   }
 
   // ---- a reply beside what it answers: a speech bubble by the user's sticker ----
   // Drawn on the board (so it pans and zooms with it), grouped, remembered so diff() skips it,
   // and tagged with the sticker it answers (customData.answers); it goes when the sticker does.
-  answerSticker(el, text) {
+  answerSticker(el, text, { pending = false } = {}) {
     const els = this.scene();
     const st = els.find((e) => e.id === el && !e.isDeleted);
     if (!st || !text) return [];
     const old = new Set(els.filter((e) => e.customData?.answers === el).map((e) => e.id));
     if (old.size) this.kill(els, old);
     const [, y1, x2, y2] = getCommonBounds([st]);
-    const pad = 12, x = x2 + 24, mid = (y1 + y2) / 2, g = [`g:ans-${el}`], tag = { answers: el };
+    const pad = 12, x = x2 + 24, mid = (y1 + y2) / 2, g = [`g:ans-${el}`], tag = { answers: el, ...(pending ? { pending: true } : {}) };
     const [t] = this.convert([{ type: "text", id: `ans-${el}-x`, x: x + pad, y: 0, text: wrapWords(plainWords(text), 30), fontSize: 16, strokeColor: INK, groupIds: g }]);
     const y = mid - Math.min(24, t.height / 2 + pad);
     const out = this.convert([

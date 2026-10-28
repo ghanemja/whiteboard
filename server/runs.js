@@ -80,8 +80,14 @@ export const SHORTHAND_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write", "Bash",
 //   AGENT_MODEL  the model's name there
 // written into the variables the Claude Agent SDK reads. Without them, Claude Code's own variables
 // (ANTHROPIC_*, CLAUDE_CODE_USE_BEDROCK…) work as they do for Claude Code.
+// The variables a Claude Code session sets for the commands it runs, naming that session. A dev
+// server started from inside one (its terminal, the desktop app's preview, a cloud session) would
+// hand them to every agent it starts, and each agent would take that session's id and write its
+// transcript into that session's file. The rest (how it signs in, the proxy) is left as it is.
+const HOST_SESSION = /^(CLAUDE_PID|CLAUDE_CODE_(SESSION_ID|REMOTE_SESSION_ID|REMOTE_SDK_URL|CHILD_SESSION|SYNC_SESSION_REFS|SESSION_ATTENDED|MESSAGING_.*))$/;
+
 export function agentEnv(env = process.env) {
-  const out = { ...env };
+  const out = Object.fromEntries(Object.entries(env).filter(([k]) => !HOST_SESSION.test(k)));
   const [url, key, model] = ["AGENT_URL", "AGENT_KEY", "AGENT_MODEL"].map((k) => env[k]?.trim() || "");
   if (url && !/(^|\.)anthropic\.com$/.test(hostOf(url))) {
     out.ANTHROPIC_BASE_URL = url;
@@ -865,6 +871,7 @@ export class ClaudeRun extends Run {
 
   async approvePlan(input) {
     this.autoApprovePlan = false;
+    this.planApproved = true;
     await this.q.setPermissionMode("acceptEdits");
     this.emit({ type: "stage", stage: "building" });
     return { behavior: "allow", updatedInput: input };
@@ -946,7 +953,28 @@ export class ClaudeRun extends Run {
       return;
     }
 
-    if (msg.type === "result") this.finishTurn({ ok: !msg.is_error, why: msg.subtype, cost: msg.total_cost_usd, turns: msg.num_turns });
+    if (msg.type === "result") {
+      this.finishTurn({ ok: !msg.is_error, why: msg.subtype, cost: msg.total_cost_usd, turns: msg.num_turns });
+      if (!msg.is_error) this.turnEnd.then(() => this.planGateAfterTurn());
+    }
+  }
+
+  // A planning turn that ended without asking to exit plan mode (it answered a question or a
+  // sticker and stopped there): the plan is still waiting for approval, so ask for it here. Approve
+  // switches to building and tells the agent so; anything else goes to it as its next message.
+  async planGateAfterTurn() {
+    if (this.planApproved || this.stopped || this.gateId || this.pending.size) return;
+    this.recorder.decide({ t: this.now, who: "agent", title: "Asked for approval again", lines: this.planSummary() });
+    const result = await this.ask({ type: "gate" });
+    if (result.stopped || this.stopped) return;
+    if (result.behavior === "allow") {
+      await this.approvePlan({});
+      this.inbox.push(userTurn("The user approved the plan. Build it now."));
+    } else {
+      this.inbox.push(userTurn(result.message));
+    }
+    this.idle = false;
+    this.emit({ type: "turn" });
   }
 
   // Real work, as compact activity rows (in the panel) and, for edits, on the board.
@@ -1009,7 +1037,7 @@ export class ClaudeRun extends Run {
         if (gate)
           return this.answer(gate, {
             behavior: "deny",
-            message: `Not approved yet. ${said}${confirmed}\n\nRevise the plan and the board with update_board to match, then call ExitPlanMode again.`,
+            message: `Not approved yet. ${said}${confirmed}\n\nRevise the plan and the board with update_board to match (if it changes nothing, answer and say so), then call ExitPlanMode again.`,
           });
         this.inbox.push(userTurn(`${said}${confirmed}`));
         this.idle = false;

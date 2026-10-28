@@ -7,6 +7,7 @@ import { AREAS, areaOf, fmt, STICKER_WORD } from "./engine/timeline";
 import { busyDecisions, LAYER_COLOR, LAYERS, layerOf, openableLayers, tagCase, toDfdMermaid, toErMermaid, toInsideMermaid, toMermaid, toSequence } from "./engine/views";
 import { buildReview, penMarks } from "./engine/review";
 import { logMarkdown } from "./engine/logfile";
+import { createHistory } from "./engine/history";
 import { advance, back as tourBack, holds, isFresh, next as tourNext, startTour, stepOf, targets as tourTargets, tourLength, waiting as tourWaiting } from "./engine/tour";
 import { decisionsUrl, getAgentStatus, listRecordings } from "./agent/live";
 import { TourCard, TourSpotlight } from "./Tour";
@@ -1246,6 +1247,21 @@ export default function App() {
   const [ownSel, setOwnSel] = useState(false); // only the board's own drawing is selected: no style panel
   const [speed, setSpeed] = useState(1);
   const [draft, setDraft] = useState("");
+  // What you typed before, for ↑ / ↓ in the message box (kept in this browser).
+  const history = useRef(null);
+  history.current ??= createHistory({
+    load: () => JSON.parse(localStorage.getItem("wb-history") ?? "[]"),
+    save: (items) => localStorage.setItem("wb-history", JSON.stringify(items)),
+  });
+  const browseHistory = (e) => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent.isComposing) return;
+    const v = e.key === "ArrowUp" ? history.current.up(draft) : e.key === "ArrowDown" ? history.current.down() : null;
+    if (v == null) return;
+    e.preventDefault();
+    setDraft(v);
+    const el = e.currentTarget;
+    requestAnimationFrame(() => el.setSelectionRange(v.length, v.length));
+  };
   const [repo, setRepo] = useState("");
   const [agent, setAgent] = useState(null); // { live, provider, model, effort, defaultRepo } from the dev server
   const [recordings, setRecordings] = useState([]);
@@ -1807,6 +1823,7 @@ export default function App() {
     e.preventDefault();
     const text = draft.trim();
     if (!s || !text) return;
+    history.current.push(text);
     if (awaitingTask) return startTask(text);
     s.sendChat(text);
     setDraft("");
@@ -2438,7 +2455,12 @@ export default function App() {
             <input
               id="ask"
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                history.current.reset();
+                setDraft(e.target.value);
+              }}
+              onKeyDown={browseHistory}
+              title="↑ and ↓ bring back what you typed before"
               placeholder={awaitingTask ? "Describe a task for the agent…" : reviewing ? "Ask for changes to the plan…" : s?.carriesOn ? "What's next? A new session starts from this board…" : "Tell the agent something…"}
             />
             <button type="submit" disabled={!draft.trim()}>

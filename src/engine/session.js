@@ -109,6 +109,13 @@ export class Session {
     this.commits = 0; // commits made during the run
     this.demoRuns = 0;
     this.stickerTurn = false; // a turn answering sent stickers has started (stateChanged)
+    // A live agent: how many of its turns have ended (a done, or a plan gate), and after how many the
+    // stickers sent to it are answered (stateChanged). A sticker sent mid-turn usually reaches the
+    // agent in that turn (Claude Code and Codex both take a message mid-turn), but if that turn ends
+    // without an answer to it, the next one gets a chance before its reply is used (stickerMidTurn).
+    this.turnEnds = 0;
+    this.stickerSettleAt = null;
+    this.stickerMidTurn = false;
     this.held = null;
     this.denied = new Set(); // demo commands you denied: their runs don't happen
     this.allowAll = false;
@@ -291,7 +298,18 @@ export class Session {
     // In a replay the ⏸ still shows where the agent waited, though there's nothing to answer.
     this.board.setReviewTag(this.mode === "replay" ? !!this.gate : this.awaitingApproval);
     // Stickers are answered in the turn they start: once it's over, each has its answer beside it.
-    if (this.board.stickers.size) {
+    if (this.board.stickers.size && this.mode === "agent") {
+      if (this.stickerSettleAt != null && this.turnEnds >= this.stickerSettleAt && !this.state.busy) {
+        if (this.stickerMidTurn && this.board.unansweredStickers().length) {
+          this.stickerMidTurn = false;
+          this.stickerSettleAt = this.turnEnds + 1;
+        } else {
+          this.stickerSettleAt = null;
+          this.stickerMidTurn = false;
+          this.board.settleStickers(this.lastReply());
+        }
+      }
+    } else if (this.board.stickers.size) {
       if (this.state.busy) this.stickerTurn = true;
       else if (this.stickerTurn) {
         this.stickerTurn = false;
@@ -438,7 +456,7 @@ export class Session {
       this.board.onPhase?.(null);
       await this.board.init();
       if (g !== this.gen || r !== this.replay) return;
-      Object.assign(this, { stage: "planning", gate: null, permission: null, agentBusy: false, result: null, caption: "", steerText: null, replayT: 0, changes: null, commits: 0 });
+      Object.assign(this, { stage: "planning", gate: null, permission: null, agentBusy: false, turnEnds: 0, stickerSettleAt: null, stickerMidTurn: false, result: null, caption: "", steerText: null, replayT: 0, changes: null, commits: 0 });
       this.drawBase(r.base);
       this.transcript.addUserMessage({ kind: "chat", text: this.brief });
       r.i = 0;
@@ -630,6 +648,7 @@ export class Session {
         this.setChanges(e.files ?? [], e.commits ?? 0);
         break;
       case "gate":
+        this.turnEnds++;
         this.gate = e.requestId;
         this.agentBusy = false;
         this.steerText = null;
@@ -647,6 +666,7 @@ export class Session {
         this.beginTurn();
         break;
       case "done":
+        this.turnEnds++;
         this.agentBusy = false;
         this.steerText = null;
         this.result = e;
@@ -773,6 +793,11 @@ export class Session {
       this.sentMsgs.push(m.id);
       const edits = wire(decisions);
       const gated = !!this.gate;
+      // Answered by the next turn to end (see stickerMidTurn).
+      if (decisions.some((d) => d.kind === "sticker")) {
+        this.stickerSettleAt = Math.max(this.stickerSettleAt ?? 0, this.turnEnds + 1);
+        if (this.agentBusy && !gated) this.stickerMidTurn = true;
+      }
       this.gate = null;
       this.beginTurn();
       this.send({ type: gated ? "revise" : "edits", edits });
