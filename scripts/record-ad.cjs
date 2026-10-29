@@ -1,5 +1,5 @@
 // Records the advertisement (screenshots/ad/ad.mp4, about 95 s) and a short GIF cut of it (ad.gif:
-// steering, the build and the red pen, about 25 s).
+// steering, the build and the red pen, about 25 s), with music from scripts/ad-music.mjs.
 // It opens on the problem in a few title cards, shows the answer in the app, and closes on the
 // line and the repo URL. Captions on every beat, an orange ring on what to look at.
 //
@@ -10,8 +10,8 @@
 //   2. The scripted demo (an agent builds DocQA): the plan drawn as parts, links and ◇ decisions;
 //      D3's card; Use this; a Why? sticker answered in a bubble; Approve with changes; the build
 //      (orange, then green); a command prompt; D2 failing its eval, changing and proven ✓; the red
-//      pen on a claim that isn't true; the Timeline; C4, Database, UML (Class, Component, Sequence,
-//      Activity ticked one by one), Zoom into ML, and a Clean PNG export.
+//      pen on a claim that isn't true; the Reasoning tab; the Timeline; C4, Database, UML (Class,
+//      Component, Sequence, Activity ticked one by one), Zoom into ML, and a Clean PNG export.
 //   3. A real run on the sample repo (sandbox/linkshort), replayed from its recording: Just map it,
 //      then a question answered with nothing to approve. Then the board saved in the repo as
 //      whiteboard.zip: the start screen finds it, Open it restores it, and its decisions.md.
@@ -384,7 +384,13 @@ async function record() {
   await S(() => window.__wb.board.fit(true));
   beat("red pen");
 
-  // 5. The Timeline.
+  // 5. The Reasoning tab, then the Timeline.
+  await caption("Reasoning: each decision's evidence, what it shapes, and the proof");
+  await point('.canvas-tabs button[data-tour="why-tab"]', 300);
+  await sleep(2500);
+  beat("reasoning");
+
+  // The Timeline.
   await caption("The Timeline: when each decision changed, and what changed it");
   await clickEl('.canvas-tabs button[data-tour="timeline-tab"]');
   await sleep(1900);
@@ -539,7 +545,12 @@ function encode() {
   txt += `file '${frames.at(-1).file}'\n`;
   fs.writeFileSync(list, txt);
   const input = ["-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", list];
-  execFileSync("ffmpeg", [...input, "-vf", "fps=30,scale=1440:-2,format=yuv420p", "-c:v", "libx264", "-crf", "21", "-preset", "slow", "-movflags", "+faststart", path.join(OUT, "ad.mp4")]);
+  // The picture, then the music (scripts/ad-music.mjs: the beat comes in with the app) laid under it.
+  const silent = path.join(OUT, "ad-silent.mp4"), music = path.join(OUT, "music.wav");
+  execFileSync("ffmpeg", [...input, "-vf", "fps=30,scale=1440:-2,format=yuv420p", "-c:v", "libx264", "-crf", "21", "-preset", "slow", silent]);
+  execFileSync("node", [path.join(__dirname, "ad-music.mjs"), music, String(Math.ceil(total) + 1), String(at["problem cards"] ?? 16)]);
+  execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-i", silent, "-i", music, "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", path.join(OUT, "ad.mp4")]);
+  fs.rmSync(silent);
   // The GIF is a short cut (the whole ad is ~10 MB as a GIF): from the plan to the red pen.
   const from = at["plan drawn"] ?? 0, to = at["red pen"] ?? from + 25;
   execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-ss", String(from), "-t", String(to - from), "-i", path.join(OUT, "ad.mp4"), "-vf", "fps=8,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle", path.join(OUT, "ad.gif")]);
