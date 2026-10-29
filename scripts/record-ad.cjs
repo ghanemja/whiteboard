@@ -1,5 +1,6 @@
 // Records the advertisement (screenshots/ad/ad.mp4, about 95 s) and a short GIF cut of it (ad.gif:
-// steering, the build and the red pen, about 25 s), with music from scripts/ad-music.mjs.
+// steering, the build and the red pen, about 25 s), with music from scripts/ad-music.mjs, and the
+// README's GIF (demo.gif: the scripted demo part alone, about 55 s).
 // It opens on the problem in a few title cards, shows the answer in the app, and closes on the
 // line and the repo URL. Captions on every beat, an orange ring on what to look at.
 //
@@ -221,6 +222,73 @@ const telephone = `Keeping agents on track and in sync: between agents, sessions
       <div style="font:600 20px var(--hand);color:var(--ink);white-space:nowrap">“${said}”</div></div></div>`)
     .join("")}</div><style>@keyframes ad-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}</style>`;
 
+
+// The idea card's picture: a show on in the background while people work, and bits of it drifting
+// over to them. Ink lines on paper, the accent for the show, the app's hand font for the bubbles.
+const ink = 'stroke="var(--ink)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"';
+const show = `<svg viewBox="0 0 900 360" width="900" height="360" style="display:block;margin:18px auto 0;overflow:visible">
+  <style>
+    .sw-bar{animation:sw-bar 4.5s linear forwards;transform-box:fill-box;transform-origin:0 50%}
+    @keyframes sw-bar{from{transform:scaleX(.18)}to{transform:scaleX(.62)}}
+    .sw-scene{animation:sw-pan 4.5s ease-in-out infinite alternate}
+    @keyframes sw-pan{to{transform:translateX(-28px)}}
+    .sw-code rect{transform-box:fill-box;transform-origin:0 50%;animation:sw-type 1.6s steps(6) infinite}
+    .sw-code rect:nth-child(2){animation-delay:.4s}.sw-code rect:nth-child(3){animation-delay:.8s}.sw-code rect:nth-child(4){animation-delay:1.2s}
+    @keyframes sw-type{from{transform:scaleX(.1)}to{transform:scaleX(1)}}
+    .sw-look{transform-box:fill-box;transform-origin:50% 100%;animation:sw-look 4.5s ease-in-out infinite}
+    @keyframes sw-look{0%,30%,62%,100%{transform:rotate(0)}38%,54%{transform:rotate(14deg)}}
+    .sw-look2{transform-box:fill-box;transform-origin:50% 100%;animation:sw-look2 4.5s ease-in-out infinite}
+    @keyframes sw-look2{0%,12%,40%,100%{transform:rotate(0)}18%,34%{transform:rotate(-12deg)}}
+    .sw-steam path{animation:sw-steam 1.8s ease-in-out infinite;opacity:0}
+    .sw-steam path:nth-child(2){animation-delay:.9s}
+    @keyframes sw-steam{0%{opacity:0;transform:translateY(6px)}40%{opacity:.7}100%{opacity:0;transform:translateY(-16px)}}
+    .sw-b{opacity:0;animation:sw-b .6s ease-out forwards}
+    @keyframes sw-b{from{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.6)}to{opacity:1;transform:none}}
+    .sw-page{transform-box:fill-box;transform-origin:0 50%;animation:sw-page 2.2s ease-in-out infinite}
+    @keyframes sw-page{0%,70%{transform:scaleX(1)}85%{transform:scaleX(-1)}100%{transform:scaleX(1)}}
+  </style>
+  <!-- the screen on the wall, playing a show -->
+  <rect x="300" y="6" width="300" height="172" rx="14" fill="var(--ink)" ${ink}/>
+  <clipPath id="sw-clip"><rect x="312" y="18" width="276" height="134" rx="6"/></clipPath>
+  <g clip-path="url(#sw-clip)"><g class="sw-scene">
+    <rect x="300" y="18" width="340" height="134" fill="#ffe6d8"/>
+    <circle cx="540" cy="54" r="18" fill="var(--marker)"/>
+    <path d="M300 152 Q360 92 420 122 T540 112 T660 128 V160 H300Z" fill="#b2f2bb"/>
+    <path d="M300 152 Q380 120 460 140 T640 136 V160 H300Z" fill="#69db7c"/>
+    <circle cx="420" cy="104" r="9" fill="var(--ink)"/><path d="M420 113 v24 M420 120 l-10 8 M420 120 l10 8 M420 137 l-7 12 M420 137 l7 12" ${ink} stroke-width="2.5"/>
+    <circle cx="470" cy="108" r="9" fill="var(--accent-ink)"/><path d="M470 117 v22 M470 124 l-10 6 M470 124 l10 6 M470 139 l-7 11 M470 139 l7 11" stroke="var(--accent-ink)" stroke-width="2.5" stroke-linecap="round"/>
+  </g></g>
+  <rect x="312" y="160" width="276" height="6" rx="3" fill="#ffffff55"/>
+  <rect class="sw-bar" x="312" y="160" width="276" height="6" rx="3" fill="var(--accent)"/>
+  <path d="M450 178 v14 M410 194 h80" ${ink}/>
+  <!-- the desk: a mug, a laptop, a stack of books -->
+  <path d="M30 300 H480" ${ink}/>
+  <path d="M50 300 V316 M460 300 V350 M50 316 V350" ${ink}/>
+  <rect x="58" y="262" width="34" height="38" rx="6" fill="var(--panel)" ${ink}/><path d="M92 272 q14 0 14 12 t-14 10" fill="none" ${ink}/>
+  <g class="sw-steam" fill="none" stroke="var(--soft)" stroke-width="2.5" stroke-linecap="round"><path d="M68 252 q-6 -8 0 -16 t0 -16"/><path d="M82 252 q-6 -8 0 -16 t0 -16"/></g>
+  <path d="M205 300 L215 210 H345 L335 300 Z" fill="var(--panel)" ${ink}/>
+  <g class="sw-code"><rect x="228" y="228" width="80" height="7" rx="3" fill="#7048e8"/><rect x="236" y="244" width="64" height="7" rx="3" fill="#1c7ed6"/><rect x="236" y="260" width="88" height="7" rx="3" fill="#0ca678"/><rect x="228" y="276" width="52" height="7" rx="3" fill="var(--accent)"/></g>
+  <path d="M190 300 H350" ${ink} stroke-width="5"/>
+  <rect x="372" y="284" width="92" height="16" rx="3" fill="#e7f5ff" ${ink}/>
+  <rect x="380" y="268" width="80" height="16" rx="3" fill="#fff4e6" ${ink}/>
+  <rect x="368" y="252" width="88" height="16" rx="3" fill="var(--accent-soft)" ${ink}/>
+  <!-- someone at the desk, working, glancing up now and then -->
+  <path d="M120 360 Q118 270 150 240 Q176 222 196 250 L214 292" fill="var(--marker-soft)" ${ink}/>
+  <g class="sw-look"><circle cx="150" cy="205" r="27" fill="var(--panel)" ${ink}/><path d="M124 196 Q150 168 176 196" fill="var(--ink)" ${ink}/><circle cx="164" cy="208" r="2.5" fill="var(--ink)"/></g>
+  <!-- someone on the couch with a book, the show on -->
+  <path d="M600 350 V280 Q600 262 618 262 H850 Q868 262 868 280 V350" fill="#f3f0ff" ${ink}/>
+  <path d="M612 300 H856" ${ink}/>
+  <path d="M700 300 Q696 244 730 228 Q760 220 772 252 L790 300" fill="#e6fcf5" ${ink}/>
+  <g class="sw-look2"><circle cx="736" cy="196" r="26" fill="var(--panel)" ${ink}/><path d="M710 190 Q736 160 762 190 L764 214" fill="var(--accent-ink)" ${ink}/><circle cx="724" cy="200" r="2.5" fill="var(--ink)"/></g>
+  <path d="M760 276 L790 262 L820 276 L790 284 Z" fill="var(--panel)" ${ink}/><path class="sw-page" d="M790 262 L818 250 L820 276" fill="var(--marker-soft)" ${ink} stroke-width="2"/>
+  <!-- what drifts over from the show -->
+  <g font-family="var(--hand)" font-size="21" fill="var(--ink)">
+    <g class="sw-b" style="--dx:120px;--dy:-30px;animation-delay:.5s"><rect x="150" y="96" width="140" height="38" rx="18" fill="var(--panel)" ${ink} stroke-width="2.5"/><text x="220" y="122" text-anchor="middle">who's who</text></g>
+    <g class="sw-b" style="--dx:-110px;--dy:-30px;animation-delay:1.3s"><rect x="640" y="104" width="170" height="38" rx="18" fill="var(--panel)" ${ink} stroke-width="2.5"/><text x="725" y="130" text-anchor="middle">what happened</text></g>
+    <g class="sw-b" style="--dx:130px;--dy:-10px;animation-delay:2.1s"><rect x="18" y="140" width="110" height="38" rx="18" fill="var(--accent-soft)" ${ink} stroke-width="2.5"/><text x="73" y="166" text-anchor="middle">and why</text></g>
+  </g>
+</svg>`;
+
 async function record() {
   const browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: W, height: H }, acceptDownloads: true });
@@ -248,8 +316,8 @@ async function record() {
   await sleep(3100);
   await card(big(`A game of ${mark("telephone")}.`, { kicker: "PROBLEM 3", sub: telephone }));
   await sleep(3800);
-  await card(big(`Ever learned from a show you ${mark("half watched")}?`, { kicker: "THE IDEA: PASSIVE LEARNING", sub: "Netflix or a video on in the background while you work: you're not focused on it, but pieces of it stick." }));
-  await sleep(3500);
+  await card(big(`Ever learned from a show you ${mark("half watched")}?`, { kicker: "THE IDEA: PASSIVE LEARNING", sub: `Netflix on in the background while you work: pieces of it stick.${show}` }));
+  await sleep(4500);
   await card(big(`So the agent ${mark("draws")} its work.`, { kicker: "AGENT WHITEBOARD", sub: "Not a cure for cognitive offloading: 20% better. Its plan, reasoning and progress on a board you take in at a glance, and can question and steer." }));
   await sleep(2600);
   beat("problem cards");
@@ -554,8 +622,11 @@ function encode() {
   // The GIF is a short cut (the whole ad is ~10 MB as a GIF): from the plan to the red pen.
   const from = at["plan drawn"] ?? 0, to = at["red pen"] ?? from + 25;
   execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-ss", String(from), "-t", String(to - from), "-i", path.join(OUT, "ad.mp4"), "-vf", "fps=8,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle", path.join(OUT, "ad.gif")]);
+  // The README's GIF: the scripted demo alone, from the app's first frame to the end of the views.
+  const d0 = at["problem cards"] ?? 0, d1 = at["views"] ?? d0 + 50;
+  execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-ss", String(d0 + 1), "-t", String(d1 - d0 - 1), "-i", path.join(OUT, "ad.mp4"), "-vf", "fps=8,scale=760:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle", path.join(OUT, "demo.gif")]);
   const mb = (f) => (fs.statSync(path.join(OUT, f)).size / 1e6).toFixed(1);
-  console.log(`${total.toFixed(1)} s: ad.mp4 ${mb("ad.mp4")} MB, ad.gif ${mb("ad.gif")} MB, in ${OUT}`);
+  console.log(`${total.toFixed(1)} s: ad.mp4 ${mb("ad.mp4")} MB, ad.gif ${mb("ad.gif")} MB, demo.gif ${mb("demo.gif")} MB, in ${OUT}`);
 }
 
 record()
