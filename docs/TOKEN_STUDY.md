@@ -260,7 +260,7 @@ Six runs of the real agent (Claude Opus 5.5, effort `low`) on the sample repo, a
 
 ## Shorthand mode
 
-Shorthand mode (`AGENT_SHORTHAND`, on by default since 2026-10-28; README, [Shorthand mode](../README.md#shorthand-mode)) is a "caveman" for the board. Caveman, a Claude Code skill, makes the model reply in terse English and claims 65–75% fewer output tokens; independent tests found 12–25% less output and 1–3% off the bill, because output is a small share of what a run costs. So shorthand mode goes after input as well as output:
+Shorthand mode (`AGENT_SHORTHAND`, on by default since 2026-10-28; the reference, [Shorthand mode](REFERENCE.md#shorthand-mode)) is a "caveman" for the board. Caveman, a Claude Code skill, makes the model reply in terse English and claims 65–75% fewer output tokens; independent tests found 12–25% less output and 1–3% off the bill, because output is a small share of what a run costs. So shorthand mode goes after input as well as output:
 
 - **Fewer tools.** A Claude run gets only the built-in tools agents used in every live run (Read, Glob, Grep, Edit, Write, Bash) and ExitPlanMode, which a `tools` list drops unless it's named (checked: without it the plan gate's call fails with "No such tool available").
 - **Board ops as lines.** `update_board` takes one op per line (`edge web>api via=HTTP api="POST /ask"`), and its schema is one string instead of every op's fields. `read_board` and a carried-on session's `<board_state>` come back in the same lines.
